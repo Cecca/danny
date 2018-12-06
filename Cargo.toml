@@ -1,0 +1,6 @@
+[package]
+name = "danny"
+version = "0.1.0"
+authors = ["Matteo Ceccarello <ceccarel@dei.unipd.it>"]
+
+[dependencies]
