@@ -24,20 +24,8 @@ fn main() {
 
     let mut left: Vec<VectorWithNorm> = Vec::new();
     let mut right: Vec<VectorWithNorm> = Vec::new();
-
     VectorWithNorm::from_file(&left_path.into(), |v| left.push(v));
     VectorWithNorm::from_file(&right_path.into(), |v| right.push(v));
 
-    let mut sim_cnt = 0;
-    let mut cnt = 0;
-    for l in left.iter() {
-        for r in right.iter() {
-            cnt += 1;
-            let sim = Cosine::cosine(l, r);
-            if sim >= thresh {
-                sim_cnt += 1;
-            }
-        }
-    }
-    println!("There are {} simlar pairs our of {}", sim_cnt, cnt);
+    baseline::sequential(thresh, &left, &right, Cosine::cosine);
 }
