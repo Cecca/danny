@@ -4,18 +4,18 @@ use std::io::BufReader;
 use std::path::PathBuf;
 use types::VectorWithNorm;
 
-trait ReadDataFile {
+pub trait ReadDataFile {
     type Item;
-    fn foreach<F>(path: &PathBuf, fun: F) -> ()
+    fn from_file<F>(path: &PathBuf, mut fun: F) -> ()
     where
-        F: Fn(Self::Item) -> ();
+        F: FnMut(Self::Item) -> ();
 }
 
 impl ReadDataFile for VectorWithNorm {
     type Item = VectorWithNorm;
-    fn foreach<F>(path: &PathBuf, fun: F) -> ()
+    fn from_file<F>(path: &PathBuf, mut fun: F) -> ()
     where
-        F: Fn(VectorWithNorm) -> (),
+        F: FnMut(VectorWithNorm) -> (),
     {
         let file = File::open(path).expect("Error opening file");
         let buf_reader = BufReader::new(file);
@@ -23,9 +23,10 @@ impl ReadDataFile for VectorWithNorm {
             let data: Vec<f64> = line
                 .expect("Error getting line")
                 .split_whitespace()
+                .skip(1)
                 .map(|s| {
                     s.parse::<f64>()
-                        .expect("Error parsing floating point number")
+                        .expect(&format!("Error parsing floating point number `{}`", s))
                 }).collect();
             let vec = VectorWithNorm::new(data);
             fun(vec);
