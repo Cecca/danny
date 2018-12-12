@@ -1,3 +1,5 @@
+use types::VectorWithNorm;
+
 pub trait Measure {
     fn similarity(a: &Self, b: &Self) -> f64;
 }
@@ -16,6 +18,16 @@ impl InnerProduct for Vec<f64> {
     fn norm_2(a: &Vec<f64>) -> f64 {
         let squared_sum: f64 = a.iter().map(|a| a * a).sum();
         squared_sum.sqrt()
+    }
+}
+
+impl InnerProduct for VectorWithNorm {
+    fn inner_product(a: &VectorWithNorm, b: &VectorWithNorm) -> f64 {
+        InnerProduct::inner_product(a.data(), &b.data())
+    }
+
+    fn norm_2(a: &VectorWithNorm) -> f64 {
+        a.norm()
     }
 }
 
