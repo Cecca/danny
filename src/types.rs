@@ -1,5 +1,6 @@
 use measure::{InnerProduct, Jaccard};
 
+#[derive(Clone, Debug)]
 pub struct VectorWithNorm {
     data: Vec<f64>,
     norm: f64,
@@ -24,6 +25,7 @@ impl VectorWithNorm {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct BagOfWords {
     universe: u32,
     words: Vec<u32>,
