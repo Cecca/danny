@@ -17,6 +17,7 @@ dependencies = [
 name = "danny"
 version = "0.1.0"
 dependencies = [
+ "abomonation 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "timely 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 

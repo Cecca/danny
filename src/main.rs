@@ -1,3 +1,4 @@
+extern crate abomonation;
 extern crate timely;
 
 mod baseline;
@@ -35,38 +36,39 @@ fn main() {
 
     timely::execute_from_args(std::env::args(), move |worker| {
         let index = worker.index();
-        println!("Greetings from worker {}", index);
+        let peers = worker.peers() as u64;
+        println!("Greetings from worker {} (over {})", index, peers);
 
         let (mut left, mut right, mut probe) = worker.dataflow(|scope| {
-            let (left_in, left_stream) = scope.new_input();
-            let (right_in, right_stream) = scope.new_input();
-            // let probe = cartesian(&left_stream, &right_stream)
-            //     // .inspect_batch(|t, xs| println!("{}: {:?}", t, xs))
-            //     .inspect(|p| println!("{:?}", p))
-            //     .probe();
-            let (out1, out2) = left_stream
-                .inspect(|x| println!("in1 {}", x))
-                .binary_in_out_frontier(
-                    &right_stream.inspect(|x| println!("in2 {}", x)),
-                    Pipeline,
-                    Pipeline,
-                    "cross",
-                    |_, _| {
-                        |in1, in2, out1, out2| {
-                            in1.for_each(|t, d| {
-                                out2.session(&t).give_vec(&mut d.replace(Vec::new()));
-                            });
-                            in2.for_each(|t, d| {
-                                out1.session(&t).give_vec(&mut d.replace(Vec::new()));
-                            });
-                        }
-                    },
-                );
-            let mut probe = ProbeHandle::new();
-            out1.inspect(|x| println!("out1 {}", x))
-                .probe_with(&mut probe);
-            out2.inspect(|x| println!("out2 {}", x))
-                .probe_with(&mut probe);
+            let (left_in, left_stream) = scope.new_input::<i32>();
+            let (right_in, right_stream) = scope.new_input::<i32>();
+            let probe = cartesian(&left_stream, &right_stream, |&x| x as u64, peers)
+                // .inspect_batch(|t, xs| println!("{}: {:?}", t, xs))
+                .inspect(|p| println!("{:?}", p))
+                .probe();
+            // let (out1, out2) = left_stream
+            //     .inspect(|x| println!("in1 {}", x))
+            //     .binary_in_out_frontier(
+            //         &right_stream.inspect(|x| println!("in2 {}", x)),
+            //         Pipeline,
+            //         Pipeline,
+            //         "cross",
+            //         |_, _| {
+            //             |in1, in2, out1, out2| {
+            //                 in1.for_each(|t, d| {
+            //                     out2.session(&t).give_vec(&mut d.replace(Vec::new()));
+            //                 });
+            //                 in2.for_each(|t, d| {
+            //                     out1.session(&t).give_vec(&mut d.replace(Vec::new()));
+            //                 });
+            //             }
+            //         },
+            //     );
+            // let mut probe = ProbeHandle::new();
+            // out1.inspect(|x| println!("out1 {}", x))
+            //     .probe_with(&mut probe);
+            // out2.inspect(|x| println!("out2 {}", x))
+            //     .probe_with(&mut probe);
             (left_in, right_in, probe)
         });
 
@@ -77,8 +79,9 @@ fn main() {
             // VectorWithNorm::from_file(&left_p.into(), |v| left.send(v));
             // VectorWithNorm::from_file(&right_p.into(), |v| right.send(v));
             for i in 1..4 {
-                left.send(i);
+                let i = i as i32;
                 right.send(-i);
+                left.send(i);
             }
             left.advance_to(1);
             right.advance_to(1);

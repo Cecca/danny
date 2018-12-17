@@ -5,3 +5,4 @@ authors = ["Matteo Ceccarello <ceccarel@dei.unipd.it>"]
 
 [dependencies]
 timely = "0.8"
+abomonation = "0.7"
