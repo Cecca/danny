@@ -12,7 +12,8 @@ mod types;
 
 use io::ReadDataFile;
 use measure::{Cosine, Jaccard};
-use operators::{cartesian, echo};
+use operators::cartesian;
+use operators::BinaryOperator;
 use std::env;
 use timely::dataflow::channels::pact::Pipeline;
 use timely::dataflow::operators::*;
@@ -39,10 +40,33 @@ fn main() {
         let (mut left, mut right, mut probe) = worker.dataflow(|scope| {
             let (left_in, left_stream) = scope.new_input();
             let (right_in, right_stream) = scope.new_input();
-            let probe = cartesian(&left_stream, &right_stream)
-                // .inspect_batch(|t, xs| println!("{}: {:?}", t, xs))
-                .inspect(|p| println!("{:?}", p))
-                .probe();
+            // let probe = cartesian(&left_stream, &right_stream)
+            //     // .inspect_batch(|t, xs| println!("{}: {:?}", t, xs))
+            //     .inspect(|p| println!("{:?}", p))
+            //     .probe();
+            let (out1, out2) = left_stream
+                .inspect(|x| println!("in1 {}", x))
+                .binary_in_out_frontier(
+                    &right_stream.inspect(|x| println!("in2 {}", x)),
+                    Pipeline,
+                    Pipeline,
+                    "cross",
+                    |_, _| {
+                        |in1, in2, out1, out2| {
+                            in1.for_each(|t, d| {
+                                out2.session(&t).give_vec(&mut d.replace(Vec::new()));
+                            });
+                            in2.for_each(|t, d| {
+                                out1.session(&t).give_vec(&mut d.replace(Vec::new()));
+                            });
+                        }
+                    },
+                );
+            let mut probe = ProbeHandle::new();
+            out1.inspect(|x| println!("out1 {}", x))
+                .probe_with(&mut probe);
+            out2.inspect(|x| println!("out2 {}", x))
+                .probe_with(&mut probe);
             (left_in, right_in, probe)
         });
 
@@ -52,9 +76,9 @@ fn main() {
             // let right_p = &right_path;
             // VectorWithNorm::from_file(&left_p.into(), |v| left.send(v));
             // VectorWithNorm::from_file(&right_p.into(), |v| right.send(v));
-            for i in 0..3 {
+            for i in 1..4 {
                 left.send(i);
-                right.send(i);
+                right.send(-i);
             }
             left.advance_to(1);
             right.advance_to(1);
