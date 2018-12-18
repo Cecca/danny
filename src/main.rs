@@ -43,32 +43,22 @@ fn main() {
     // Build timely context
     let timely_builder = timely::Configuration::Process(workers).try_build().unwrap();
 
-    let count = baseline::all_pairs_parallel::<VectorWithNorm, _>(
-        threshold,
-        &left_path,
-        &right_path,
-        Cosine::cosine,
-        timely_builder,
-    );
+    let count = match measure.as_ref() {
+        "cosine" => baseline::all_pairs_parallel::<VectorWithNorm, _>(
+            threshold,
+            &left_path,
+            &right_path,
+            Cosine::cosine,
+            timely_builder,
+        ),
+        "jaccard" => baseline::all_pairs_parallel::<BagOfWords, _>(
+            threshold,
+            &left_path,
+            &right_path,
+            Jaccard::jaccard,
+            timely_builder,
+        ),
+        _ => unimplemented!(),
+    };
     println!("Pairs above similarity {} are {}", threshold, count);
-
-    // match measure.as_ref() {
-    //     "cosine" => {
-    //         let mut left: Vec<VectorWithNorm> = Vec::new();
-    //         let mut right: Vec<VectorWithNorm> = Vec::new();
-    //         VectorWithNorm::from_file(&left_path.into(), |v| left.push(v));
-    //         VectorWithNorm::from_file(&right_path.into(), |v| right.push(v));
-
-    //         baseline::sequential(thresh, &left, &right, Cosine::cosine);
-    //     }
-    //     "jaccard" => {
-    //         let mut left: Vec<BagOfWords> = Vec::new();
-    //         let mut right: Vec<BagOfWords> = Vec::new();
-    //         BagOfWords::from_file(&left_path.into(), |v| left.push(v));
-    //         BagOfWords::from_file(&right_path.into(), |v| right.push(v));
-
-    //         baseline::sequential(thresh, &left, &right, Jaccard::jaccard);
-    //     }
-    //     _ => unimplemented!(),
-    // };
 }
