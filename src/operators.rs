@@ -228,11 +228,6 @@ where
                                 if time.inner < iterations {
                                     // Produce the output pairs for this iteration
                                     let mut result_session = results.session(&results_time);
-                                    println!(
-                                        "Computing cross product of {} and {} elements",
-                                        left_vectors.len(),
-                                        elems.len()
-                                    );
                                     for (_, rv) in elems.iter() {
                                         for lv in left_vectors.iter() {
                                             if filter(lv, rv) {

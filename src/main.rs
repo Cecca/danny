@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate abomonation;
+extern crate core;
 extern crate timely;
 
 mod baseline;
@@ -39,65 +40,17 @@ fn main() {
     let left_path = args.next().expect("left path is required");
     let right_path = args.next().expect("right path is required");
 
-    let (send, recv) = ::std::sync::mpsc::channel();
-    let send = Arc::new(Mutex::new(send));
-
     // Build timely context
-    let (builders, others) = timely::Configuration::Process(workers).try_build().unwrap();
+    let timely_builder = timely::Configuration::Process(workers).try_build().unwrap();
 
-    timely::execute::execute_from(builders, others, move |worker| {
-        let index = worker.index();
-        let peers = worker.peers() as u64;
-        println!("Greetings from worker {} (over {})", index, peers);
-
-        let (mut left, mut right, probe) = worker.dataflow(|scope| {
-            let threshold = threshold.clone();
-            let send = send.lock().unwrap().clone();
-            let (left_in, left_stream) = scope.new_input::<(u64, VectorWithNorm)>();
-            let (right_in, right_stream) = scope.new_input::<(u64, VectorWithNorm)>();
-            // let (left_in, left_stream) = scope.new_input::<u32>();
-            // let (right_in, right_stream) = scope.new_input::<u32>();
-            // let mut count = Rc::new(EventLink::new());
-            // let mut count = ();
-            let mut probe = ProbeHandle::new();
-            left_stream
-                .cartesian_filter(
-                    &right_stream,
-                    move |ref x, ref y| Cosine::cosine(&x.1, &y.1) >= threshold,
-                    |ref x| x.route(),
-                    |ref x| x.route(),
-                    peers,
-                )
-                .count()
-                .probe_with(&mut probe)
-                .capture_into(send);
-            (left_in, right_in, probe)
-        });
-
-        // Push data into the dataflow graph
-        if index == 0 {
-            let left_p = &left_path;
-            let right_p = &right_path;
-            VectorWithNorm::from_file_with_count(&left_p.into(), |c, v| left.send((c, v)));
-            VectorWithNorm::from_file_with_count(&right_p.into(), |c, v| right.send((c, v)));
-            // for i in 0..(2u32.pow(12u32)) {
-            //     right.send(i);
-            //     left.send(i);
-            // }
-            left.advance_to(1);
-            right.advance_to(1);
-        }
-        worker.step_while(|| probe.less_than(left.time()));
-    })
-    .expect("Something went wrong with the dataflow");
-
-    println!(
-        "Content is {:?}",
-        recv.extract()
-            .iter()
-            .map(|pair| pair.1.clone().iter().sum::<usize>())
-            .collect::<Vec<usize>>()
+    let count = baseline::all_pairs_parallel::<VectorWithNorm, _>(
+        threshold,
+        &left_path,
+        &right_path,
+        Cosine::cosine,
+        timely_builder,
     );
+    println!("Pairs above similarity {} are {}", threshold, count);
 
     // match measure.as_ref() {
     //     "cosine" => {

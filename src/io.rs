@@ -4,22 +4,26 @@ use std::io::BufReader;
 use std::path::PathBuf;
 use types::{BagOfWords, VectorWithNorm};
 
-pub trait ReadDataFile {
-    type Item;
+pub trait ReadDataFile
+where
+    Self: std::marker::Sized,
+{
+    // type Item;
+
     fn from_file<F>(path: &PathBuf, mut fun: F) -> ()
     where
-        F: FnMut(Self::Item) -> (),
+        F: FnMut(Self) -> (),
     {
         Self::from_file_with_count(path, |_, d| fun(d));
     }
 
     fn from_file_with_count<F>(path: &PathBuf, mut fun: F) -> ()
     where
-        F: FnMut(u64, Self::Item) -> ();
+        F: FnMut(u64, Self) -> ();
 }
 
 impl ReadDataFile for VectorWithNorm {
-    type Item = VectorWithNorm;
+    // type Item = VectorWithNorm;
 
     fn from_file_with_count<F>(path: &PathBuf, mut fun: F) -> ()
     where
@@ -46,7 +50,7 @@ impl ReadDataFile for VectorWithNorm {
 }
 
 impl ReadDataFile for BagOfWords {
-    type Item = BagOfWords;
+    // type Item = BagOfWords;
 
     fn from_file_with_count<F>(path: &PathBuf, mut fun: F) -> ()
     where
