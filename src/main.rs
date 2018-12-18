@@ -42,25 +42,25 @@ fn main() {
         let peers = worker.peers() as u64;
         println!("Greetings from worker {} (over {})", index, peers);
 
-        let (mut left, mut right, probe, count) = worker.dataflow(|scope| {
+        let (mut left, mut right, probe) = worker.dataflow(|scope| {
             let send = send.lock().unwrap().clone();
-            let (left_in, left_stream) = scope.new_input();
-            let (right_in, right_stream) = scope.new_input();
+            let (left_in, left_stream) = scope.new_input::<u32>();
+            let (right_in, right_stream) = scope.new_input::<u32>();
             // let mut count = Rc::new(EventLink::new());
             // let mut count = ();
             let mut probe = ProbeHandle::new();
-            let count = left_stream
+            left_stream
                 .cartesian_filter(
                     &right_stream,
                     |&x, &y| x <= y,
-                    |&x| x as u64,
-                    |&x| x as u64,
+                    |&x| x.route(),
+                    |&x| x.route(),
                     peers,
                 )
                 .count()
                 .probe_with(&mut probe)
                 .capture_into(send);
-            (left_in, right_in, probe, count)
+            (left_in, right_in, probe)
         });
 
         // Push data into the dataflow graph
@@ -70,7 +70,6 @@ fn main() {
             // VectorWithNorm::from_file(&left_p.into(), |v| left.send(v));
             // VectorWithNorm::from_file(&right_p.into(), |v| right.send(v));
             for i in 0..(2u32.pow(12u32)) {
-                let i = i as i32;
                 right.send(i);
                 left.send(i);
             }

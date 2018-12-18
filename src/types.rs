@@ -1,4 +1,5 @@
 use measure::{InnerProduct, Jaccard};
+use operators::Route;
 
 #[derive(Clone, Debug)]
 pub struct VectorWithNorm {
