@@ -15,7 +15,6 @@ use io::ReadDataFile;
 use measure::{Cosine, Jaccard};
 use operators::*;
 use std::iter::Sum;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use timely::dataflow::operators::capture::{EventLink, Extract, Replay};
 use timely::dataflow::operators::*;
@@ -23,16 +22,15 @@ use timely::dataflow::*;
 use types::{BagOfWords, VectorWithNorm};
 
 fn main() {
-    // let mut args = env::args();
-    // args.next(); // Skip executable name
+    let mut args = std::env::args();
+    args.next(); // Skip executable name
 
-    // let measure = args.next().expect("measure is required");
-    // let thresh_str = args.next().expect("threshold is required");
-    // let thresh = thresh_str
-    // let left_path = args.next().expect("left path is required");
-    // let right_path = args.next().expect("right path is required");
+    let measure = args.next().expect("measure is required");
+    let thresh_str = args.next().expect("threshold is required");
+    let left_path = args.next().expect("left path is required");
+    let right_path = args.next().expect("right path is required");
 
-    // let timely_args = "".split_whitespace();
+    let timely_args = "".split_whitespace();
 
     let (send, recv) = ::std::sync::mpsc::channel();
     let send = Arc::new(Mutex::new(send));
@@ -44,6 +42,8 @@ fn main() {
 
         let (mut left, mut right, probe) = worker.dataflow(|scope| {
             let send = send.lock().unwrap().clone();
+            // let (left_in, left_stream) = scope.new_input::<(u64, VectorWithNorm)>();
+            // let (right_in, right_stream) = scope.new_input::<(u64, VectorWithNorm)>();
             let (left_in, left_stream) = scope.new_input::<u32>();
             let (right_in, right_stream) = scope.new_input::<u32>();
             // let mut count = Rc::new(EventLink::new());
@@ -67,8 +67,8 @@ fn main() {
         if index == 0 {
             // let left_p = &left_path;
             // let right_p = &right_path;
-            // VectorWithNorm::from_file(&left_p.into(), |v| left.send(v));
-            // VectorWithNorm::from_file(&right_p.into(), |v| right.send(v));
+            // VectorWithNorm::from_file_with_count(&left_p.into(), |c, v| left.send((c, v)));
+            // VectorWithNorm::from_file_with_count(&right_p.into(), |c, v| right.send((c, v)));
             for i in 0..(2u32.pow(12u32)) {
                 right.send(i);
                 left.send(i);
