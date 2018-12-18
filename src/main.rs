@@ -48,9 +48,10 @@ fn main() {
         let (mut left, mut right, probe) = worker.dataflow(|scope| {
             let (left_in, left_stream) = scope.new_input();
             let (right_in, right_stream) = scope.new_input();
-            let probe = cartesian(&left_stream, &right_stream, |&x| x as u64, peers)
-                .inspect_batch(|t, xs| println!("Output at time {}: {:?}", t, xs))
-                // .inspect(|p| println!("{:?}", p))
+            let probe = left_stream
+                .cartesian(&right_stream, |&x| x as u64, |&x| x as u64, peers)
+                // .inspect_batch(|t, xs| println!("Output at time {}: {:?}", t, xs))
+                .inspect(|p| println!("out {:?}", p))
                 .probe();
             // let (out1, out2) = left_stream
             //     .inspect(|x| println!("in1 {}", x))
