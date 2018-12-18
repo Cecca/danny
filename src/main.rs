@@ -1,3 +1,4 @@
+#[macro_use]
 extern crate abomonation;
 extern crate timely;
 
@@ -42,19 +43,19 @@ fn main() {
 
         let (mut left, mut right, probe) = worker.dataflow(|scope| {
             let send = send.lock().unwrap().clone();
-            // let (left_in, left_stream) = scope.new_input::<(u64, VectorWithNorm)>();
-            // let (right_in, right_stream) = scope.new_input::<(u64, VectorWithNorm)>();
-            let (left_in, left_stream) = scope.new_input::<u32>();
-            let (right_in, right_stream) = scope.new_input::<u32>();
+            let (left_in, left_stream) = scope.new_input::<(u64, VectorWithNorm)>();
+            let (right_in, right_stream) = scope.new_input::<(u64, VectorWithNorm)>();
+            // let (left_in, left_stream) = scope.new_input::<u32>();
+            // let (right_in, right_stream) = scope.new_input::<u32>();
             // let mut count = Rc::new(EventLink::new());
             // let mut count = ();
             let mut probe = ProbeHandle::new();
             left_stream
                 .cartesian_filter(
                     &right_stream,
-                    |&x, &y| x <= y,
-                    |&x| x.route(),
-                    |&x| x.route(),
+                    |ref x, ref y| true,
+                    |ref x| x.route(),
+                    |ref x| x.route(),
                     peers,
                 )
                 .count()
@@ -65,14 +66,14 @@ fn main() {
 
         // Push data into the dataflow graph
         if index == 0 {
-            // let left_p = &left_path;
-            // let right_p = &right_path;
-            // VectorWithNorm::from_file_with_count(&left_p.into(), |c, v| left.send((c, v)));
-            // VectorWithNorm::from_file_with_count(&right_p.into(), |c, v| right.send((c, v)));
-            for i in 0..(2u32.pow(12u32)) {
-                right.send(i);
-                left.send(i);
-            }
+            let left_p = &left_path;
+            let right_p = &right_path;
+            VectorWithNorm::from_file_with_count(&left_p.into(), |c, v| left.send((c, v)));
+            VectorWithNorm::from_file_with_count(&right_p.into(), |c, v| right.send((c, v)));
+            // for i in 0..(2u32.pow(12u32)) {
+            //     right.send(i);
+            //     left.send(i);
+            // }
             left.advance_to(1);
             right.advance_to(1);
         }

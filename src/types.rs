@@ -1,11 +1,13 @@
+use abomonation::Abomonation;
 use measure::{InnerProduct, Jaccard};
-use operators::Route;
 
 #[derive(Clone, Debug)]
 pub struct VectorWithNorm {
     data: Vec<f64>,
     norm: f64,
 }
+
+unsafe_abomonate!(VectorWithNorm: data, norm);
 
 impl VectorWithNorm {
     pub fn dim(&self) -> usize {
@@ -31,6 +33,8 @@ pub struct BagOfWords {
     universe: u32,
     words: Vec<u32>,
 }
+
+unsafe_abomonate!(BagOfWords: universe, words);
 
 impl BagOfWords {
     pub fn new(universe: u32, mut words: Vec<u32>) -> BagOfWords {
