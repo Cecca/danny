@@ -14,8 +14,10 @@ mod types;
 use io::ReadDataFile;
 use measure::{Cosine, Jaccard};
 use operators::*;
-use std::env;
-use timely::dataflow::channels::pact::Pipeline;
+use std::iter::Sum;
+use std::rc::Rc;
+use std::sync::{Arc, Mutex};
+use timely::dataflow::operators::capture::{EventLink, Extract, Replay};
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use types::{BagOfWords, VectorWithNorm};
@@ -32,15 +34,22 @@ fn main() {
 
     // let timely_args = "".split_whitespace();
 
+    let (send, recv) = ::std::sync::mpsc::channel();
+    let send = Arc::new(Mutex::new(send));
+
     timely::execute_from_args(std::env::args(), move |worker| {
         let index = worker.index();
         let peers = worker.peers() as u64;
         println!("Greetings from worker {} (over {})", index, peers);
 
-        let (mut left, mut right, probe) = worker.dataflow(|scope| {
+        let (mut left, mut right, probe, count) = worker.dataflow(|scope| {
+            let send = send.lock().unwrap().clone();
             let (left_in, left_stream) = scope.new_input();
             let (right_in, right_stream) = scope.new_input();
-            let probe = left_stream
+            // let mut count = Rc::new(EventLink::new());
+            // let mut count = ();
+            let mut probe = ProbeHandle::new();
+            let count = left_stream
                 .cartesian_filter(
                     &right_stream,
                     |&x, &y| x <= y,
@@ -48,9 +57,10 @@ fn main() {
                     |&x| x as u64,
                     peers,
                 )
-                .inspect(|p| println!("out {:?}", p))
-                .probe();
-            (left_in, right_in, probe)
+                .count()
+                .probe_with(&mut probe)
+                .capture_into(send);
+            (left_in, right_in, probe, count)
         });
 
         // Push data into the dataflow graph
@@ -59,7 +69,7 @@ fn main() {
             // let right_p = &right_path;
             // VectorWithNorm::from_file(&left_p.into(), |v| left.send(v));
             // VectorWithNorm::from_file(&right_p.into(), |v| right.send(v));
-            for i in 1..4 {
+            for i in 0..(2u32.pow(12u32)) {
                 let i = i as i32;
                 right.send(i);
                 left.send(i);
@@ -70,7 +80,14 @@ fn main() {
         worker.step_while(|| probe.less_than(left.time()));
     })
     .expect("Something went wrong with the dataflow");
-    println!("Done!");
+
+    println!(
+        "Content is {:?}",
+        recv.extract()
+            .iter()
+            .map(|pair| pair.1.clone().iter().sum::<usize>())
+            .collect::<Vec<usize>>()
+    );
 
     // match measure.as_ref() {
     //     "cosine" => {
