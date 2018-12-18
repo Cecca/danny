@@ -37,45 +37,19 @@ fn main() {
         let peers = worker.peers() as u64;
         println!("Greetings from worker {} (over {})", index, peers);
 
-        // let (mut input, probe) = worker.dataflow(|scope| {
-        //     let (input, stream) = scope.new_input();
-        //     let probe = try_iterate(&stream)
-        //         .inspect_batch(|t, x| println!("time {:?} output {:?}", t, x))
-        //         .probe();
-        //     (input, probe)
-        // });
-
         let (mut left, mut right, probe) = worker.dataflow(|scope| {
             let (left_in, left_stream) = scope.new_input();
             let (right_in, right_stream) = scope.new_input();
             let probe = left_stream
-                .cartesian(&right_stream, |&x| x as u64, |&x| x as u64, peers)
-                // .inspect_batch(|t, xs| println!("Output at time {}: {:?}", t, xs))
+                .cartesian_filter(
+                    &right_stream,
+                    |&x, &y| x <= y,
+                    |&x| x as u64,
+                    |&x| x as u64,
+                    peers,
+                )
                 .inspect(|p| println!("out {:?}", p))
                 .probe();
-            // let (out1, out2) = left_stream
-            //     .inspect(|x| println!("in1 {}", x))
-            //     .binary_in_out_frontier(
-            //         &right_stream.inspect(|x| println!("in2 {}", x)),
-            //         Pipeline,
-            //         Pipeline,
-            //         "cross",
-            //         |_, _| {
-            //             |in1, in2, out1, out2| {
-            //                 in1.for_each(|t, d| {
-            //                     out2.session(&t).give_vec(&mut d.replace(Vec::new()));
-            //                 });
-            //                 in2.for_each(|t, d| {
-            //                     out1.session(&t).give_vec(&mut d.replace(Vec::new()));
-            //                 });
-            //             }
-            //         },
-            //     );
-            // let mut probe = ProbeHandle::new();
-            // out1.inspect(|x| println!("out1 {}", x))
-            //     .probe_with(&mut probe);
-            // out2.inspect(|x| println!("out2 {}", x))
-            //     .probe_with(&mut probe);
             (left_in, right_in, probe)
         });
 
@@ -87,19 +61,13 @@ fn main() {
             // VectorWithNorm::from_file(&right_p.into(), |v| right.send(v));
             for i in 1..4 {
                 let i = i as i32;
-                right.send(-i);
+                right.send(i);
                 left.send(i);
             }
             left.advance_to(1);
             right.advance_to(1);
         }
-        worker.step_while(|| {
-            // probe.less_than(left.time())
-            // probe.with_frontier(|f| {
-            //     println!("Stepping [{:?}]", f.to_vec());
-            // });
-            probe.less_than(left.time())
-        });
+        worker.step_while(|| probe.less_than(left.time()));
     })
     .expect("Something went wrong with the dataflow");
     println!("Done!");
