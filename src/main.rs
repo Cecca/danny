@@ -26,22 +26,32 @@ fn main() {
     let mut args = std::env::args();
     args.next(); // Skip executable name
 
+    let workers: usize = args
+        .next()
+        .expect("number of workers required")
+        .parse()
+        .expect("unable to convert to integer number of workers");
     let measure = args.next().expect("measure is required");
     let thresh_str = args.next().expect("threshold is required");
+    let threshold: f64 = thresh_str
+        .parse()
+        .expect("Cannot convert the threshold into a f64");
     let left_path = args.next().expect("left path is required");
     let right_path = args.next().expect("right path is required");
-
-    let timely_args = "".split_whitespace();
 
     let (send, recv) = ::std::sync::mpsc::channel();
     let send = Arc::new(Mutex::new(send));
 
-    timely::execute_from_args(std::env::args(), move |worker| {
+    // Build timely context
+    let (builders, others) = timely::Configuration::Process(workers).try_build().unwrap();
+
+    timely::execute::execute_from(builders, others, move |worker| {
         let index = worker.index();
         let peers = worker.peers() as u64;
         println!("Greetings from worker {} (over {})", index, peers);
 
         let (mut left, mut right, probe) = worker.dataflow(|scope| {
+            let threshold = threshold.clone();
             let send = send.lock().unwrap().clone();
             let (left_in, left_stream) = scope.new_input::<(u64, VectorWithNorm)>();
             let (right_in, right_stream) = scope.new_input::<(u64, VectorWithNorm)>();
@@ -53,7 +63,7 @@ fn main() {
             left_stream
                 .cartesian_filter(
                     &right_stream,
-                    |ref x, ref y| true,
+                    move |ref x, ref y| Cosine::cosine(&x.1, &y.1) >= threshold,
                     |ref x| x.route(),
                     |ref x| x.route(),
                     peers,
