@@ -13,8 +13,7 @@ mod types;
 
 use io::ReadDataFile;
 use measure::{Cosine, Jaccard};
-use operators::cartesian;
-use operators::BinaryOperator;
+use operators::*;
 use std::env;
 use timely::dataflow::channels::pact::Pipeline;
 use timely::dataflow::operators::*;
@@ -28,8 +27,6 @@ fn main() {
     // let measure = args.next().expect("measure is required");
     // let thresh_str = args.next().expect("threshold is required");
     // let thresh = thresh_str
-    //     .parse::<f64>()
-    //     .expect(&format!("Error while parsing threshold `{}`", thresh_str));
     // let left_path = args.next().expect("left path is required");
     // let right_path = args.next().expect("right path is required");
 
@@ -40,11 +37,19 @@ fn main() {
         let peers = worker.peers() as u64;
         println!("Greetings from worker {} (over {})", index, peers);
 
+        // let (mut input, probe) = worker.dataflow(|scope| {
+        //     let (input, stream) = scope.new_input();
+        //     let probe = try_iterate(&stream)
+        //         .inspect_batch(|t, x| println!("time {:?} output {:?}", t, x))
+        //         .probe();
+        //     (input, probe)
+        // });
+
         let (mut left, mut right, probe) = worker.dataflow(|scope| {
             let (left_in, left_stream) = scope.new_input();
             let (right_in, right_stream) = scope.new_input();
             let probe = cartesian(&left_stream, &right_stream, |&x| x as u64, peers)
-                .inspect_batch(|t, xs| println!("{}: {:?}", t, xs))
+                .inspect_batch(|t, xs| println!("Output at time {}: {:?}", t, xs))
                 // .inspect(|p| println!("{:?}", p))
                 .probe();
             // let (out1, out2) = left_stream
@@ -87,9 +92,16 @@ fn main() {
             left.advance_to(1);
             right.advance_to(1);
         }
-        worker.step_while(|| probe.less_than(left.time()));
+        worker.step_while(|| {
+            // probe.less_than(left.time())
+            // probe.with_frontier(|f| {
+            //     println!("Stepping [{:?}]", f.to_vec());
+            // });
+            probe.less_than(left.time())
+        });
     })
     .expect("Something went wrong with the dataflow");
+    println!("Done!");
 
     // match measure.as_ref() {
     //     "cosine" => {
