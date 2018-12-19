@@ -1,4 +1,6 @@
 #[macro_use]
+extern crate clap;
+#[macro_use]
 extern crate abomonation;
 extern crate core;
 extern crate timely;
@@ -13,32 +15,42 @@ mod operators;
 mod stats;
 mod types;
 
-use io::ReadDataFile;
 use measure::{Cosine, Jaccard};
-use operators::*;
-use std::iter::Sum;
-use std::sync::{Arc, Mutex};
-use timely::dataflow::operators::capture::{EventLink, Extract, Replay};
-use timely::dataflow::operators::*;
-use timely::dataflow::*;
 use types::{BagOfWords, VectorWithNorm};
 
 fn main() {
+    let matches = clap_app!(danny =>
+        (version: "0.1")
+        (author: "Matteo Ceccarello <mcec@itu.dk>")
+        (about: "Distributed Approximate Near Neighbours, Yo!")
+        (@arg MEASURE: -m --measure +required +takes_value "The similarity measure to be used")
+        (@arg THRESHOLD: -r --range +required +takes_value "The similarity threshold")
+        (@arg LEFT: +required "Path to the left hand side of the join")
+        (@arg RIGHT: +required "Path to the right hand side of the join")
+    )
+    .get_matches();
+
     let mut args = std::env::args();
     args.next(); // Skip executable name
 
-    let workers: usize = args
-        .next()
-        .expect("number of workers required")
-        .parse()
-        .expect("unable to convert to integer number of workers");
-    let measure = args.next().expect("measure is required");
-    let thresh_str = args.next().expect("threshold is required");
-    let threshold: f64 = thresh_str
+    let workers: usize = 1; // TODO: Configure with envy
+
+    let measure = matches
+        .value_of("MEASURE")
+        .expect("measure is a required argument");
+    let threshold: f64 = matches
+        .value_of("THRESHOLD")
+        .expect("range is a required argument")
         .parse()
         .expect("Cannot convert the threshold into a f64");
-    let left_path = args.next().expect("left path is required");
-    let right_path = args.next().expect("right path is required");
+    let left_path = matches
+        .value_of("LEFT")
+        .expect("left is a required argument")
+        .to_owned();
+    let right_path = matches
+        .value_of("RIGHT")
+        .expect("right is a required argument")
+        .to_owned();
 
     // Build timely context
     let timely_builder = timely::Configuration::Process(workers).try_build().unwrap();
