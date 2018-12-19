@@ -1,4 +1,8 @@
 #[macro_use]
+extern crate serde_derive;
+extern crate envy;
+extern crate serde;
+#[macro_use]
 extern crate clap;
 #[macro_use]
 extern crate abomonation;
@@ -6,6 +10,7 @@ extern crate core;
 extern crate timely;
 
 mod baseline;
+mod config;
 /// Provides facilities to read and write files
 mod io;
 mod measure;
@@ -15,10 +20,13 @@ mod operators;
 mod stats;
 mod types;
 
+use config::Config;
 use measure::{Cosine, Jaccard};
 use types::{BagOfWords, VectorWithNorm};
 
 fn main() {
+    let config = Config::get();
+
     let matches = clap_app!(danny =>
         (version: "0.1")
         (author: "Matteo Ceccarello <mcec@itu.dk>")
@@ -32,8 +40,6 @@ fn main() {
 
     let mut args = std::env::args();
     args.next(); // Skip executable name
-
-    let workers: usize = 1; // TODO: Configure with envy
 
     let measure = matches
         .value_of("MEASURE")
@@ -53,7 +59,8 @@ fn main() {
         .to_owned();
 
     // Build timely context
-    let timely_builder = timely::Configuration::Process(workers).try_build().unwrap();
+    let timely_builder = config.get_timely_builder();
+    println!("Starting...");
 
     let count = match measure.as_ref() {
         "cosine" => baseline::all_pairs_parallel::<VectorWithNorm, _>(
