@@ -18,6 +18,18 @@ pub struct Config {
 
 #[allow(dead_code)]
 impl Config {
+    pub fn help_str() -> &'static str {
+        "Environment configuration:
+            
+            DANNY_THREADS     number of threads to be used in each process (default=1)
+            DANNY_PROCESSES   total number of processes (default=1)
+            DANNY_HOSTS       comma separated list of hosts:port on which 
+                              to run (default=no hosts)
+            DANNY_PROCESS_ID  in the context of multiple processes, the unique identifier
+                              of the process, ranging from 0 until $DANNY_PROCESSES
+            DANNY_REPORT      ???"
+    }
+
     pub fn get() -> Config {
         match envy::prefixed("DANNY_").from_env::<Config>() {
             Ok(config) => config,

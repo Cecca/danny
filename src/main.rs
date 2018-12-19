@@ -30,7 +30,7 @@ fn main() {
     let matches = clap_app!(danny =>
         (version: "0.1")
         (author: "Matteo Ceccarello <mcec@itu.dk>")
-        (about: "Distributed Approximate Near Neighbours, Yo!")
+        (about: format!("Distributed Approximate Near Neighbours, Yo!\n\n{}", Config::help_str()).as_ref())
         (@arg MEASURE: -m --measure +required +takes_value "The similarity measure to be used")
         (@arg THRESHOLD: -r --range +required +takes_value "The similarity threshold")
         (@arg LEFT: +required "Path to the left hand side of the join")
