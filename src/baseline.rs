@@ -73,6 +73,7 @@ where
                     peers,
                 )
                 .count()
+                .exchange(|_| 0)
                 .probe_with(&mut probe)
                 .capture_into(output_send_ch);
             (left_in, right_in, probe)
