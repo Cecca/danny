@@ -6,6 +6,7 @@ use std::clone::Clone;
 use std::fmt::Debug;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use timely::communication::allocator::generic::GenericBuilder;
 use timely::dataflow::operators::capture::{EventLink, Extract, Replay};
 use timely::dataflow::operators::*;
@@ -81,12 +82,19 @@ where
 
         // Push data into the dataflow graph
         if index == 0 {
+            let start = Instant::now();
             let left_path = left_path.clone();
             let right_path = right_path.clone();
             ReadDataFile::from_file_with_count(&left_path.into(), |c, v| left.send((c, v)));
             ReadDataFile::from_file_with_count(&right_path.into(), |c, v| right.send((c, v)));
             left.advance_to(1);
             right.advance_to(1);
+            let end = Instant::now();
+            let elapsed = end - start;
+            println!(
+                "Time to feed the input to the dataflow graph: {:?}",
+                elapsed
+            );
         }
         worker.step_while(|| probe.less_than(left.time()));
     })
