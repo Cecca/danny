@@ -24,3 +24,9 @@ bench-jaccard:
   hyperfine --min-runs 5 --parameter-scan num_threads 1 4 \
     'cargo run --release -- {num_threads} jaccard 0.5 ~/Datasets/Wikipedia/wiki-bow-10k-left.txt ~/Datasets/Wikipedia/wiki-bow-10k-right.txt'
 
+merge BRANCH:
+  git checkout master
+  git merge {{BRANCH}}
+  git push
+  git push --delete origin {{BRANCH}}
+  git branch -d {{BRANCH}}
