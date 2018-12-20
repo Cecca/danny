@@ -1,3 +1,6 @@
+deploy:
+  ansible-playbook -i cluster.hosts deploy.yml
+
 run-less:
   [ ! -f /danny.out ] || rm /tmp/danny.out
   cargo run > /tmp/danny.out || true
