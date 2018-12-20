@@ -38,9 +38,6 @@ fn main() {
     )
     .get_matches();
 
-    let mut args = std::env::args();
-    args.next(); // Skip executable name
-
     let measure = matches
         .value_of("MEASURE")
         .expect("measure is a required argument");
