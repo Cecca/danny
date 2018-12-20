@@ -1,0 +1,27 @@
+- hosts: all
+
+  vars:
+    upstream_repository: git@github.itu.dk:mcec/danny.git
+    local_repository: ~/danny
+
+  tasks:
+    - name: update the repository from upstream
+      when: ansible_host == "sss00"
+      git:
+        repo: "{{ upstream_repository }}"
+        dest: "{{ local_repository }}"
+        version: "{{ danny_branch }}"
+
+    - name: update the repository locally
+      when: ansible_host != "sss00"
+      git:
+        repo: "sss00:{{ local_repository }}"
+        dest: "{{ local_repository }}"
+        version: "{{ danny_branch }}"
+
+    - name: compile the code and install
+      shell: PATH=$PATH:~/.cargo/bin cargo install --path . --force
+      args:
+        chdir: "{{ local_repository }}"
+        executable: /bin/bash
+

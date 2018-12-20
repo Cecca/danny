@@ -1,3 +1,13 @@
+danny_branch = `git rev-parse --abbrev-ref HEAD`
+
+# Deploy on the cluster by means of ansible, tracking the current branch
+deploy: check-clean
+  git push --set-upstream origin {{danny_branch}}
+  ansible-playbook -i cluster.hosts deploy.yml -e danny_branch={{danny_branch}}
+
+check-clean:
+  @test -z "$(git status --porcelain)"
+
 run-less:
   [ ! -f /danny.out ] || rm /tmp/danny.out
   cargo run > /tmp/danny.out || true
