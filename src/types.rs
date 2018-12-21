@@ -1,5 +1,5 @@
 use abomonation::Abomonation;
-use measure::{InnerProduct, Jaccard};
+use crate::measure::{InnerProduct, Jaccard};
 
 #[derive(Clone, Debug)]
 pub struct VectorWithNorm {

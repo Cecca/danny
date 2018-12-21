@@ -1,4 +1,4 @@
-use types::VectorWithNorm;
+use crate::types::VectorWithNorm;
 
 pub trait Measure {
     fn similarity(a: &Self, b: &Self) -> f64;
@@ -60,7 +60,7 @@ pub trait Jaccard {
 #[cfg(test)]
 mod tests {
 
-    use measure::Cosine;
+    use crate::measure::Cosine;
 
     fn generic_dist<T, F>(a: &T, b: &T, dist: F) -> f64
     where

@@ -1,4 +1,4 @@
-use config::Config;
+use crate::config::Config;
 use env_logger::Builder;
 use std::io::Write;
 use std::process::Command;

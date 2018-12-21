@@ -1,7 +1,7 @@
 use abomonation::Abomonation;
 use core::any::Any;
-use io::ReadDataFile;
-use operators::*;
+use crate::io::ReadDataFile;
+use crate::operators::*;
 use std::clone::Clone;
 use std::fmt::Debug;
 use std::path::PathBuf;

@@ -25,13 +25,13 @@ mod operators;
 mod stats;
 mod types;
 
-use config::Config;
-use measure::{Cosine, Jaccard};
-use types::{BagOfWords, VectorWithNorm};
+use crate::config::Config;
+use crate::measure::{Cosine, Jaccard};
+use crate::types::{BagOfWords, VectorWithNorm};
 
 fn main() {
     let config = Config::get();
-    ::logging::init_logging(&config);
+    crate::logging::init_logging(&config);
 
     let matches = clap_app!(danny =>
         (version: "0.1")

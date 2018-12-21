@@ -409,7 +409,7 @@ mod tests {
         let conf = timely::Configuration::Thread.try_build().unwrap();
         timely::execute::execute_from(conf.0, conf.1, move |worker| {
             let send = send.lock().unwrap().clone();
-            let (mut in1, mut in_center, mut in2, mut probe) = worker.dataflow(|scope| {
+            let (mut in1, mut in_center, mut in2, probe) = worker.dataflow(|scope| {
                 let mut probe = ProbeHandle::new();
                 let (in1, s1) = scope.new_input();
                 let (in_center, stream_center) = scope.new_input();

@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::path::PathBuf;
-use types::{BagOfWords, VectorWithNorm};
+use crate::types::{BagOfWords, VectorWithNorm};
 
 pub trait ReadDataFile
 where
