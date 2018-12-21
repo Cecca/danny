@@ -25,6 +25,8 @@ bench-jaccard:
     'cargo run --release -- {num_threads} jaccard 0.5 ~/Datasets/Wikipedia/wiki-bow-10k-left.txt ~/Datasets/Wikipedia/wiki-bow-10k-right.txt'
 
 merge BRANCH:
+  git checkout {{BRANCH}}
+  git rebase --interactive master
   git checkout master
   git merge {{BRANCH}}
   git push
