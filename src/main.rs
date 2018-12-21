@@ -11,6 +11,8 @@ extern crate clap;
 #[macro_use]
 extern crate abomonation;
 extern crate core;
+extern crate rand;
+extern crate smallbitvec;
 extern crate timely;
 
 mod baseline;
@@ -18,6 +20,7 @@ mod config;
 /// Provides facilities to read and write files
 mod io;
 mod logging;
+mod lsh;
 mod measure;
 mod operators;
 /// This module collects algorithms to compute on some datasets,
@@ -28,6 +31,8 @@ mod types;
 use crate::config::Config;
 use crate::measure::{Cosine, Jaccard};
 use crate::types::{BagOfWords, VectorWithNorm};
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 
 fn main() {
     let config = Config::get();
@@ -64,15 +69,23 @@ fn main() {
     // Build timely context
     let timely_builder = config.get_timely_builder();
     println!("Starting...");
+    let mut rng = StdRng::seed_from_u64(123);
 
     let count = match measure.as_ref() {
-        "cosine" => baseline::all_pairs_parallel::<VectorWithNorm, _>(
-            threshold,
+        "cosine" => lsh::fixed_param_lsh::<VectorWithNorm, _, _, _>(
             &left_path,
             &right_path,
-            Cosine::cosine,
+            lsh::Hyperplane::collection(2, 3, 300, &mut rng),
+            move |a, b| Cosine::cosine(a, b) >= threshold,
             timely_builder,
         ),
+        // "cosine" => baseline::all_pairs_parallel::<VectorWithNorm, _>(
+        //     threshold,
+        //     &left_path,
+        //     &right_path,
+        //     Cosine::cosine,
+        //     timely_builder,
+        // ),
         "jaccard" => baseline::all_pairs_parallel::<BagOfWords, _>(
             threshold,
             &left_path,

@@ -13,4 +13,6 @@ serde_derive = "1"
 # syslog = "^4.0"
 log = "0.4"
 env_logger = "0.6"
+smallbitvec = "2.3"
+rand = "0.6"
 

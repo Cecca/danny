@@ -1,14 +1,14 @@
 use abomonation::Abomonation;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
-use timely::dataflow::channels::pact::Exchange as ExchangePact;
 use timely::dataflow::channels::pact::ParallelizationContract;
+use timely::dataflow::channels::pact::{Exchange as ExchangePact, Pipeline as PipelinePact};
 use timely::dataflow::channels::pushers::tee::Tee;
 use timely::dataflow::operators::capture::{EventLink, Extract, Replay};
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::dataflow::operators::generic::OperatorInfo;
-use timely::dataflow::operators::generic::{FrontieredInputHandle, OutputHandle};
+use timely::dataflow::operators::generic::{FrontieredInputHandle, InputHandle, OutputHandle};
 use timely::dataflow::operators::Capability;
 use timely::dataflow::operators::{
     Concat, ConnectLoop, Enter, Input, Inspect, Leave, LoopVariable, Map, Operator,
@@ -23,10 +23,47 @@ pub trait Route {
     fn route(&self) -> u64;
 }
 
+impl Route for i32 {
+    #[inline(always)]
+    fn route(&self) -> u64 {
+        *self as u64
+    }
+}
+
 impl Route for u32 {
     #[inline(always)]
     fn route(&self) -> u64 {
         *self as u64
+    }
+}
+
+impl Route for u64 {
+    #[inline(always)]
+    fn route(&self) -> u64 {
+        *self
+    }
+}
+
+impl Route for Vec<bool> {
+    #[inline(always)]
+    fn route(&self) -> u64 {
+        // TODO check how this function distributes values
+        let mut h = 0u64;
+        let mut tmp = 0u64;
+        let mut cnt = 0;
+        for b in self.iter() {
+            if cnt == 64 {
+                h = h ^ tmp;
+                tmp = 0u64;
+            }
+            if *b {
+                tmp = (tmp << 1) | 1u64;
+            } else {
+                tmp = tmp << 1;
+            }
+            cnt += 1;
+        }
+        h
     }
 }
 
@@ -41,6 +78,46 @@ impl<D> Route for (u32, D) {
     #[inline(always)]
     fn route(&self) -> u64 {
         self.0 as u64
+    }
+}
+
+pub trait Duplicate<G, D>
+where
+    G: Scope,
+    D: Data,
+{
+    fn duplicate(&self) -> (Stream<G, D>, Stream<G, D>);
+}
+
+impl<G, D> Duplicate<G, D> for Stream<G, D>
+where
+    G: Scope,
+    D: Data,
+{
+    fn duplicate(&self) -> (Stream<G, D>, Stream<G, D>) {
+        let mut builder = OperatorBuilder::new("duplicate".to_owned(), self.scope());
+
+        let mut input = builder.new_input(self, PipelinePact);
+        let (mut output1, stream1) = builder.new_output();
+        let (mut output2, stream2) = builder.new_output();
+
+        builder.build(move |_| {
+            move |_| {
+                // Maybe move the activation outside?
+                let mut output1_handle = output1.activate();
+                let mut output2_handle = output2.activate();
+                input.for_each(|t, d| {
+                    let cap1 = t.delayed_for_output(t.time(), 0);
+                    let cap2 = t.delayed_for_output(t.time(), 1);
+                    let mut session1 = output1_handle.session(&cap1);
+                    let mut session2 = output2_handle.session(&cap2);
+                    session1.give_iterator(d.iter().map(|x| x.clone()));
+                    session2.give_vec(&mut d.replace(Vec::new()));
+                });
+            }
+        });
+
+        (stream1, stream2)
     }
 }
 
@@ -231,7 +308,7 @@ where
                                 // a time before the stashed one.
                                 if time.inner < iterations {
                                     // Produce the output pairs for this iteration
-                                    info!(
+                                    debug!(
                                         "Filtering block of pairs {}x{}",
                                         left_vectors.len(),
                                         elems.len()
@@ -310,11 +387,21 @@ where
         D2: Data + Abomonation + Sync + Send + Clone + Debug,
         F: Fn(&D1, &D2) -> bool + 'static,
     {
-        // State for the left part of the join
+        // FIXME: fix state:
+        // we must keep left and right vectors with no timestamps, as
+        // well as a deduplication filter, and we must collect the center
+        // pairs by their timestamp
+
+        // State for the three way join
+        let mut left_complete = false;
+        let mut left_timestamp = None;
+        let mut right_complete = false;
+        let mut right_timestamp = None;
         let mut left_vectors = HashMap::new();
         let mut right_vectors = HashMap::new();
-        let mut center_pairs = Vec::new();
-        let mut candidate_pairs = Vec::new();
+        let mut center_pairs = HashMap::new();
+        let mut candidate_pairs = HashMap::new();
+        let mut output_filter = HashSet::new();
 
         let candidates = self.binary_frontier(
             &center,
@@ -327,29 +414,39 @@ where
                     // TODO: is there a way to leverage the partitioning from the previous steps?
                     // Maybe with replaying a stream?
                     left_in.for_each(|t, data| {
+                        left_timestamp.get_or_insert(t.time().clone());
                         let mut data = data.replace(Vec::new());
-                        let e = left_vectors.entry(t.retain()).or_insert(HashMap::new());
                         for (k, v) in data.drain(..) {
-                            e.insert(k, v);
+                            left_vectors.insert(k, v);
                         }
                     });
-                    center_in.for_each(|_t, data| {
-                        center_pairs.append(&mut data.replace(Vec::new()));
+                    // println!("Left Vectors: {:#?}", left_vectors);
+                    center_in.for_each(|t, data| {
+                        center_pairs
+                            .entry(t.retain())
+                            .or_insert(Vec::new())
+                            .append(&mut data.replace(Vec::new()));
                     });
 
-                    for (time, left_map) in left_vectors.iter() {
-                        if !left_in.frontier().less_than(time) {
-                            // We have seen all the values from the left stream
-                            let mut session = output.session(time);
-                            for (l, r) in center_pairs.drain(..) {
-                                session.give((r, (l.clone(), left_map[&l].clone())));
+                    // Check if the left input is complete
+                    if !left_complete {
+                        left_complete = left_timestamp
+                            .clone()
+                            .map(|t| !left_in.frontier().less_than(&t))
+                            .unwrap_or(false);
+                    }
+
+                    if left_complete {
+                        // We have seen all the values from the left stream
+                        for (time, center_pairs) in center_pairs.drain() {
+                            let mut session = output.session(&time);
+                            for (l, r) in center_pairs.iter() {
+                                let cand = (r.clone(), (l.clone(), left_vectors[&l].clone()));
+                                session.give(cand);
                             }
                         }
                     }
-                    // Cleanup when we have seen all the center vectors for a given timestamp
-                    // i.e. retain the vectors associated with a timestamp such that the frontier
-                    // tells us that we might see someting with a smaller timestamp in the future
-                    left_vectors.retain(|t, _| center_in.frontier().less_than(t));
+                    // TODO: Do cleanup of left vectors?
                 }
             },
         );
@@ -362,29 +459,46 @@ where
             move |_, _| {
                 move |candidates_in, right_in, output| {
                     right_in.for_each(|t, data| {
+                        right_timestamp.get_or_insert(t.time().clone());
                         let mut data = data.replace(Vec::new());
-                        let e = right_vectors.entry(t.retain()).or_insert(HashMap::new());
+                        // println!("3w right: {:?}", data);
                         for (k, v) in data.drain(..) {
-                            e.insert(k, v);
+                            right_vectors.insert(k, v);
                         }
                     });
 
-                    candidates_in.for_each(|_t, data| {
-                        candidate_pairs.append(&mut data.replace(Vec::new()));
+                    candidates_in.for_each(|t, data| {
+                        candidate_pairs
+                            .entry(t.retain())
+                            .or_insert(Vec::new())
+                            .append(&mut data.replace(Vec::new()));
                     });
 
-                    for (time, right_map) in right_vectors.iter() {
-                        if !right_in.frontier().less_than(time) {
-                            // We have seen all the values from the right stream
-                            let mut session = output.session(time);
-                            for (r, (l, lv)) in candidate_pairs.drain(..) {
-                                if filter(&lv, &right_map[&r]) {
-                                    session.give((l, r));
+                    // Check if the left input is complete
+                    if !right_complete {
+                        right_complete = right_timestamp
+                            .clone()
+                            .map(|t| !right_in.frontier().less_than(&t))
+                            .unwrap_or(false);
+                    }
+
+                    if right_complete {
+                        // We have seen all the values from the right stream
+                        for (time, candidate_pairs) in candidate_pairs.drain() {
+                            let mut session = output.session(&time);
+                            for (r, (l, lv)) in candidate_pairs.iter() {
+                                if filter(&lv, &right_vectors[&r]) {
+                                    // TODO: Remove this double clone?
+                                    let out_pair = (l.clone(), r.clone().clone());
+                                    if !output_filter.contains(&out_pair) {
+                                        session.give(out_pair.clone());
+                                        output_filter.insert(out_pair);
+                                    }
                                 }
                             }
                         }
                     }
-                    right_vectors.retain(|t, _| candidates_in.frontier().less_than(t));
+                    // TODO: Cleanup right?
                 }
             },
         );
@@ -444,5 +558,52 @@ mod tests {
 
         assert_eq!(vec![(0, vec![(0, 1), (2, 10)])], recv.extract());
     }
+
+    // #[test]
+    // fn test_three_way_join_2() {
+    //     let (send, recv) = mpsc::channel();
+    //     let send = Arc::new(Mutex::new(send));
+    //     let conf = timely::Configuration::Process(2).try_build().unwrap();
+    //     // let conf = timely::Configuration::Thread.try_build().unwrap();
+    //     timely::execute::execute_from(conf.0, conf.1, move |worker| {
+    //         let send = send.lock().unwrap().clone();
+    //         let (mut in1, mut in_center, mut in2, probe) = worker.dataflow(|scope| {
+    //             let mut probe = ProbeHandle::new();
+    //             let (in1, s1) = scope.new_input();
+    //             let (in_center, stream_center) = scope.new_input();
+    //             let (in2, s2) = scope.new_input();
+    //             s1.three_way_join(&stream_center, &s2, |w1: &String, w2: &String| {
+    //                 w2.starts_with(w1)
+    //             })
+    //             .probe_with(&mut probe)
+    //             .capture_into(send);
+    //             (in1, in_center, in2, probe)
+    //         });
+
+    //         if worker.index() == 0 {
+    //             in1.send((0, "a".to_owned()));
+    //             in1.send((1, "b".to_owned()));
+    //             in1.send((2, "p".to_owned()));
+    //             in1.send((10, "p".to_owned()));
+    //             in_center.send_batch(&mut vec![(0, 1), (3, 10)]);
+    //             // in_center.advance_to(1);
+    //             in_center.send_batch(&mut vec![(2, 10)]);
+    //             in2.send((1, "ciao".to_owned()));
+    //             in2.send_batch(&mut vec![
+    //                 (1, "aiuola".to_owned()),
+    //                 (3, "coriandoli".to_owned()),
+    //                 (10, "pizza".to_owned()),
+    //             ]);
+    //             in1.advance_to(1);
+    //             // in_center.advance_to(2);
+    //             in_center.advance_to(1);
+    //             in2.advance_to(1);
+    //         }
+    //         worker.step_while(|| probe.less_than(in_center.time()));
+    //     })
+    //     .unwrap();
+
+    //     assert_eq!(vec![(0, vec![(0, 1), (2, 10)])], recv.extract());
+    // }
 
 }

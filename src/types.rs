@@ -1,13 +1,27 @@
-use abomonation::Abomonation;
 use crate::measure::{InnerProduct, Jaccard};
+use abomonation::Abomonation;
+use std::fmt;
+use std::fmt::Debug;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct VectorWithNorm {
     data: Vec<f64>,
     norm: f64,
 }
 
 unsafe_abomonate!(VectorWithNorm: data, norm);
+
+impl Debug for VectorWithNorm {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "VectorWithNorm({})", self.norm)
+        // write!(
+        //     f,
+        //     "VectorWithNorm({}, {:?})",
+        //     self.norm,
+        //     self.data.iter().take(3)
+        // )
+    }
+}
 
 impl VectorWithNorm {
     pub fn dim(&self) -> usize {
@@ -40,6 +54,14 @@ impl BagOfWords {
     pub fn new(universe: u32, mut words: Vec<u32>) -> BagOfWords {
         words.sort();
         BagOfWords { universe, words }
+    }
+
+    pub fn num_words(&self) -> usize {
+        self.words.len()
+    }
+
+    pub fn word_at(&self, i: usize) -> u32 {
+        self.words[i]
     }
 }
 
