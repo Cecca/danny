@@ -227,6 +227,11 @@ where
                                 // a time before the stashed one.
                                 if time.inner < iterations {
                                     // Produce the output pairs for this iteration
+                                    info!(
+                                        "Filtering block of pairs {}x{}",
+                                        left_vectors.len(),
+                                        elems.len()
+                                    );
                                     let mut result_session = results.session(&results_time);
                                     for (_, rv) in elems.iter() {
                                         for lv in left_vectors.iter() {

@@ -57,6 +57,7 @@ where
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |worker| {
         let index = worker.index();
         let peers = worker.peers() as u64;
+        info!("Started worker {}/{}", index, peers);
         let sim_fn = sim_fn.clone();
 
         let (mut left, mut right, probe) = worker.dataflow(|scope| {

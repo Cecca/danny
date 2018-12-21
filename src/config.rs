@@ -46,6 +46,18 @@ impl Config {
         false
     }
 
+    pub fn master_hostname(&self) -> Option<String> {
+        if self.hosts.len() > 0 {
+            let hn = self.hosts[0]
+                .split(":")
+                .next()
+                .expect("Can't split the host string");
+            Some(hn.to_owned())
+        } else {
+            None
+        }
+    }
+
     pub fn get_timely_builder(&self) -> (Vec<GenericBuilder>, Box<dyn Any + 'static>) {
         let timely_config = if self.hosts.len() > 1 {
             let hosts: Vec<String> = self.hosts.clone();

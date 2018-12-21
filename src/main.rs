@@ -1,4 +1,8 @@
 #[macro_use]
+extern crate log;
+// extern crate syslog;
+extern crate env_logger;
+#[macro_use]
 extern crate serde_derive;
 extern crate envy;
 extern crate serde;
@@ -13,6 +17,7 @@ mod baseline;
 mod config;
 /// Provides facilities to read and write files
 mod io;
+mod logging;
 mod measure;
 mod operators;
 /// This module collects algorithms to compute on some datasets,
@@ -26,6 +31,7 @@ use types::{BagOfWords, VectorWithNorm};
 
 fn main() {
     let config = Config::get();
+    ::logging::init_logging(&config);
 
     let matches = clap_app!(danny =>
         (version: "0.1")

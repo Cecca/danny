@@ -2,6 +2,7 @@
 
 ARGS=$@
 DANNY_EXEC=~/.cargo/bin/danny
+RUST_LOG=${RUST_LOG:-warn}
 
 function run_remotely () {
   ID=$1
@@ -10,7 +11,7 @@ function run_remotely () {
   HOST=${HOST[0]}
 
   ssh -n $HOST \
-    "DANNY_PROCESS_ID=$ID DANNY_HOSTS=$DANNY_HOSTS DANNY_THREADS=$DANNY_THREADS $DANNY_EXEC $ARGS | tee /tmp/danny.log"
+    "RUST_LOG=$RUST_LOG DANNY_PROCESS_ID=$ID DANNY_HOSTS=$DANNY_HOSTS DANNY_THREADS=$DANNY_THREADS $DANNY_EXEC $ARGS"
 }
 
 
