@@ -350,6 +350,15 @@ where
     }
 }
 
+enum JoinMessage<K, D>
+where
+    K: Data,
+    D: Data,
+{
+    Pair(K, K),
+    Data(D),
+}
+
 pub trait ThreeWayJoin<G, K, D1>
 where
     G: Scope,
@@ -365,6 +374,7 @@ where
         center: &Stream<G, (K, K)>,
         right: &Stream<G, (K, D2)>,
         filter: F,
+        workers: u64,
     ) -> Stream<G, (K, K)>
     where
         D2: Data + Abomonation + Sync + Send + Clone + Debug,
@@ -382,15 +392,13 @@ where
         center: &Stream<G, (K, K)>,
         right: &Stream<G, (K, D2)>,
         filter: F,
+        workers: u64,
     ) -> Stream<G, (K, K)>
     where
         D2: Data + Abomonation + Sync + Send + Clone + Debug,
         F: Fn(&D1, &D2) -> bool + 'static,
     {
-        // FIXME: fix state:
-        // we must keep left and right vectors with no timestamps, as
-        // well as a deduplication filter, and we must collect the center
-        // pairs by their timestamp
+        let route_left_vector = move |r: &K| r.route() % workers;
 
         // State for the three way join
         let mut left_complete = false;
@@ -398,9 +406,13 @@ where
         let mut right_complete = false;
         let mut right_timestamp = None;
         let mut left_vectors = HashMap::new();
+        // A map between workers and the set of vectors sent to them.
+        let mut left_vectors_sent: Vec<HashSet<K>> = vec![HashSet::new(); workers as usize];
         let mut right_vectors = HashMap::new();
         let mut center_pairs = HashMap::new();
         let mut candidate_pairs = HashMap::new();
+        // The vectors coming from the left to be joined with values from the right
+        let mut left_vectors_for_right_side: HashMap<K, D1> = HashMap::new();
         let mut output_filter = HashSet::new();
 
         let candidates = self.binary_frontier(
@@ -441,8 +453,17 @@ where
                         for (time, center_pairs) in center_pairs.drain() {
                             let mut session = output.session(&time);
                             for (l, r) in center_pairs.iter() {
-                                let cand = (r.clone(), (l.clone(), left_vectors[&l].clone()));
-                                session.give(cand);
+                                // TODO: Send the candidate in two steps: send the vector, along
+                                // with its associated key, and send the key pair
+                                let dest = route_left_vector(r);
+                                let opt_vec = if !left_vectors_sent[dest as usize].contains(l) {
+                                    left_vectors_sent[dest as usize].insert(l.clone());
+                                    Some(left_vectors[&l].clone())
+                                } else {
+                                    None
+                                };
+                                // TODO: Filter on the pairs already sent?
+                                session.give((r.clone(), (l.clone(), opt_vec)));
                             }
                         }
                     }
@@ -453,7 +474,7 @@ where
 
         let output = candidates.binary_frontier(
             &right,
-            ExchangePact::new(|pair: &(K, (K, D1))| pair.0.route()),
+            ExchangePact::new(|pair: &(K, (K, Option<D1>))| pair.0.route()),
             ExchangePact::new(|pair: &(K, D2)| pair.0.route()),
             "three-way-join-right",
             move |_, _| {
@@ -468,10 +489,16 @@ where
                     });
 
                     candidates_in.for_each(|t, data| {
-                        candidate_pairs
-                            .entry(t.retain())
-                            .or_insert(Vec::new())
-                            .append(&mut data.replace(Vec::new()));
+                        // TODO: Handle the different types of messages
+                        let mut entry = candidate_pairs.entry(t.retain()).or_insert(HashSet::new());
+                        let mut data = &mut data.replace(Vec::new());
+                        for (r, (l, opt_vec)) in data.drain(..) {
+                            entry.insert((l.clone(), r.clone()));
+                            if opt_vec.is_some() && !left_vectors_for_right_side.contains_key(&l) {
+                                left_vectors_for_right_side
+                                    .insert(l, opt_vec.expect("The vector should be here!"));
+                            }
+                        }
                     });
 
                     // Check if the left input is complete
@@ -486,10 +513,9 @@ where
                         // We have seen all the values from the right stream
                         for (time, candidate_pairs) in candidate_pairs.drain() {
                             let mut session = output.session(&time);
-                            for (r, (l, lv)) in candidate_pairs.iter() {
-                                if filter(&lv, &right_vectors[&r]) {
-                                    // TODO: Remove this double clone?
-                                    let out_pair = (l.clone(), r.clone().clone());
+                            for (l, r) in candidate_pairs.iter() {
+                                if filter(&left_vectors_for_right_side[&l], &right_vectors[&r]) {
+                                    let out_pair = (l.clone(), r.clone());
                                     if !output_filter.contains(&out_pair) {
                                         session.give(out_pair.clone());
                                         output_filter.insert(out_pair);
@@ -522,15 +548,19 @@ mod tests {
         // let conf = timely::Configuration::Process(2).try_build().unwrap();
         let conf = timely::Configuration::Thread.try_build().unwrap();
         timely::execute::execute_from(conf.0, conf.1, move |worker| {
+            let peers = worker.peers();
             let send = send.lock().unwrap().clone();
             let (mut in1, mut in_center, mut in2, probe) = worker.dataflow(|scope| {
                 let mut probe = ProbeHandle::new();
                 let (in1, s1) = scope.new_input();
                 let (in_center, stream_center) = scope.new_input();
                 let (in2, s2) = scope.new_input();
-                s1.three_way_join(&stream_center, &s2, |w1: &String, w2: &String| {
-                    w2.starts_with(w1)
-                })
+                s1.three_way_join(
+                    &stream_center,
+                    &s2,
+                    |w1: &String, w2: &String| w2.starts_with(w1),
+                    peers as u64,
+                )
                 .probe_with(&mut probe)
                 .capture_into(send);
                 (in1, in_center, in2, probe)
@@ -558,52 +588,5 @@ mod tests {
 
         assert_eq!(vec![(0, vec![(0, 1), (2, 10)])], recv.extract());
     }
-
-    // #[test]
-    // fn test_three_way_join_2() {
-    //     let (send, recv) = mpsc::channel();
-    //     let send = Arc::new(Mutex::new(send));
-    //     let conf = timely::Configuration::Process(2).try_build().unwrap();
-    //     // let conf = timely::Configuration::Thread.try_build().unwrap();
-    //     timely::execute::execute_from(conf.0, conf.1, move |worker| {
-    //         let send = send.lock().unwrap().clone();
-    //         let (mut in1, mut in_center, mut in2, probe) = worker.dataflow(|scope| {
-    //             let mut probe = ProbeHandle::new();
-    //             let (in1, s1) = scope.new_input();
-    //             let (in_center, stream_center) = scope.new_input();
-    //             let (in2, s2) = scope.new_input();
-    //             s1.three_way_join(&stream_center, &s2, |w1: &String, w2: &String| {
-    //                 w2.starts_with(w1)
-    //             })
-    //             .probe_with(&mut probe)
-    //             .capture_into(send);
-    //             (in1, in_center, in2, probe)
-    //         });
-
-    //         if worker.index() == 0 {
-    //             in1.send((0, "a".to_owned()));
-    //             in1.send((1, "b".to_owned()));
-    //             in1.send((2, "p".to_owned()));
-    //             in1.send((10, "p".to_owned()));
-    //             in_center.send_batch(&mut vec![(0, 1), (3, 10)]);
-    //             // in_center.advance_to(1);
-    //             in_center.send_batch(&mut vec![(2, 10)]);
-    //             in2.send((1, "ciao".to_owned()));
-    //             in2.send_batch(&mut vec![
-    //                 (1, "aiuola".to_owned()),
-    //                 (3, "coriandoli".to_owned()),
-    //                 (10, "pizza".to_owned()),
-    //             ]);
-    //             in1.advance_to(1);
-    //             // in_center.advance_to(2);
-    //             in_center.advance_to(1);
-    //             in2.advance_to(1);
-    //         }
-    //         worker.step_while(|| probe.less_than(in_center.time()));
-    //     })
-    //     .unwrap();
-
-    //     assert_eq!(vec![(0, vec![(0, 1), (2, 10)])], recv.extract());
-    // }
 
 }

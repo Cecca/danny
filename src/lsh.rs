@@ -349,8 +349,20 @@ where
                     }
                     // Clean up the entries with empty buckets from the left (from the right we
                     // already did it)
-                    left_buckets.retain(|_, buckets| buckets.len() > 0);
-                    right_buckets.retain(|_, buckets| buckets.len() > 0);
+                    left_buckets.retain(|t, buckets| {
+                        let to_keep = buckets.len() > 0;
+                        if !to_keep {
+                            info!("Removing left vectors for repetition {:?} ", t.time());
+                        }
+                        to_keep
+                    });
+                    right_buckets.retain(|t, buckets| {
+                        let to_keep = buckets.len() > 0;
+                        if !to_keep {
+                            info!("Removing right vectors for repetition {:?} ", t.time());
+                        }
+                        to_keep
+                    });
                     // TODO: cleanup the duplicates filter when we are done with bucketing. We need
                     // this to free memory.
                 }
@@ -401,7 +413,7 @@ where
             let right_hashes = right_stream.exchange(|p| p.route()).hash(&hash_fn);
             let candidate_pairs = left_hashes.bucket(&right_hashes);
             left_stream_copy
-                .three_way_join(&candidate_pairs, &right_stream_copy, sim_pred)
+                .three_way_join(&candidate_pairs, &right_stream_copy, sim_pred, peers)
                 .count()
                 .exchange(|_| 0)
                 .probe_with(&mut probe)
