@@ -1,8 +1,8 @@
+use crate::types::{BagOfWords, VectorWithNorm};
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::path::PathBuf;
-use crate::types::{BagOfWords, VectorWithNorm};
 
 pub trait ReadDataFile
 where
@@ -20,10 +20,31 @@ where
     fn from_file_with_count<F>(path: &PathBuf, mut fun: F) -> ()
     where
         F: FnMut(u64, Self) -> ();
+
+    fn peek_first(path: &PathBuf) -> Self;
 }
 
 impl ReadDataFile for VectorWithNorm {
     // type Item = VectorWithNorm;
+
+    fn peek_first(path: &PathBuf) -> VectorWithNorm {
+        let file = File::open(path).expect("Error opening file");
+        let buf_reader = BufReader::new(file);
+        let first_line = buf_reader
+            .lines()
+            .next()
+            .expect("Problem reading the first line")
+            .expect("Error getting the line");
+        let data: Vec<f64> = first_line
+            .split_whitespace()
+            .skip(1)
+            .map(|s| {
+                s.parse::<f64>()
+                    .expect(&format!("Error parsing floating point number `{}`", s))
+            })
+            .collect();
+        VectorWithNorm::new(data)
+    }
 
     fn from_file_with_count<F>(path: &PathBuf, mut fun: F) -> ()
     where
@@ -51,6 +72,29 @@ impl ReadDataFile for VectorWithNorm {
 
 impl ReadDataFile for BagOfWords {
     // type Item = BagOfWords;
+
+    fn peek_first(path: &PathBuf) -> BagOfWords {
+        let file = File::open(path).expect("Error opening file");
+        let buf_reader = BufReader::new(file);
+        let first_line = buf_reader
+            .lines()
+            .next()
+            .expect("Problem reading the first line")
+            .expect("Error getting the line");
+        let mut tokens = first_line.split_whitespace().skip(1);
+        let universe = tokens
+            .next()
+            .expect("Error getting the universe size")
+            .parse::<u32>()
+            .expect("Error parsing the universe size");
+        let data: Vec<u32> = tokens
+            .map(|s| {
+                s.parse::<u32>()
+                    .expect(&format!("Error parsing floating point number `{}`", s))
+            })
+            .collect();
+        BagOfWords::new(universe, data)
+    }
 
     fn from_file_with_count<F>(path: &PathBuf, mut fun: F) -> ()
     where

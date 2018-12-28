@@ -29,10 +29,13 @@ mod stats;
 mod types;
 
 use crate::config::Config;
+use crate::io::ReadDataFile;
+use crate::lsh::LSHFunction;
 use crate::measure::{Cosine, Jaccard};
 use crate::types::{BagOfWords, VectorWithNorm};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+use std::path::PathBuf;
 
 fn main() {
     let config = Config::get();
@@ -42,7 +45,9 @@ fn main() {
         (version: "0.1")
         (author: "Matteo Ceccarello <mcec@itu.dk>")
         (about: format!("Distributed Approximate Near Neighbours, Yo!\n\n{}", Config::help_str()).as_ref())
+        (@arg ALGORITHM: -a --algorithm +takes_value "The algorithm to be used: (fixed-lsh, all-2-all)")
         (@arg MEASURE: -m --measure +required +takes_value "The similarity measure to be used")
+        (@arg K: -k +takes_value "The number of concatenations of the hash function")
         (@arg THRESHOLD: -r --range +required +takes_value "The similarity threshold")
         (@arg LEFT: +required "Path to the left hand side of the join")
         (@arg RIGHT: +required "Path to the right hand side of the join")
@@ -65,35 +70,54 @@ fn main() {
         .value_of("RIGHT")
         .expect("right is a required argument")
         .to_owned();
+    let algorithm = matches
+        .value_of("ALGORITHM")
+        .unwrap_or("all-2-all")
+        .to_owned();
 
     // Build timely context
     let timely_builder = config.get_timely_builder();
     println!("Starting...");
     let mut rng = StdRng::seed_from_u64(123);
 
-    let count = match measure.as_ref() {
-        "cosine" => lsh::fixed_param_lsh::<VectorWithNorm, _, _, _>(
-            &left_path,
-            &right_path,
-            lsh::Hyperplane::collection(2, 3, 300, &mut rng),
-            move |a, b| Cosine::cosine(a, b) >= threshold,
-            timely_builder,
-        ),
-        // "cosine" => baseline::all_pairs_parallel::<VectorWithNorm, _>(
-        //     threshold,
-        //     &left_path,
-        //     &right_path,
-        //     Cosine::cosine,
-        //     timely_builder,
-        // ),
-        "jaccard" => baseline::all_pairs_parallel::<BagOfWords, _>(
-            threshold,
-            &left_path,
-            &right_path,
-            Jaccard::jaccard,
-            timely_builder,
-        ),
-        _ => unimplemented!(),
+    let count = match algorithm.as_ref() {
+        "fixed-lsh" => match measure.as_ref() {
+            "cosine" => {
+                let k: usize = matches
+                    .value_of("K")
+                    .unwrap()
+                    .parse()
+                    .expect("k should be an unsigned integer");
+                let repetitions = lsh::Hyperplane::repetitions_at_range(threshold, k);
+                let dim = VectorWithNorm::peek_first(&left_path.clone().into()).dim();
+                lsh::fixed_param_lsh::<VectorWithNorm, _, _, _>(
+                    &left_path,
+                    &right_path,
+                    lsh::Hyperplane::collection(k, repetitions, dim, &mut rng),
+                    move |a, b| Cosine::cosine(a, b) >= threshold,
+                    timely_builder,
+                )
+            }
+            _ => unimplemented!("Unknown measure {}", measure),
+        },
+        "all-2-all" => match measure.as_ref() {
+            "cosine" => baseline::all_pairs_parallel::<VectorWithNorm, _>(
+                threshold,
+                &left_path,
+                &right_path,
+                Cosine::cosine,
+                timely_builder,
+            ),
+            "jaccard" => baseline::all_pairs_parallel::<BagOfWords, _>(
+                threshold,
+                &left_path,
+                &right_path,
+                Jaccard::jaccard,
+                timely_builder,
+            ),
+            _ => unimplemented!(),
+        },
+        _ => unimplemented!("Unknown algorithm {}", algorithm),
     };
     println!("Pairs above similarity {} are {}", threshold, count);
 }

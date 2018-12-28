@@ -30,9 +30,9 @@ pub trait LSHFunction {
     fn hash(&self, v: &Self::Input) -> Self::Output;
     fn probability_at_range(range: f64) -> f64;
 
-    fn repetitions_at_range(range: f64, k: u32) -> u32 {
+    fn repetitions_at_range(range: f64, k: usize) -> usize {
         let p = Self::probability_at_range(range);
-        (1_f64 / p).powi(k as i32).ceil() as u32
+        (1_f64 / p).powi(k as i32).ceil() as usize
     }
 }
 
