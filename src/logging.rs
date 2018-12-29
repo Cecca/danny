@@ -19,4 +19,5 @@ pub fn init_logging(_conf: &Config) -> () {
             writeln!(buf, "[{}] {}: {}", hostname, record.level(), record.args())
         })
         .init();
+    log_panics::init();
 }

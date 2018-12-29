@@ -424,6 +424,7 @@ where
 
         // Push data into the dataflow graph
         if index == 0 {
+            info!("Reading data files:\n\t{:?}\n\t{:?}", left_path, right_path);
             let start = Instant::now();
             let left_path = left_path.clone();
             let right_path = right_path.clone();

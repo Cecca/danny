@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate log;
+extern crate log_panics;
 // extern crate syslog;
 extern crate env_logger;
 #[macro_use]
@@ -49,6 +50,7 @@ fn main() {
         (@arg MEASURE: -m --measure +required +takes_value "The similarity measure to be used")
         (@arg K: -k +takes_value "The number of concatenations of the hash function")
         (@arg THRESHOLD: -r --range +required +takes_value "The similarity threshold")
+        (@arg DIMENSION: --dimension --dim +takes_value "The dimension of the space, required for Hyperplane LSH")
         (@arg LEFT: +required "Path to the left hand side of the join")
         (@arg RIGHT: +required "Path to the right hand side of the join")
     )
@@ -89,7 +91,11 @@ fn main() {
                     .parse()
                     .expect("k should be an unsigned integer");
                 let repetitions = lsh::Hyperplane::repetitions_at_range(threshold, k);
-                let dim = VectorWithNorm::peek_first(&left_path.clone().into()).dim();
+                let dim: usize = matches
+                    .value_of("DIMENSION")
+                    .expect("Dimension is required for Hyperplane LSH.")
+                    .parse()
+                    .expect("The dimension must be an unsigned integer");
                 lsh::fixed_param_lsh::<VectorWithNorm, _, _, _>(
                     &left_path,
                     &right_path,
