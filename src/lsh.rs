@@ -62,6 +62,10 @@ where
         });
     }
 
+    pub fn hash(&self, v: &F::Input, repetition: usize) -> F::Output {
+        self.functions[repetition].hash(v)
+    }
+
     pub fn repetitions(&self) -> usize {
         self.functions.len()
     }
@@ -231,9 +235,14 @@ impl LSHFunction for MinHash {
 pub trait HashStream<G, K, D>
 where
     G: Scope<Timestamp = u32>,
-    K: Data,
-    D: Data,
+    K: Data + Debug,
+    D: Data + Debug,
 {
+    fn hash_buffered<F, H>(&self, hash_coll: &LSHCollection<F, H>) -> Stream<G, (H, K)>
+    where
+        F: LSHFunction<Input = D, Output = H> + Clone + 'static,
+        H: Data + Clone;
+
     fn hash<F, H>(&self, hash_coll: &LSHCollection<F, H>) -> Stream<G, (H, K)>
     where
         F: LSHFunction<Input = D, Output = H> + Clone + 'static,
@@ -243,9 +252,78 @@ where
 impl<G, K, D> HashStream<G, K, D> for Stream<G, (K, D)>
 where
     G: Scope<Timestamp = u32>,
-    K: Data,
-    D: Data,
+    K: Data + Debug,
+    D: Data + Debug,
 {
+    fn hash_buffered<F, H>(&self, hash_coll: &LSHCollection<F, H>) -> Stream<G, (H, K)>
+    where
+        F: LSHFunction<Input = D, Output = H> + Clone + 'static,
+        H: Data + Clone,
+    {
+        let repetitions = hash_coll.repetitions();
+        let mut probe1 = ProbeHandle::new();
+        let probe2 = probe1.clone();
+        let hash_coll = hash_coll.clone();
+        let mut stash: Vec<Option<(Capability<G::Timestamp>, Vec<(K, D)>)>> =
+            vec![None; repetitions + 1]; // The last cell is always None: it is just to simplify the code below
+        info!("Initial stash size {:?} ", stash.len());
+        self.unary(Pipeline, "hash", move |_, _| {
+            move |input, output| {
+                let hash_coll = hash_coll.clone();
+                // Accumulate the vectors in the stash area. This stash vector has an entry per
+                // repetition, containing the vectors that need to be hashed for that repetition.
+                // A given vector starts at index 0 and then moves forward to the next cells,
+                // dropping out at the end of the vector. When a cell has no more associated
+                // vectors, its associated capability is dropped.
+                input.for_each(|t, data| {
+                    let mut data = data.replace(Vec::new());
+                    stash[0]
+                        .get_or_insert((t.retain(), Vec::new()))
+                        .1
+                        .append(&mut data)
+                });
+
+                for i in 0..repetitions {
+                    let mut to_move: Vec<(K, D)> =
+                        if let Some((time, data)) = stash[i].iter_mut().next() {
+                            if !probe2.less_than(time.time()) {
+                                let mut session = output.session(&time);
+                                for (k, v) in data.iter() {
+                                    let h = hash_coll.hash(&v, i);
+                                    session.give((h, k.clone()));
+                                }
+                                data.drain(..).collect()
+                            } else {
+                                Vec::new()
+                            }
+                        } else {
+                            Vec::new()
+                        };
+                    if to_move.len() > 0 && i + 1 < repetitions {
+                        let time = stash[i]
+                            .as_ref()
+                            .expect(
+                                "At this point we should be sure that there are vectors to move",
+                            )
+                            .0
+                            .clone();
+                        let time = time.delayed(&(time.time() + 1));
+                        stash[i + 1]
+                            .get_or_insert((time, Vec::new()))
+                            .1
+                            .append(&mut to_move);
+                    }
+                }
+
+                // Remove items whose time is past the last repetition
+                for entry in stash.iter_mut() {
+                    *entry = entry.take().filter(|pair| pair.1.len() > 0);
+                }
+            }
+        })
+        .probe_with(&mut probe1)
+    }
+
     fn hash<F, H>(&self, hash_coll: &LSHCollection<F, H>) -> Stream<G, (H, K)>
     where
         F: LSHFunction<Input = D, Output = H> + Clone + 'static,
@@ -409,8 +487,8 @@ where
             let (left_stream, left_stream_copy) = left_stream.duplicate();
             let (right_stream, right_stream_copy) = right_stream.duplicate();
 
-            let left_hashes = left_stream.exchange(|p| p.route()).hash(&hash_fn);
-            let right_hashes = right_stream.exchange(|p| p.route()).hash(&hash_fn);
+            let left_hashes = left_stream.exchange(|p| p.route()).hash_buffered(&hash_fn);
+            let right_hashes = right_stream.exchange(|p| p.route()).hash_buffered(&hash_fn);
             let candidate_pairs = left_hashes.bucket(&right_hashes);
             left_stream_copy
                 .three_way_join(&candidate_pairs, &right_stream_copy, sim_pred, peers)
