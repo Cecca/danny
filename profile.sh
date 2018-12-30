@@ -18,6 +18,7 @@ FLAMEGRAPH=$FLAMEDIR/flamegraph.pl
 ##
 ## The above command will produce a file profile.svg that you can view in your browser
 ## Uncomment the following lines
+sudo rm profile.svg /tmp/out.stacks
 sudo dtrace \
     -c "$CMDLINE" \
     -o /tmp/out.stacks \
