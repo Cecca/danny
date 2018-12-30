@@ -409,11 +409,12 @@ where
         // A map between workers and the set of vectors sent to them.
         let mut left_vectors_sent: Vec<HashSet<K>> = vec![HashSet::new(); workers as usize];
         let mut right_vectors = HashMap::new();
-        let mut center_pairs = HashMap::new();
+        // If the capability is None, then the pair has already been sent. We keep it into the
+        // hashmap because we use the set of keys as a deduplication device.
+        let mut center_pairs: HashMap<(K, K), Option<Capability<G::Timestamp>>> = HashMap::new();
         let mut candidate_pairs = HashMap::new();
         // The vectors coming from the left to be joined with values from the right
         let mut left_vectors_for_right_side: HashMap<K, D1> = HashMap::new();
-        let mut output_filter = HashSet::new();
 
         let candidates = self.binary_frontier(
             &center,
@@ -434,10 +435,11 @@ where
                     });
                     // println!("Left Vectors: {:#?}", left_vectors);
                     center_in.for_each(|t, data| {
-                        center_pairs
-                            .entry(t.retain())
-                            .or_insert(Vec::new())
-                            .append(&mut data.replace(Vec::new()));
+                        let mut data = data.replace(Vec::new());
+                        let t = t.retain();
+                        for pair in data.drain(..) {
+                            center_pairs.entry(pair).or_insert(Some(t.clone()));
+                        }
                     });
 
                     // Check if the left input is complete
@@ -450,19 +452,22 @@ where
 
                     if left_complete {
                         // We have seen all the values from the left stream
-                        for (time, center_pairs) in center_pairs.drain() {
-                            let mut session = output.session(&time);
-                            for (l, r) in center_pairs.iter() {
-                                // TODO: Send the candidate in two steps: send the vector, along
-                                // with its associated key, and send the key pair
-                                let dest = route_left_vector(r);
-                                let opt_vec = if !left_vectors_sent[dest as usize].contains(l) {
+                        for pair in center_pairs.iter_mut() {
+                            if pair.1.is_some() {
+                                // Get the capability out of the pair, leaving a None in its
+                                // place. This has the effect of marking the pair as being sent
+                                let time = pair.1.take().unwrap();
+                                let mut session = output.session(&time);
+                                let l = (pair.0).0.clone();
+                                let r = (pair.0).1.clone();
+                                let out_pair = (l.clone(), r.clone());
+                                let dest = route_left_vector(&r);
+                                let opt_vec = if !left_vectors_sent[dest as usize].contains(&l) {
                                     left_vectors_sent[dest as usize].insert(l.clone());
                                     Some(left_vectors[&l].clone())
                                 } else {
                                     None
                                 };
-                                // TODO: Filter on the pairs already sent?
                                 session.give((r.clone(), (l.clone(), opt_vec)));
                             }
                         }
@@ -515,12 +520,9 @@ where
                             let mut session = output.session(&time);
                             for (l, r) in candidate_pairs.iter() {
                                 let out_pair = (l.clone(), r.clone());
-                                if !output_filter.contains(&out_pair) {
-                                    if filter(&left_vectors_for_right_side[&l], &right_vectors[&r])
-                                    {
-                                        session.give(out_pair.clone());
-                                    }
-                                    output_filter.insert(out_pair);
+                                // Deduplication happend on the left hand side of the join
+                                if filter(&left_vectors_for_right_side[&l], &right_vectors[&r]) {
+                                    session.give(out_pair.clone());
                                 }
                             }
                         }
