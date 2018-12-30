@@ -514,12 +514,13 @@ where
                         for (time, candidate_pairs) in candidate_pairs.drain() {
                             let mut session = output.session(&time);
                             for (l, r) in candidate_pairs.iter() {
-                                if filter(&left_vectors_for_right_side[&l], &right_vectors[&r]) {
-                                    let out_pair = (l.clone(), r.clone());
-                                    if !output_filter.contains(&out_pair) {
+                                let out_pair = (l.clone(), r.clone());
+                                if !output_filter.contains(&out_pair) {
+                                    if filter(&left_vectors_for_right_side[&l], &right_vectors[&r])
+                                    {
                                         session.give(out_pair.clone());
-                                        output_filter.insert(out_pair);
                                     }
+                                    output_filter.insert(out_pair);
                                 }
                             }
                         }
