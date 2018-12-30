@@ -448,6 +448,9 @@ where
                             .clone()
                             .map(|t| !left_in.frontier().less_than(&t))
                             .unwrap_or(false);
+                        if left_complete {
+                            info!("Now the left vectors have been read. We have {} of them, and at this points we collected already {} center pairs", left_vectors.len(),center_pairs.len()); 
+                        }
                     }
 
                     if left_complete {
@@ -511,6 +514,9 @@ where
                             .clone()
                             .map(|t| !right_in.frontier().less_than(&t))
                             .unwrap_or(false);
+                        if right_complete {
+                            info!("Now the right vectors have been read. We have {} of them, and at this points we collected already {} candidate pairs", right_vectors.len(),candidate_pairs.len()); 
+                        }
                     }
 
                     if right_complete {
