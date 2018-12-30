@@ -460,7 +460,6 @@ where
                                 let mut session = output.session(&time);
                                 let l = (pair.0).0.clone();
                                 let r = (pair.0).1.clone();
-                                let out_pair = (l.clone(), r.clone());
                                 let dest = route_left_vector(&r);
                                 let opt_vec = if !left_vectors_sent[dest as usize].contains(&l) {
                                     left_vectors_sent[dest as usize].insert(l.clone());
