@@ -47,21 +47,16 @@ impl Route for u64 {
 impl Route for Vec<bool> {
     #[inline(always)]
     fn route(&self) -> u64 {
-        // TODO check how this function distributes values
+        assert!(
+            self.len() < 64,
+            "Vectors longer than 64 elements cannot be routed yet."
+        );
         let mut h = 0u64;
-        let mut tmp = 0u64;
-        let mut cnt = 0;
         for b in self.iter() {
-            if cnt == 64 {
-                h = h ^ tmp;
-                tmp = 0u64;
-            }
+            h = h << 1;
             if *b {
-                tmp = (tmp << 1) | 1u64;
-            } else {
-                tmp = tmp << 1;
+                h += 1;
             }
-            cnt += 1;
         }
         h
     }
