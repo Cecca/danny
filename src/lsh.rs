@@ -449,6 +449,41 @@ where
     }
 }
 
+trait CollidingPairs<G, K, D, F, H>
+where
+    G: Scope<Timestamp = u32>,
+    K: Data + Sync + Send + Clone + Abomonation + Debug + Route,
+    D: Data + Sync + Send + Clone + Abomonation + Debug,
+    F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
+    H: Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash,
+{
+    fn colliding_pairs(
+        &self,
+        right: &Stream<G, (K, D)>,
+        hash_coll: &LSHCollection<F, H>,
+    ) -> Stream<G, (K, K)>;
+}
+
+impl<G, K, D, F, H> CollidingPairs<G, K, D, F, H> for Stream<G, (K, D)>
+where
+    G: Scope<Timestamp = u32>,
+    D: Data + Sync + Send + Clone + Abomonation + Debug,
+    F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
+    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
+    K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
+{
+    fn colliding_pairs(
+        &self,
+        right: &Stream<G, (K, D)>,
+        hash_coll: &LSHCollection<F, H>,
+    ) -> Stream<G, (K, K)> {
+        let left_hashes = self.exchange(|p| p.0.route()).hash_buffered(&hash_coll);
+        let right_hashes = right.exchange(|p| p.0.route()).hash_buffered(&hash_coll);
+        let candidate_pairs = left_hashes.bucket(&right_hashes);
+        candidate_pairs
+    }
+}
+
 #[allow(dead_code)]
 pub fn fixed_param_lsh<D, F, H, O>(
     left_path: &String,
@@ -487,9 +522,7 @@ where
             let (left_stream, left_stream_copy) = left_stream.duplicate();
             let (right_stream, right_stream_copy) = right_stream.duplicate();
 
-            let left_hashes = left_stream.exchange(|p| p.route()).hash_buffered(&hash_fn);
-            let right_hashes = right_stream.exchange(|p| p.route()).hash_buffered(&hash_fn);
-            let candidate_pairs = left_hashes.bucket(&right_hashes);
+            let candidate_pairs = left_stream.colliding_pairs(&right_stream, &hash_fn);
             left_stream_copy
                 .three_way_join(&candidate_pairs, &right_stream_copy, sim_pred, peers)
                 .count()
