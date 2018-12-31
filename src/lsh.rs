@@ -21,6 +21,8 @@ use timely::dataflow::channels::pact::{Exchange as ExchangePact, Pipeline};
 use timely::dataflow::operators::capture::{EventLink, Extract, Replay};
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
+use timely::order::Product;
+use timely::progress::Timestamp;
 use timely::Data;
 use types::{BagOfWords, VectorWithNorm};
 
@@ -232,9 +234,49 @@ impl LSHFunction for MinHash {
     }
 }
 
+pub trait Succ
+where
+    Self: Clone,
+{
+    fn succ(&self) -> Self;
+
+    // TODO: specialize for optimization (e.g. direct sum for integers)
+    fn succs(&self, n: usize) -> Self {
+        let mut x = self.clone();
+        for i in 0..n {
+            x = x.succ();
+        }
+        x
+    }
+}
+
+impl Succ for u32 {
+    fn succ(&self) -> u32 {
+        self + 1
+    }
+}
+
+impl Succ for u64 {
+    fn succ(&self) -> u64 {
+        self + 1
+    }
+}
+
+impl<O, I> Succ for Product<O, I>
+where
+    O: Clone,
+    I: Succ + Clone,
+{
+    fn succ(&self) -> Self {
+        let mut new = self.clone();
+        new.inner = new.inner.succ().clone();
+        new
+    }
+}
+
 pub trait HashStream<G, K, D>
 where
-    G: Scope<Timestamp = u32>,
+    G: Scope,
     K: Data + Debug,
     D: Data + Debug,
 {
@@ -249,9 +291,10 @@ where
         H: Data + Clone;
 }
 
-impl<G, K, D> HashStream<G, K, D> for Stream<G, (K, D)>
+impl<G, T, K, D> HashStream<G, K, D> for Stream<G, (K, D)>
 where
-    G: Scope<Timestamp = u32>,
+    G: Scope<Timestamp = T>,
+    T: Succ + Clone + Timestamp,
     K: Data + Debug,
     D: Data + Debug,
 {
@@ -307,7 +350,7 @@ where
                             )
                             .0
                             .clone();
-                        let time = time.delayed(&(time.time() + 1));
+                        let time = time.delayed(&(time.time().succ()));
                         stash[i + 1]
                             .get_or_insert((time, Vec::new()))
                             .1
@@ -338,7 +381,7 @@ where
                     let mut data = data.replace(Vec::new());
                     for (id, v) in data.drain(..) {
                         hash_coll.for_each_hash(&v, |rep, h| {
-                            let t_out = t.delayed(&(t.time() + rep as u32));
+                            let t_out = t.delayed(&(t.time().succs(rep)));
                             debug!("Outputting hashes at time {:?} ", t_out.time());
                             output.session(&t_out).give((h, id.clone()));
                         });
@@ -449,9 +492,10 @@ where
     }
 }
 
-trait CollidingPairs<G, K, D, F, H>
+trait CollidingPairs<G, T, K, D, F, H>
 where
-    G: Scope<Timestamp = u32>,
+    G: Scope<Timestamp = T>,
+    T: Timestamp + Succ,
     K: Data + Sync + Send + Clone + Abomonation + Debug + Route,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
@@ -464,9 +508,10 @@ where
     ) -> Stream<G, (K, K)>;
 }
 
-impl<G, K, D, F, H> CollidingPairs<G, K, D, F, H> for Stream<G, (K, D)>
+impl<G, T, K, D, F, H> CollidingPairs<G, T, K, D, F, H> for Stream<G, (K, D)>
 where
-    G: Scope<Timestamp = u32>,
+    G: Scope<Timestamp = T>,
+    T: Timestamp + Succ,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
@@ -477,10 +522,19 @@ where
         right: &Stream<G, (K, D)>,
         hash_coll: &LSHCollection<F, H>,
     ) -> Stream<G, (K, K)> {
-        let left_hashes = self.exchange(|p| p.0.route()).hash_buffered(&hash_coll);
-        let right_hashes = right.exchange(|p| p.0.route()).hash_buffered(&hash_coll);
-        let candidate_pairs = left_hashes.bucket(&right_hashes);
-        candidate_pairs
+        self.scope()
+            .scoped::<Product<_, u32>, _, _>("candidate generation", |inner| {
+                let left_hashes = self
+                    .enter(inner)
+                    .exchange(|p| p.0.route())
+                    .hash_buffered(&hash_coll);
+                let right_hashes = right
+                    .enter(inner)
+                    .exchange(|p| p.0.route())
+                    .hash_buffered(&hash_coll);
+                let candidate_pairs = left_hashes.bucket(&right_hashes);
+                candidate_pairs.leave()
+            })
     }
 }
 
