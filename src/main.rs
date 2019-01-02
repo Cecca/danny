@@ -12,6 +12,7 @@ extern crate clap;
 #[macro_use]
 extern crate abomonation;
 extern crate core;
+extern crate probabilistic_collections;
 extern crate rand;
 extern crate rand_xorshift;
 extern crate smallbitvec;

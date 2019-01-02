@@ -1,4 +1,5 @@
 use abomonation::Abomonation;
+use probabilistic_collections::cuckoo::CuckooFilter;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -852,6 +853,41 @@ where
                 }
             },
         )
+    }
+}
+
+pub trait ApproximateDistinct<G, D>
+where
+    G: Scope,
+    D: Data,
+{
+    fn approximate_distinct(&self) -> Stream<G, D>;
+}
+
+impl<G, D> ApproximateDistinct<G, D> for Stream<G, D>
+where
+    G: Scope,
+    D: Data + Hash,
+{
+    fn approximate_distinct(&self) -> Stream<G, D> {
+        let item_count = 1 << 20;
+        let fpp = 0.01;
+        let fingerprint = 8;
+        let mut filter =
+            CuckooFilter::<D>::from_fingerprint_bit_count(item_count, fpp, fingerprint);
+        self.unary(PipelinePact, "approximate-distinct", move |_, _| {
+            move |input, output| {
+                input.for_each(|t, d| {
+                    let mut data = d.replace(Vec::new());
+                    for v in data.drain(..) {
+                        if !filter.contains(&v) {
+                            filter.insert(&v);
+                            output.session(&t).give(v);
+                        }
+                    }
+                });
+            }
+        })
     }
 }
 
