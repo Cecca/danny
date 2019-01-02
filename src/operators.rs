@@ -766,7 +766,7 @@ where
     {
         let left = self.matrix_distribute(MatrixDirection::Columns, workers as u8);
         let right = right.matrix_distribute(MatrixDirection::Rows, workers as u8);
-        let center = center.pair_route(workers as u8);
+        let center = center.pair_route(workers as u8).approximate_distinct();
 
         let mut left_stash = HashMap::new();
         let mut center_stash = HashMap::new();
@@ -875,6 +875,10 @@ where
         let fingerprint = 8;
         let mut filter =
             CuckooFilter::<D>::from_fingerprint_bit_count(item_count, fpp, fingerprint);
+        info!(
+            "Initialized Cockoo filter of {} bytes",
+            std::mem::size_of_val(&filter)
+        );
         self.unary(PipelinePact, "approximate-distinct", move |_, _| {
             move |input, output| {
                 input.for_each(|t, d| {

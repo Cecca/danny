@@ -4,6 +4,7 @@ use abomonation::Abomonation;
 use core::any::Any;
 use measure::InnerProduct;
 use operators::{Duplicate, Route};
+use probabilistic_collections::cuckoo::CuckooFilter;
 use rand::distributions::{Distribution, Normal, Uniform};
 use rand::rngs::StdRng;
 use rand::Rng;
@@ -370,7 +371,17 @@ where
     fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)> {
         let mut left_buckets = HashMap::new();
         let mut right_buckets = HashMap::new();
-        let mut output_filter = HashSet::new();
+
+        let item_count = 1 << 20;
+        let fpp = 0.01;
+        let fingerprint = 8;
+        let mut filter =
+            CuckooFilter::<(K, K)>::from_fingerprint_bit_count(item_count, fpp, fingerprint);
+        info!(
+            "Initialized Cockoo filter of {} bytes in bucketing function",
+            std::mem::size_of_val(&filter)
+        );
+
         self.binary_frontier(
             &right,
             ExchangePact::new(|pair: &(H, K)| pair.0.route()),
@@ -408,21 +419,31 @@ where
                             let mut session = output.session(&time);
                             // We got all data for the repetition at `time`
                             if let Some(right_buckets) = right_buckets.get_mut(time) {
+                                info!("Start to generate candidates from bucket");
+                                let mut cnt = 0;
+                                let mut potential = 0;
                                 for (h, left_keys) in left_buckets.drain() {
                                     if let Some(right_keys) = right_buckets.get(&h) {
                                         for kl in left_keys.iter() {
                                             for kr in right_keys.iter() {
                                                 //  do output
+                                                potential += 1;
                                                 let out_pair = (kl.clone(), kr.clone());
-                                                if !output_filter.contains(&out_pair) {
-                                                    debug!("Outputting pair at time {:?}", time);
-                                                    session.give(out_pair.clone());
-                                                    output_filter.insert(out_pair);
+                                                if !filter.contains(&out_pair) {
+                                                    filter.insert(&out_pair);
+                                                    session.give(out_pair);
+                                                    cnt += 1;
                                                 }
                                             }
                                         }
                                     }
                                 }
+                                info!(
+                                    "Output {} candidates (out of {} potential ones, discarded {})",
+                                    cnt,
+                                    potential,
+                                    potential - cnt
+                                );
                             }
                             // Remove the repetition from the right buckets
                             right_buckets.remove(time);
@@ -432,16 +453,10 @@ where
                     // already did it)
                     left_buckets.retain(|t, buckets| {
                         let to_keep = buckets.len() > 0;
-                        if !to_keep {
-                            info!("Removing left vectors for repetition {:?} ", t.time());
-                        }
                         to_keep
                     });
                     right_buckets.retain(|t, buckets| {
                         let to_keep = buckets.len() > 0;
-                        if !to_keep {
-                            info!("Removing right vectors for repetition {:?} ", t.time());
-                        }
                         to_keep
                     });
                     // TODO: cleanup the duplicates filter when we are done with bucketing. We need
@@ -484,8 +499,8 @@ where
     ) -> Stream<G, (K, K)> {
         self.scope()
             .scoped::<Product<_, u32>, _, _>("candidate generation", |inner| {
-                let left_hashes = self.enter(inner).hash(&hash_coll);
-                let right_hashes = right.enter(inner).hash(&hash_coll);
+                let left_hashes = self.enter(inner).hash_buffered(&hash_coll);
+                let right_hashes = right.enter(inner).hash_buffered(&hash_coll);
                 let candidate_pairs = left_hashes.bucket(&right_hashes);
                 candidate_pairs.leave()
             })
