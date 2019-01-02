@@ -578,7 +578,7 @@ where
 
             let candidate_pairs = left_stream.colliding_pairs(&right_stream, &hash_fn);
             left_stream_copy
-                .three_way_join(&candidate_pairs, &right_stream_copy, sim_pred, peers)
+                .three_way_join_bnl(&candidate_pairs, &right_stream_copy, sim_pred, peers)
                 .count()
                 .exchange(|_| 0)
                 .probe_with(&mut probe)
