@@ -1,7 +1,7 @@
-use abomonation::Abomonation;
-use core::any::Any;
 use crate::io::ReadDataFile;
 use crate::operators::*;
+use abomonation::Abomonation;
+use core::any::Any;
 use std::clone::Clone;
 use std::fmt::Debug;
 use std::path::PathBuf;
@@ -16,23 +16,26 @@ use timely::Data;
 // TODO: Implement a Baseline data type
 
 #[allow(dead_code)]
-pub fn sequential<T, F>(thresh: f64, left: &[T], right: &[T], sim_fn: F)
+pub fn sequential<T, F>(thresh: f64, left_path: &String, right_path: &String, sim_fn: F) -> usize
 where
     T: ReadDataFile,
     F: Fn(&T, &T) -> f64,
 {
+    let mut left = Vec::new();
+    let mut right = Vec::new();
+    ReadDataFile::from_file(&left_path.into(), |v| left.push(v));
+    ReadDataFile::from_file(&right_path.into(), |v| right.push(v));
+
     let mut sim_cnt = 0;
-    let mut cnt = 0;
     for l in left.iter() {
         for r in right.iter() {
-            cnt += 1;
             let sim = sim_fn(l, r);
             if sim >= thresh {
                 sim_cnt += 1;
             }
         }
     }
-    println!("There are {} simlar pairs our of {}", sim_cnt, cnt);
+    sim_cnt
 }
 
 #[allow(dead_code)]
@@ -66,15 +69,22 @@ where
             let (left_in, left_stream) = scope.new_input::<(u64, T)>();
             let (right_in, right_stream) = scope.new_input::<(u64, T)>();
             let mut probe = ProbeHandle::new();
+            // left_stream
+            //     .cartesian_filter(
+            //         &right_stream,
+            //         move |ref x, ref y| sim_fn(&x.1, &y.1) >= threshold,
+            //         |ref x| x.route(),
+            //         |ref x| x.route(),
+            //         peers,
+            //     )
             left_stream
-                .cartesian_filter(
+                .two_way_predicate_join(
                     &right_stream,
-                    move |ref x, ref y| sim_fn(&x.1, &y.1) >= threshold,
-                    |ref x| x.route(),
-                    |ref x| x.route(),
+                    move |ref x, ref y| sim_fn(x, y) >= threshold,
                     peers,
                 )
                 .count()
+                .inspect_time(|t, d| println!("Output count at {:?} :: {:?} ", t, d))
                 .exchange(|_| 0)
                 .probe_with(&mut probe)
                 .capture_into(output_send_ch);

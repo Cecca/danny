@@ -1,5 +1,5 @@
 use crate::io::ReadDataFile;
-use crate::operators::ThreeWayJoin;
+use crate::operators::*;
 use abomonation::Abomonation;
 use core::any::Any;
 use measure::InnerProduct;
@@ -231,46 +231,6 @@ impl LSHFunction for MinHash {
 
     fn probability_at_range(range: f64) -> f64 {
         range
-    }
-}
-
-pub trait Succ
-where
-    Self: Clone,
-{
-    fn succ(&self) -> Self;
-
-    // TODO: specialize for optimization (e.g. direct sum for integers)
-    fn succs(&self, n: usize) -> Self {
-        let mut x = self.clone();
-        for i in 0..n {
-            x = x.succ();
-        }
-        x
-    }
-}
-
-impl Succ for u32 {
-    fn succ(&self) -> u32 {
-        self + 1
-    }
-}
-
-impl Succ for u64 {
-    fn succ(&self) -> u64 {
-        self + 1
-    }
-}
-
-impl<O, I> Succ for Product<O, I>
-where
-    O: Clone,
-    I: Succ + Clone,
-{
-    fn succ(&self) -> Self {
-        let mut new = self.clone();
-        new.inner = new.inner.succ().clone();
-        new
     }
 }
 

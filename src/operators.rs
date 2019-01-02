@@ -11,11 +11,67 @@ use timely::dataflow::operators::generic::OperatorInfo;
 use timely::dataflow::operators::generic::{FrontieredInputHandle, InputHandle, OutputHandle};
 use timely::dataflow::operators::Capability;
 use timely::dataflow::operators::{
-    Concat, ConnectLoop, Enter, Input, Inspect, Leave, LoopVariable, Map, Operator,
+    Concat, ConnectLoop, Delay, Enter, Exchange, Input, Inspect, Leave, LoopVariable, Map,
+    Operator, Probe, ToStream,
 };
+use timely::dataflow::ProbeHandle;
 use timely::dataflow::Scope;
 use timely::dataflow::Stream;
+use timely::order::Product;
+use timely::progress::Timestamp;
 use timely::Data;
+
+pub trait Succ
+where
+    Self: Clone,
+{
+    fn succ(&self) -> Self;
+
+    // TODO: specialize for optimization (e.g. direct sum for integers)
+    fn succs(&self, n: usize) -> Self {
+        let mut x = self.clone();
+        for i in 0..n {
+            x = x.succ();
+        }
+        x
+    }
+}
+
+impl Succ for i32 {
+    fn succ(&self) -> i32 {
+        self + 1
+    }
+}
+
+impl Succ for u8 {
+    fn succ(&self) -> u8 {
+        self + 1
+    }
+}
+
+impl Succ for u32 {
+    fn succ(&self) -> u32 {
+        self + 1
+    }
+}
+
+impl Succ for u64 {
+    fn succ(&self) -> u64 {
+        self + 1
+    }
+}
+
+impl<O, I> Succ for Product<O, I>
+where
+    O: Clone,
+    I: Succ + Clone,
+{
+    fn succ(&self) -> Self {
+        let mut new = self.clone();
+        new.inner = new.inner.succ().clone();
+        new
+    }
+}
 
 /// Trait for types that can tell where they should be redirected when data is exchanged among
 /// workers
@@ -353,6 +409,180 @@ where
         });
 
         result_stream
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum MatrixDirection {
+    Columns,
+    Rows,
+}
+
+pub trait MatrixDistribute<G, T, K, D>
+where
+    G: Scope<Timestamp = T>,
+    T: Timestamp + Succ,
+    K: Data + Route + Clone + Abomonation + Sync + Send + Debug,
+    D: Data + Clone + Abomonation + Sync + Send + Debug,
+{
+    fn matrix_distribute(
+        &self,
+        direction: MatrixDirection,
+        matrix_side: u8,
+    ) -> Stream<G, ((u8, u8), K, D)>;
+
+    fn row_major(i: u8, j: u8, matrix_side: u8) -> u64 {
+        i as u64 * matrix_side as u64 + j as u64
+    }
+}
+
+impl<G, T, K, D> MatrixDistribute<G, T, K, D> for Stream<G, (K, D)>
+where
+    G: Scope<Timestamp = T>,
+    T: Timestamp + Succ,
+    K: Data + Route + Clone + Abomonation + Sync + Send + Debug,
+    D: Data + Clone + Abomonation + Sync + Send + Debug,
+{
+    fn matrix_distribute(
+        &self,
+        direction: MatrixDirection,
+        matrix_side: u8,
+    ) -> Stream<G, ((u8, u8), K, D)> {
+        // TODO: maybe scatter the communication in multiple rounds
+        self.unary(PipelinePact, "matrix distribute", move |_, _| {
+            move |input, output| {
+                input.for_each(|t, data| {
+                    let t = t.retain();
+                    let mut session = output.session(&t);
+                    let mut data = data.replace(Vec::new());
+                    for (k, v) in data.drain(..) {
+                        match direction {
+                            MatrixDirection::Rows => {
+                                let col = (k.route() % matrix_side as u64) as u8;
+                                for row in 0..matrix_side {
+                                    session.give(((row, col), k.clone(), v.clone()));
+                                }
+                            }
+                            MatrixDirection::Columns => {
+                                let row = (k.route() % matrix_side as u64) as u8;
+                                for col in 0..matrix_side {
+                                    session.give(((row, col), k.clone(), v.clone()));
+                                }
+                            }
+                        };
+                    }
+                });
+            }
+        })
+        .exchange(move |tuple| Self::row_major((tuple.0).0, (tuple.0).1, matrix_side))
+    }
+}
+
+pub trait PredicateJoin<G, T, K, D1>
+where
+    G: Scope<Timestamp = T>,
+    T: Timestamp + Succ,
+    K: Data + Route + Clone + Abomonation + Sync + Send + Debug,
+    D1: Data + Clone + Abomonation + Sync + Send + Debug,
+{
+    fn two_way_predicate_join<D2, P>(
+        &self,
+        right: &Stream<G, (K, D2)>,
+        predicate: P,
+        workers: u64,
+    ) -> Stream<G, (K, K)>
+    where
+        D2: Data + Clone + Abomonation + Sync + Send + Debug,
+        P: Fn(&D1, &D2) -> bool + 'static;
+}
+
+impl<G, T, K, D1> PredicateJoin<G, T, K, D1> for Stream<G, (K, D1)>
+where
+    G: Scope<Timestamp = T>,
+    T: Timestamp + Succ,
+    K: Data + Route + Clone + Abomonation + Sync + Send + Debug,
+    D1: Data + Clone + Abomonation + Sync + Send + Debug,
+{
+    fn two_way_predicate_join<D2, P>(
+        &self,
+        right: &Stream<G, (K, D2)>,
+        predicate: P,
+        workers: u64,
+    ) -> Stream<G, (K, K)>
+    where
+        D2: Data + Clone + Abomonation + Sync + Send + Debug,
+        P: Fn(&D1, &D2) -> bool + 'static,
+    {
+        // Round to the next power of two
+        let num_replicas = (workers as f64).sqrt().ceil() as u8;
+        info!("Each vector will be replicated {} times", num_replicas);
+        let left_replicas = self.matrix_distribute(MatrixDirection::Columns, num_replicas);
+        let right_replicas = right.matrix_distribute(MatrixDirection::Rows, num_replicas);
+
+        let mut left_stash = HashMap::new();
+        let mut right_stash = HashMap::new();
+
+        left_replicas.binary_frontier(
+            &right_replicas,
+            PipelinePact, // Communication happened in matrix_distribute
+            PipelinePact, // Same as above
+            "two way predicate join",
+            move |_, _| {
+                move |left_in, right_in, output| {
+                    left_in.for_each(|t, data| {
+                        let mut data = data.replace(Vec::new());
+                        let inner = left_stash.entry(t.retain()).or_insert(HashMap::new());
+                        for (p, k, v) in data.drain(..) {
+                            inner.entry(p).or_insert(Vec::new()).push((k, v));
+                        }
+                    });
+                    right_in.for_each(|t, data| {
+                        let mut data = data.replace(Vec::new());
+                        let inner = right_stash.entry(t.retain()).or_insert(HashMap::new());
+                        for (p, k, v) in data.drain(..) {
+                            inner.entry(p).or_insert(Vec::new()).push((k, v));
+                        }
+                    });
+                    let frontiers = &[left_in.frontier(), right_in.frontier()];
+
+                    for (time, left_stash) in left_stash.iter_mut() {
+                        if let Some(right_stash) = right_stash.get_mut(&time) {
+                            if frontiers.iter().all(|f| !f.less_equal(time)) {
+                                info!(
+                                    "Time {:?}: still {} blocks remaining",
+                                    time.time(),
+                                    left_stash.len()
+                                );
+                                let mut session = output.session(&time);
+                                for (left_matrix_key, left_stash) in left_stash.drain() {
+                                    if let Some(right_stash) = right_stash.get(&left_matrix_key) {
+                                        info!(
+                                            "Time {:?} :: {:?} :: {}x{}",
+                                            time.time(),
+                                            left_matrix_key,
+                                            left_stash.len(),
+                                            right_stash.len()
+                                        );
+                                        for (lk, lv) in left_stash.iter() {
+                                            for (rk, rv) in right_stash.iter() {
+                                                if predicate(&lv, &rv) {
+                                                    session.give((lk.clone(), rk.clone()));
+                                                }
+                                            }
+                                        }
+                                        info!("Completed block {:?}.", left_matrix_key);
+                                    }
+                                }
+                                right_stash.clear();
+                            }
+                        }
+                    }
+
+                    left_stash.retain(|_, data| data.len() > 0);
+                    right_stash.retain(|_, data| data.len() > 0);
+                }
+            },
+        )
     }
 }
 
@@ -718,6 +948,7 @@ mod tests {
     use super::*;
     use std::sync::mpsc;
     use std::sync::{Arc, Mutex};
+    use timely::dataflow::operators::capture::event::Event;
     use timely::dataflow::operators::{Capture, Inspect, Probe};
     use timely::dataflow::ProbeHandle;
 
@@ -767,6 +998,173 @@ mod tests {
         .unwrap();
 
         assert_eq!(vec![(0, vec![(0, 1), (2, 10)])], recv.extract());
+    }
+
+    // #[test]
+    // fn test_two_way_join() {
+    //     let n_left = 1000;
+    //     let n_right = 1000;
+    //     let conf = timely::Configuration::Process(4).try_build().unwrap();
+    //     let (send, recv) = mpsc::channel();
+    //     let send = Arc::new(Mutex::new(send));
+    //     timely::execute::execute_from(conf.0, conf.1, move |worker| {
+    //         let peers = worker.peers();
+    //         let send = send.lock().unwrap().clone();
+    //         worker.dataflow::<u32, _, _>(|scope| {
+    //             let left = (0..n_left).to_stream(scope).map(|i| (i, ()));
+    //             let right = (0..n_right).to_stream(scope).map(|i| (i, ()));
+    //             left.two_way_predicate_join(&right, |_, _| true, peers as u64)
+    //                 // .inspect(|x| println!("Binary join check {:?} ", x))
+    //                 .capture_into(send);
+    //         });
+    //     })
+    //     .unwrap();
+    //
+    //     let mut check = HashSet::new();
+    //     for output in recv.iter() {
+    //         println!("{:?} ", output);
+    //         match output {
+    //             Event::Messages(t, data) => {
+    //                 for pair in data.iter() {
+    //                     check.insert(pair.clone());
+    //                 }
+    //             }
+    //             _ => (),
+    //         }
+    //     }
+    //     let mut expected = HashSet::new();
+    //     for i in 0..n_left {
+    //         for j in 0..n_right {
+    //             expected.insert((i, j));
+    //         }
+    //     }
+    //     assert_eq!(check, expected);
+    // }
+
+    #[test]
+    fn test_two_way_join_2() {
+        let n_left = 5;
+        let n_right = 5;
+        let conf = timely::Configuration::Process(4).try_build().unwrap();
+        let (send, recv) = mpsc::channel();
+        let send = Arc::new(Mutex::new(send));
+        timely::execute::execute_from(conf.0, conf.1, move |worker| {
+            let peers = worker.peers();
+            let send = send.lock().unwrap().clone();
+            worker.dataflow::<u32, _, _>(|scope| {
+                let left = (0..n_left).to_stream(scope).map(|i| (i, i));
+                let right = (0..n_right).to_stream(scope).map(|i| (i, i));
+                left.two_way_predicate_join(&right, |a, b| a < b, peers as u64)
+                    // .inspect(|x| println!("Binary join check {:?} ", x))
+                    .capture_into(send);
+            });
+        })
+        .unwrap();
+
+        let mut check = HashSet::new();
+        for output in recv.iter() {
+            println!("{:?} ", output);
+            match output {
+                Event::Messages(t, data) => {
+                    for pair in data.iter() {
+                        check.insert(pair.clone());
+                    }
+                }
+                _ => (),
+            }
+        }
+        let mut expected = HashSet::new();
+        for i in 0..n_left {
+            for j in 0..n_right {
+                if i < j {
+                    expected.insert((i, j));
+                }
+            }
+        }
+        assert_eq!(check, expected);
+    }
+
+    fn test_matrix_distribute(threads: usize, matrix_side: u8, num_elements: u32) {
+        // Check that elemens are distributed equally
+        let conf = timely::Configuration::Process(threads).try_build().unwrap();
+        let (send, recv) = mpsc::channel();
+        let send = Arc::new(Mutex::new(send));
+        timely::execute::execute_from(conf.0, conf.1, move |worker| {
+            let peers = worker.peers();
+            let send = send.lock().unwrap().clone();
+            let (mut left, mut right, probe) = worker.dataflow::<u32, _, _>(|scope| {
+                let mut probe = ProbeHandle::new();
+                let (lin, left) = scope.new_input();
+                let (rin, right) = scope.new_input();
+                let left_distribute = left.matrix_distribute(MatrixDirection::Columns, matrix_side);
+                let right_distribute = right.matrix_distribute(MatrixDirection::Rows, matrix_side);
+
+                left_distribute
+                    .concat(&right_distribute)
+                    .probe_with(&mut probe)
+                    .capture_into(send);
+                (lin, rin, probe)
+            });
+
+            if worker.index() == 0 {
+                for i in 0..num_elements {
+                    left.send((i, ()));
+                    right.send((i, ()));
+                }
+                left.advance_to(1);
+                right.advance_to(1);
+            }
+            worker.step_while(|| probe.less_than(left.time()));
+        })
+        .unwrap();
+
+        let mut check = HashMap::new();
+        for output in recv.iter() {
+            match output {
+                Event::Messages(t, data) => {
+                    for (idx, _, _) in data.iter() {
+                        let cnt = check.entry(idx.clone()).or_insert(0);
+                        *cnt += 1;
+                    }
+                }
+                _ => (),
+            }
+        }
+        for i in 0..matrix_side {
+            for j in 0..matrix_side {
+                print!(
+                    " {:4} ",
+                    check
+                        .get(&(i, j))
+                        .map(|x| format!("{}", x))
+                        .unwrap_or("!".to_owned())
+                );
+            }
+            println!();
+        }
+        println!();
+
+        let first = check.get(&(0, 0)).unwrap();
+        let mut count = 0;
+        for i in 0..matrix_side {
+            for j in 0..matrix_side {
+                let opt_cnt = check.get(&(i, j));
+                assert!(opt_cnt.is_some());
+                let cnt = opt_cnt.unwrap();
+                assert_eq!(cnt, first);
+                count += cnt;
+            }
+        }
+        assert_eq!(count, num_elements * 2 * matrix_side as u32);
+    }
+
+    #[test]
+    fn run_test_matrix_distribute() {
+        test_matrix_distribute(1, 2, 1000);
+        test_matrix_distribute(4, 2, 1000);
+        test_matrix_distribute(1, 4, 4);
+        test_matrix_distribute(1, 4, 1000);
+        test_matrix_distribute(4, 4, 1000);
     }
 
 }

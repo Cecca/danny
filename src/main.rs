@@ -123,6 +123,21 @@ fn main() {
             ),
             _ => unimplemented!(),
         },
+        "seq-all-2-all" => match measure.as_ref() {
+            "cosine" => baseline::sequential::<VectorWithNorm, _>(
+                threshold,
+                &left_path,
+                &right_path,
+                Cosine::cosine,
+            ),
+            "jaccard" => baseline::sequential::<BagOfWords, _>(
+                threshold,
+                &left_path,
+                &right_path,
+                Jaccard::jaccard,
+            ),
+            _ => unimplemented!(),
+        },
         _ => unimplemented!("Unknown algorithm {}", algorithm),
     };
     println!("Pairs above similarity {} are {}", threshold, count);
