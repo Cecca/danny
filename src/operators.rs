@@ -412,6 +412,32 @@ where
     }
 }
 
+fn row_major(i: u8, j: u8, matrix_side: u8) -> u64 {
+    i as u64 * matrix_side as u64 + j as u64
+}
+
+pub trait PairRoute<G, K>
+where
+    K: Data + Abomonation + Sync + Send + Clone + Route,
+    G: Scope,
+{
+    fn pair_route(&self, matrix_side: u8) -> Stream<G, ((u8, u8), (K, K))>;
+}
+
+impl<G, K> PairRoute<G, K> for Stream<G, (K, K)>
+where
+    K: Data + Abomonation + Sync + Send + Clone + Route,
+    G: Scope,
+{
+    fn pair_route(&self, matrix_side: u8) -> Stream<G, ((u8, u8), (K, K))> {
+        self.map(move |(i, j)| {
+            let row = i.route() % matrix_side as u64;
+            let col = j.route() % matrix_side as u64;
+            ((row as u8, col as u8), (i, j))
+        })
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum MatrixDirection {
     Columns,
@@ -430,10 +456,6 @@ where
         direction: MatrixDirection,
         matrix_side: u8,
     ) -> Stream<G, ((u8, u8), K, D)>;
-
-    fn row_major(i: u8, j: u8, matrix_side: u8) -> u64 {
-        i as u64 * matrix_side as u64 + j as u64
-    }
 }
 
 impl<G, T, K, D> MatrixDistribute<G, T, K, D> for Stream<G, (K, D)>
@@ -474,7 +496,7 @@ where
                 });
             }
         })
-        .exchange(move |tuple| Self::row_major((tuple.0).0, (tuple.0).1, matrix_side))
+        .exchange(move |tuple| row_major((tuple.0).0, (tuple.0).1, matrix_side))
     }
 }
 
