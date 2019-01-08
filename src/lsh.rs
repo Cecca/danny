@@ -484,8 +484,8 @@ where
     ) -> Stream<G, (K, K)> {
         self.scope()
             .scoped::<Product<_, u32>, _, _>("candidate generation", |inner| {
-                let left_hashes = self.enter(inner).hash_buffered(&hash_coll);
-                let right_hashes = right.enter(inner).hash_buffered(&hash_coll);
+                let left_hashes = self.enter(inner).hash(&hash_coll);
+                let right_hashes = right.enter(inner).hash(&hash_coll);
                 let candidate_pairs = left_hashes.bucket(&right_hashes);
                 candidate_pairs.leave()
             })
