@@ -484,14 +484,8 @@ where
     ) -> Stream<G, (K, K)> {
         self.scope()
             .scoped::<Product<_, u32>, _, _>("candidate generation", |inner| {
-                let left_hashes = self
-                    .enter(inner)
-                    .exchange(|p| p.0.route())
-                    .hash_buffered(&hash_coll);
-                let right_hashes = right
-                    .enter(inner)
-                    .exchange(|p| p.0.route())
-                    .hash_buffered(&hash_coll);
+                let left_hashes = self.enter(inner).hash_buffered(&hash_coll);
+                let right_hashes = right.enter(inner).hash_buffered(&hash_coll);
                 let candidate_pairs = left_hashes.bucket(&right_hashes);
                 candidate_pairs.leave()
             })
@@ -532,13 +526,13 @@ where
             let (right_in, right_stream) = scope.new_input::<(u64, D)>();
             let mut probe = ProbeHandle::new();
             let hash_fn = hash_fn;
-            // TODO: See if you can do without a copy
-            let (left_stream, left_stream_copy) = left_stream.duplicate();
-            let (right_stream, right_stream_copy) = right_stream.duplicate();
+            let left_stream = left_stream.exchange(|_| 0);
+            let right_stream = right_stream.exchange(|_| 0);
 
             let candidate_pairs = left_stream.colliding_pairs(&right_stream, &hash_fn);
-            left_stream_copy
-                .three_way_join(&candidate_pairs, &right_stream_copy, sim_pred, peers)
+
+            left_stream
+                .three_way_join(&candidate_pairs, &right_stream, sim_pred, peers)
                 .count()
                 .exchange(|_| 0)
                 .probe_with(&mut probe)
