@@ -435,6 +435,7 @@ where
             let col = j.route() % matrix_side as u64;
             ((row as u8, col as u8), (i, j))
         })
+        .exchange(move |tuple| row_major((tuple.0).0, (tuple.0).1, matrix_side))
     }
 }
 
@@ -447,7 +448,7 @@ pub enum MatrixDirection {
 pub trait MatrixDistribute<G, T, K, D>
 where
     G: Scope<Timestamp = T>,
-    T: Timestamp + Succ,
+    T: Timestamp,
     K: Data + Route + Clone + Abomonation + Sync + Send + Debug,
     D: Data + Clone + Abomonation + Sync + Send + Debug,
 {
@@ -461,7 +462,7 @@ where
 impl<G, T, K, D> MatrixDistribute<G, T, K, D> for Stream<G, (K, D)>
 where
     G: Scope<Timestamp = T>,
-    T: Timestamp + Succ,
+    T: Timestamp,
     K: Data + Route + Clone + Abomonation + Sync + Send + Debug,
     D: Data + Clone + Abomonation + Sync + Send + Debug,
 {
@@ -608,6 +609,95 @@ where
     }
 }
 
+pub trait TernaryOperator<G: Scope, D1: Data> {
+    /// Like Operator::binary_frontier, but with three inputs
+    fn ternary_frontier<D2, D3, O, B, L, P1, P2, P3>(
+        &self,
+        center: &Stream<G, D2>,
+        right: &Stream<G, D3>,
+        pact1: P1,
+        pact2: P2,
+        pact3: P3,
+        name: &str,
+        constructor: B,
+    ) -> Stream<G, O>
+    where
+        D2: Data,
+        D3: Data,
+        O: Data,
+        P1: ParallelizationContract<G::Timestamp, D1>,
+        P2: ParallelizationContract<G::Timestamp, D2>,
+        P3: ParallelizationContract<G::Timestamp, D3>,
+        B: FnOnce(Capability<G::Timestamp>, OperatorInfo) -> L,
+        L: FnMut(
+                &mut FrontieredInputHandle<G::Timestamp, D1, P1::Puller>,
+                &mut FrontieredInputHandle<G::Timestamp, D2, P2::Puller>,
+                &mut FrontieredInputHandle<G::Timestamp, D3, P3::Puller>,
+                &mut OutputHandle<G::Timestamp, O, Tee<G::Timestamp, O>>,
+            ) + 'static;
+}
+
+impl<G: Scope, D1: Data> TernaryOperator<G, D1> for Stream<G, D1> {
+    fn ternary_frontier<D2, D3, O, B, L, P1, P2, P3>(
+        &self,
+        center: &Stream<G, D2>,
+        right: &Stream<G, D3>,
+        pact1: P1,
+        pact2: P2,
+        pact3: P3,
+        name: &str,
+        constructor: B,
+    ) -> Stream<G, O>
+    where
+        D2: Data,
+        D3: Data,
+        O: Data,
+        P1: ParallelizationContract<G::Timestamp, D1>,
+        P2: ParallelizationContract<G::Timestamp, D2>,
+        P3: ParallelizationContract<G::Timestamp, D3>,
+        B: FnOnce(Capability<G::Timestamp>, OperatorInfo) -> L,
+        L: FnMut(
+                &mut FrontieredInputHandle<G::Timestamp, D1, P1::Puller>,
+                &mut FrontieredInputHandle<G::Timestamp, D2, P2::Puller>,
+                &mut FrontieredInputHandle<G::Timestamp, D3, P3::Puller>,
+                &mut OutputHandle<G::Timestamp, O, Tee<G::Timestamp, O>>,
+            ) + 'static,
+    {
+        let mut builder = OperatorBuilder::new(name.to_owned(), self.scope());
+        let index = builder.index();
+        let global = builder.global();
+
+        // builder.set_notify(false);
+
+        let mut input1 = builder.new_input(self, pact1);
+        let mut input2 = builder.new_input(center, pact2);
+        let mut input3 = builder.new_input(right, pact3);
+        let (mut output, stream) = builder.new_output();
+
+        builder.build(move |mut capabilities| {
+            // `capabilities` should be a one element vector.
+            let capability = capabilities.pop().unwrap();
+            let operator_info = OperatorInfo::new(index, global);
+            let mut logic = constructor(capability, operator_info);
+            move |frontiers| {
+                let mut input1_handle = FrontieredInputHandle::new(&mut input1, &frontiers[0]);
+                let mut input2_handle = FrontieredInputHandle::new(&mut input2, &frontiers[1]);
+                let mut input3_handle = FrontieredInputHandle::new(&mut input3, &frontiers[2]);
+                // Maybe move the activation outside?
+                let mut output_handle = output.activate();
+                logic(
+                    &mut input1_handle,
+                    &mut input2_handle,
+                    &mut input3_handle,
+                    &mut output_handle,
+                );
+            }
+        });
+
+        stream
+    }
+}
+
 pub trait ThreeWayJoin<G, K, D1>
 where
     G: Scope,
@@ -673,146 +763,11 @@ where
         D2: Data + Abomonation + Sync + Send + Clone + Debug,
         F: Fn(&D1, &D2) -> bool + 'static,
     {
-        let route_left_vector = move |r: &K| r.route() % workers;
+        let left_replicas = self.matrix_distribute(MatrixDirection::Columns, workers as u8);
+        let right_replicas = right.matrix_distribute(MatrixDirection::Rows, workers as u8);
+        let center = center.pair_route(workers as u8);
 
-        // State for the three way join
-        let mut left_complete = false;
-        let mut left_timestamp = None;
-        let mut right_complete = false;
-        let mut right_timestamp = None;
-        let mut left_vectors = HashMap::new();
-        // A map between workers and the set of vectors sent to them.
-        let mut left_vectors_sent: Vec<HashSet<K>> = vec![HashSet::new(); workers as usize];
-        let mut right_vectors = HashMap::new();
-        // If the capability is None, then the pair has already been sent. We keep it into the
-        // hashmap because we use the set of keys as a deduplication device.
-        let mut center_pairs: HashMap<(K, K), Option<Capability<G::Timestamp>>> = HashMap::new();
-        let mut candidate_pairs = HashMap::new();
-        // The vectors coming from the left to be joined with values from the right
-        let mut left_vectors_for_right_side: HashMap<K, D1> = HashMap::new();
-
-        let candidates = self.binary_frontier(
-            &center,
-            ExchangePact::new(|pair: &(K, D1)| pair.0.route()),
-            ExchangePact::new(|pair: &(K, K)| pair.0.route()),
-            "three-way-join-left",
-            move |_, _| {
-                move |left_in, center_in, output| {
-                    // Accumulate left vectors
-                    // TODO: is there a way to leverage the partitioning from the previous steps?
-                    // Maybe with replaying a stream?
-                    left_in.for_each(|t, data| {
-                        left_timestamp.get_or_insert(t.time().clone());
-                        let mut data = data.replace(Vec::new());
-                        for (k, v) in data.drain(..) {
-                            left_vectors.insert(k, v);
-                        }
-                    });
-                    // println!("Left Vectors: {:#?}", left_vectors);
-                    center_in.for_each(|t, data| {
-                        let mut data = data.replace(Vec::new());
-                        let t = t.retain();
-                        for pair in data.drain(..) {
-                            center_pairs.entry(pair).or_insert(Some(t.clone()));
-                        }
-                    });
-
-                    // Check if the left input is complete
-                    if !left_complete {
-                        left_complete = left_timestamp
-                            .clone()
-                            .map(|t| !left_in.frontier().less_than(&t))
-                            .unwrap_or(false);
-                        if left_complete {
-                            info!("Now the left vectors have been read. We have {} of them, and at this points we collected already {} center pairs", left_vectors.len(),center_pairs.len()); 
-                        }
-                    }
-
-                    if left_complete {
-                        // We have seen all the values from the left stream
-                        for pair in center_pairs.iter_mut() {
-                            if pair.1.is_some() {
-                                // Get the capability out of the pair, leaving a None in its
-                                // place. This has the effect of marking the pair as being sent
-                                let time = pair.1.take().unwrap();
-                                let mut session = output.session(&time);
-                                let l = (pair.0).0.clone();
-                                let r = (pair.0).1.clone();
-                                let dest = route_left_vector(&r);
-                                let opt_vec = if !left_vectors_sent[dest as usize].contains(&l) {
-                                    left_vectors_sent[dest as usize].insert(l.clone());
-                                    Some(left_vectors[&l].clone())
-                                } else {
-                                    None
-                                };
-                                session.give((r.clone(), (l.clone(), opt_vec)));
-                            }
-                        }
-                    }
-                    // TODO: Do cleanup of left vectors?
-                }
-            },
-        );
-
-        let output = candidates.binary_frontier(
-            &right,
-            ExchangePact::new(|pair: &(K, (K, Option<D1>))| pair.0.route()),
-            ExchangePact::new(|pair: &(K, D2)| pair.0.route()),
-            "three-way-join-right",
-            move |_, _| {
-                move |candidates_in, right_in, output| {
-                    right_in.for_each(|t, data| {
-                        right_timestamp.get_or_insert(t.time().clone());
-                        let mut data = data.replace(Vec::new());
-                        // println!("3w right: {:?}", data);
-                        for (k, v) in data.drain(..) {
-                            right_vectors.insert(k, v);
-                        }
-                    });
-
-                    candidates_in.for_each(|t, data| {
-                        // TODO: Handle the different types of messages
-                        let mut entry = candidate_pairs.entry(t.retain()).or_insert(HashSet::new());
-                        let mut data = &mut data.replace(Vec::new());
-                        for (r, (l, opt_vec)) in data.drain(..) {
-                            entry.insert((l.clone(), r.clone()));
-                            if opt_vec.is_some() && !left_vectors_for_right_side.contains_key(&l) {
-                                left_vectors_for_right_side
-                                    .insert(l, opt_vec.expect("The vector should be here!"));
-                            }
-                        }
-                    });
-
-                    // Check if the left input is complete
-                    if !right_complete {
-                        right_complete = right_timestamp
-                            .clone()
-                            .map(|t| !right_in.frontier().less_than(&t))
-                            .unwrap_or(false);
-                        if right_complete {
-                            info!("Now the right vectors have been read. We have {} of them, and at this points we collected already {} candidate pairs", right_vectors.len(),candidate_pairs.len()); 
-                        }
-                    }
-
-                    if right_complete {
-                        // We have seen all the values from the right stream
-                        for (time, candidate_pairs) in candidate_pairs.drain() {
-                            let mut session = output.session(&time);
-                            for (l, r) in candidate_pairs.iter() {
-                                let out_pair = (l.clone(), r.clone());
-                                // Deduplication happend on the left hand side of the join
-                                if filter(&left_vectors_for_right_side[&l], &right_vectors[&r]) {
-                                    session.give(out_pair.clone());
-                                }
-                            }
-                        }
-                    }
-                    // TODO: Cleanup right?
-                }
-            },
-        );
-
-        output
+        unimplemented!();
     }
 }
 
