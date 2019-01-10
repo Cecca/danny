@@ -92,21 +92,27 @@ where
         });
 
         // Push data into the dataflow graph
-        if index == 0 {
-            let start = Instant::now();
-            let left_path = left_path.clone();
-            let right_path = right_path.clone();
-            ReadDataFile::from_file_with_count(&left_path.into(), |c, v| left.send((c, v)));
-            ReadDataFile::from_file_with_count(&right_path.into(), |c, v| right.send((c, v)));
-            left.advance_to(1);
-            right.advance_to(1);
-            let end = Instant::now();
-            let elapsed = end - start;
-            println!(
-                "Time to feed the input to the dataflow graph: {:?}",
-                elapsed
-            );
-        }
+        let start = Instant::now();
+        let left_path = left_path.clone();
+        let right_path = right_path.clone();
+        ReadDataFile::from_file_partially(
+            &left_path.into(),
+            |l| l % peers == index as u64,
+            |c, v| left.send((c, v)),
+        );
+        ReadDataFile::from_file_partially(
+            &right_path.into(),
+            |l| l % peers == index as u64,
+            |c, v| right.send((c, v)),
+        );
+        left.advance_to(1);
+        right.advance_to(1);
+        let end = Instant::now();
+        let elapsed = end - start;
+        println!(
+            "Time to feed the input to the dataflow graph: {:?}",
+            elapsed
+        );
         worker.step_while(|| probe.less_than(left.time()));
     })
     .expect("Something went wrong with the timely dataflow execution");

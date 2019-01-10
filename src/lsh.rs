@@ -526,8 +526,6 @@ where
             let (right_in, right_stream) = scope.new_input::<(u64, D)>();
             let mut probe = ProbeHandle::new();
             let hash_fn = hash_fn;
-            let left_stream = left_stream.exchange(|_| 0);
-            let right_stream = right_stream.exchange(|_| 0);
 
             let candidate_pairs = left_stream.colliding_pairs(&right_stream, &hash_fn);
 
@@ -541,28 +539,31 @@ where
             (left_in, right_in, probe)
         });
 
-        // Push data into the dataflow graph
-        if index == 0 {
-            info!("Reading data files:\n\t{:?}\n\t{:?}", left_path, right_path);
-            let start = Instant::now();
-            let left_path = left_path.clone();
-            let right_path = right_path.clone();
-            ReadDataFile::from_file_with_count(&left_path.into(), |c, v| left.send((c, v)));
-            ReadDataFile::from_file_with_count(&right_path.into(), |c, v| right.send((c, v)));
-            // Explicitly state that the input will not feed times smaller than the number of
-            // repetitions. This is needed to make the program terminate
-            left.advance_to(repetitions as u32);
-            right.advance_to(repetitions as u32);
-            let end = Instant::now();
-            let elapsed = end - start;
-            println!(
-                "Time to feed the input to the dataflow graph: {:?}",
-                elapsed
-            );
-        } else {
-            left.advance_to(repetitions as u32);
-            right.advance_to(repetitions as u32);
-        }
+        // Push data into the dataflow graph. Each worker will read some of the lines of the input
+        info!("Reading data files:\n\t{:?}\n\t{:?}", left_path, right_path);
+        let start = Instant::now();
+        let left_path = left_path.clone();
+        let right_path = right_path.clone();
+        ReadDataFile::from_file_partially(
+            &left_path.into(),
+            |l| l % peers == index as u64,
+            |c, v| left.send((c, v)),
+        );
+        ReadDataFile::from_file_partially(
+            &right_path.into(),
+            |l| l % peers == index as u64,
+            |c, v| right.send((c, v)),
+        );
+        // Explicitly state that the input will not feed times smaller than the number of
+        // repetitions. This is needed to make the program terminate
+        left.advance_to(repetitions as u32);
+        right.advance_to(repetitions as u32);
+        let end = Instant::now();
+        let elapsed = end - start;
+        println!(
+            "Time to feed the input to the dataflow graph: {:?}",
+            elapsed
+        );
         worker.step_while(|| probe.less_than(&(repetitions as u32)));
     })
     .unwrap();
