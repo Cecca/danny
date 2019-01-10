@@ -769,8 +769,8 @@ where
         let center = center.pair_route(workers as u8).approximate_distinct();
 
         let mut left_stash = HashMap::new();
-        let mut center_stash = HashMap::new();
         let mut right_stash = HashMap::new();
+        let mut center_stash: Vec<((u8, u8), (K, K))> = Vec::new();
 
         left.ternary_frontier(
             &center,
@@ -782,75 +782,53 @@ where
             move |_, _| {
                 move |left_in, center_in, right_in, output| {
                     left_in.for_each(|t, data| {
-                        let entry = left_stash.entry(t.retain()).or_insert(HashMap::new());
                         let mut data = data.replace(Vec::new());
                         for (mat_idx, k, v) in data.drain(..) {
-                            entry.entry(mat_idx).or_insert(HashMap::new()).insert(k, v);
+                            left_stash
+                                .entry(mat_idx)
+                                .or_insert(HashMap::new())
+                                .insert(k, v);
+                        }
+                    });
+
+                    right_in.for_each(|t, data| {
+                        let mut data = data.replace(Vec::new());
+                        for (mat_idx, k, v) in data.drain(..) {
+                            right_stash
+                                .entry(mat_idx)
+                                .or_insert(HashMap::new())
+                                .insert(k, v);
                         }
                     });
 
                     center_in.for_each(|t, data| {
                         let mut data = data.replace(Vec::new());
-                        let entry = center_stash.entry(t.retain()).or_insert(HashMap::new());
-                        for (mat_idx, pair) in data.drain(..) {
-                            entry.entry(mat_idx).or_insert(HashSet::new()).insert(pair);
-                        }
-                    });
-
-                    right_in.for_each(|t, data| {
-                        let entry = right_stash.entry(t.retain()).or_insert(HashMap::new());
-                        let mut data = data.replace(Vec::new());
-                        for (mat_idx, k, v) in data.drain(..) {
-                            entry.entry(mat_idx).or_insert(HashMap::new()).insert(k, v);
-                        }
-                    });
-
-                    let frontiers = &[
-                        left_in.frontier(),
-                        right_in.frontier(),
-                        center_in.frontier(),
-                    ];
-
-                    for (time, left_blocks) in left_stash.iter_mut() {
-                        if frontiers.iter().all(|f| !f.less_equal(time)) {
-                            println!("Start three way join for time {:?}", time.time());
-                            let mut session = output.session(time);
-                            let right_blocks = right_stash
-                                .remove(time)
-                                .expect("no right vectors at this time");
-                            let mut center_blocks = center_stash
-                                .remove(time)
-                                .expect("no center blocks at this time");
-                            for (mat_idx, mut pairs) in center_blocks.drain() {
-                                for (lk, rk) in pairs.drain() {
-                                    let lv = left_blocks
-                                        .get(&mat_idx)
-                                        .expect("Should have this block")
-                                        .get(&lk)
-                                        .expect(&format!(
-                                            "Should have this left vector {:?} (block {:?})",
-                                            lk, mat_idx
-                                        ));
-                                    let rv = right_blocks
-                                        .get(&mat_idx)
-                                        .expect("Should have this block")
-                                        .get(&rk)
-                                        .expect(&format!(
-                                            "Should have this right vector {:?} (block {:?})",
-                                            lk, mat_idx
-                                        ));
-                                    if filter(lv, rv) {
-                                        session.give((lk, rk));
-                                    }
+                        let mut session = output.session(&t);
+                        for (mat_idx, (lk, rk)) in data.drain(..) {
+                            if left_stash.contains_key(&mat_idx)
+                                && left_stash.get(&mat_idx).unwrap().contains_key(&lk)
+                                && right_stash.contains_key(&mat_idx)
+                                && right_stash.get(&mat_idx).unwrap().contains_key(&rk)
+                            {
+                                let lv = left_stash
+                                    .get(&mat_idx)
+                                    .expect("Missing this left block")
+                                    .get(&lk)
+                                    .expect("Missing this left vector");
+                                let rv = right_stash
+                                    .get(&mat_idx)
+                                    .expect("Missing this right block")
+                                    .get(&rk)
+                                    .expect("Missing this right vector");
+                                if filter(&lv, &rv) {
+                                    session.give((lk, rk));
                                 }
+                            } else {
+                                info!("Pushing into the center stash");
+                                center_stash.push((mat_idx, (lk, rk)));
                             }
-                            left_blocks.clear();
                         }
-                    }
-
-                    // Cleanup of right and center was done in the above loop. Now we should remove
-                    // entries of the left stash with no more elements
-                    left_stash.retain(|_, entry| !entry.is_empty());
+                    });
                 }
             },
         )
