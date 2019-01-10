@@ -372,7 +372,7 @@ where
         let mut left_buckets = HashMap::new();
         let mut right_buckets = HashMap::new();
 
-        let item_count = 1 << 20;
+        let item_count = 1 << 28;
         let fpp = 0.01;
         let fingerprint = 8;
         let mut filter =
@@ -419,7 +419,7 @@ where
                             let mut session = output.session(&time);
                             // We got all data for the repetition at `time`
                             if let Some(right_buckets) = right_buckets.get_mut(time) {
-                                info!("Start to generate candidates from bucket");
+                                debug!("Start to generate candidates from bucket");
                                 let mut cnt = 0;
                                 let mut potential = 0;
                                 for (h, left_keys) in left_buckets.drain() {
@@ -431,6 +431,9 @@ where
                                                 let out_pair = (kl.clone(), kr.clone());
                                                 if !filter.contains(&out_pair) {
                                                     filter.insert(&out_pair);
+                                                    if filter.is_nearly_full() {
+                                                        warn!("Cockoo filter for bucketing is nearly full!");
+                                                    }
                                                     session.give(out_pair);
                                                     cnt += 1;
                                                 }
@@ -438,7 +441,7 @@ where
                                         }
                                     }
                                 }
-                                info!(
+                                debug!(
                                     "[{:?}] Output {} candidates (out of {} potential ones, discarded {})",
                                     time.time(),
                                     cnt,

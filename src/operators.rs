@@ -771,6 +771,10 @@ where
         let mut left_stash = HashMap::new();
         let mut right_stash = HashMap::new();
         let mut center_stash: Vec<((u8, u8), (K, K))> = Vec::new();
+        let mut left_complete = false;
+        let mut right_complete = false;
+        let mut left_timestamp = None;
+        let mut right_timestamp = None;
 
         left.ternary_frontier(
             &center,
@@ -782,6 +786,7 @@ where
             move |_, _| {
                 move |left_in, center_in, right_in, output| {
                     left_in.for_each(|t, data| {
+                        left_timestamp.get_or_insert(t.retain());
                         let mut data = data.replace(Vec::new());
                         for (mat_idx, k, v) in data.drain(..) {
                             left_stash
@@ -792,6 +797,7 @@ where
                     });
 
                     right_in.for_each(|t, data| {
+                        right_timestamp.get_or_insert(t.retain());
                         let mut data = data.replace(Vec::new());
                         for (mat_idx, k, v) in data.drain(..) {
                             right_stash
@@ -800,6 +806,50 @@ where
                                 .insert(k, v);
                         }
                     });
+
+                    if !left_complete {
+                        if left_timestamp.is_some() {
+                            let t = left_timestamp.clone().unwrap();
+                            if !left_in.frontier().less_equal(&t) {
+                                left_complete = true;
+                                info!("Complete shuffling left vectors");
+                            }
+                        }
+                    }
+
+                    if !right_complete {
+                        if right_timestamp.is_some() {
+                            let t = right_timestamp.clone().unwrap();
+                            if !right_in.frontier().less_equal(&t) {
+                                right_complete = true;
+                                info!("Complete shuffling right vectors");
+                            }
+                        }
+                    }
+
+                    if left_complete && right_complete && left_timestamp.is_some() {
+                        info!("Emptying the center stash ({} pairs)", center_stash.len());
+                        let t = left_timestamp.clone().unwrap();
+                        let mut session = output.session(&t);
+                        for (mat_idx, (lk, rk)) in center_stash.drain(..) {
+                            let lv = left_stash
+                                .get(&mat_idx)
+                                .expect("Missing this left block")
+                                .get(&lk)
+                                .expect("Missing this left vector");
+                            let rv = right_stash
+                                .get(&mat_idx)
+                                .expect("Missing this right block")
+                                .get(&rk)
+                                .expect("Missing this right vector");
+                            if filter(&lv, &rv) {
+                                session.give((lk, rk));
+                            }
+                        }
+                        // Clear timestamps, so to allow completion
+                        left_timestamp.take();
+                        right_timestamp.take();
+                    }
 
                     center_in.for_each(|t, data| {
                         let mut data = data.replace(Vec::new());
@@ -849,12 +899,12 @@ where
     D: Data + Hash,
 {
     fn approximate_distinct(&self) -> Stream<G, D> {
-        let item_count = 1 << 20;
+        let item_count = 1 << 28;
         let fpp = 0.01;
         let fingerprint = 8;
         let mut filter =
             CuckooFilter::<D>::from_fingerprint_bit_count(item_count, fpp, fingerprint);
-        info!(
+        debug!(
             "Initialized Cockoo filter of {} bytes",
             std::mem::size_of_val(&filter)
         );
@@ -865,6 +915,9 @@ where
                     for v in data.drain(..) {
                         if !filter.contains(&v) {
                             filter.insert(&v);
+                            if filter.is_nearly_full() {
+                                warn!("Cockoo filter for bucketing is nearly full!");
+                            }
                             output.session(&t).give(v);
                         }
                     }
