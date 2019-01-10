@@ -13,6 +13,7 @@ extern crate clap;
 extern crate abomonation;
 extern crate core;
 extern crate rand;
+extern crate rand_xorshift;
 extern crate smallbitvec;
 extern crate timely;
 
@@ -80,7 +81,7 @@ fn main() {
     // Build timely context
     let timely_builder = config.get_timely_builder();
     println!("Starting...");
-    let mut rng = StdRng::seed_from_u64(123);
+    let mut rng = config.get_random_generator(0);
 
     let count = match algorithm.as_ref() {
         "fixed-lsh" => match measure.as_ref() {

@@ -1,4 +1,8 @@
 use core::any::Any;
+use rand::rngs::StdRng;
+use rand::RngCore;
+use rand::SeedableRng;
+use rand_xorshift::XorShiftRng;
 use timely::communication::allocator::generic::GenericBuilder;
 use timely::communication::initialize::Configuration as TimelyConfig;
 
@@ -12,6 +16,8 @@ pub struct Config {
     hosts: Vec<String>,
     #[serde(default = "Config::default_report")]
     report: bool,
+    #[serde(default = "Config::default_seed")]
+    seed: u64,
 }
 
 #[allow(dead_code)]
@@ -32,6 +38,10 @@ impl Config {
             Ok(config) => config,
             Err(error) => panic!("{:#?}", error),
         }
+    }
+
+    fn default_seed() -> u64 {
+        98768473876234
     }
 
     fn default_threads() -> usize {
@@ -83,5 +93,14 @@ impl Config {
             Ok(pair) => pair,
             Err(msg) => panic!("Error while configuring timely: {}", msg),
         }
+    }
+
+    pub fn get_random_generator(&self, instance: usize) -> XorShiftRng {
+        let mut seeder = StdRng::seed_from_u64(self.seed);
+        let mut seed = seeder.next_u64();
+        for _ in 0..instance {
+            seed = seeder.next_u64();
+        }
+        XorShiftRng::seed_from_u64(seed)
     }
 }
