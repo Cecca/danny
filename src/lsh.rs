@@ -439,7 +439,8 @@ where
                                     }
                                 }
                                 info!(
-                                    "Output {} candidates (out of {} potential ones, discarded {})",
+                                    "[{:?}] Output {} candidates (out of {} potential ones, discarded {})",
+                                    time.time(),
                                     cnt,
                                     potential,
                                     potential - cnt

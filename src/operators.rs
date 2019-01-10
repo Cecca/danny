@@ -813,6 +813,7 @@ where
 
                     for (time, left_blocks) in left_stash.iter_mut() {
                         if frontiers.iter().all(|f| !f.less_equal(time)) {
+                            println!("Start three way join for time {:?}", time.time());
                             let mut session = output.session(time);
                             let right_blocks = right_stash
                                 .remove(time)
