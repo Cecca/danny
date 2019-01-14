@@ -422,7 +422,7 @@ where
     K: Data + Abomonation + Sync + Send + Clone + Route,
     G: Scope,
 {
-    fn pair_route(&self, matrix_side: u8) -> Stream<G, ((u8, u8), (K, K))>;
+    fn pair_route(&self, matrix_description: MatrixDescription) -> Stream<G, ((u8, u8), (K, K))>;
 }
 
 impl<G, K> PairRoute<G, K> for Stream<G, (K, K)>
@@ -430,13 +430,13 @@ where
     K: Data + Abomonation + Sync + Send + Clone + Route,
     G: Scope,
 {
-    fn pair_route(&self, matrix_side: u8) -> Stream<G, ((u8, u8), (K, K))> {
+    fn pair_route(&self, matrix_description: MatrixDescription) -> Stream<G, ((u8, u8), (K, K))> {
         self.map(move |pair| {
-            let row = pair.0.route() % matrix_side as u64;
-            let col = pair.1.route() % matrix_side as u64;
+            let row = pair.0.route() % matrix_description.rows as u64;
+            let col = pair.1.route() % matrix_description.columns as u64;
             ((row as u8, col as u8), pair)
         })
-        .exchange(move |tuple| row_major((tuple.0).0, (tuple.0).1, matrix_side))
+        .exchange(move |tuple| matrix_description.row_major((tuple.0).0, (tuple.0).1))
     }
 }
 
@@ -444,6 +444,30 @@ where
 pub enum MatrixDirection {
     Columns,
     Rows,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct MatrixDescription {
+    rows: u8,
+    columns: u8,
+}
+
+impl MatrixDescription {
+    fn for_workers(num_workers: usize) -> MatrixDescription {
+        let mut r: usize = (num_workers as f64).sqrt().floor() as usize;
+        loop {
+            if num_workers % r == 0 {
+                let rows = r as u8;
+                let columns = (num_workers / rows as usize) as u8;
+                return MatrixDescription { rows, columns };
+            }
+            r -= 1;
+        }
+    }
+
+    fn row_major(&self, i: u8, j: u8) -> u64 {
+        i as u64 * self.rows as u64 + j as u64
+    }
 }
 
 pub trait MatrixDistribute<G, T, K, D>
@@ -456,7 +480,7 @@ where
     fn matrix_distribute(
         &self,
         direction: MatrixDirection,
-        matrix_side: u8,
+        matrix_description: MatrixDescription,
     ) -> Stream<G, ((u8, u8), K, D)>;
 }
 
@@ -470,9 +494,8 @@ where
     fn matrix_distribute(
         &self,
         direction: MatrixDirection,
-        matrix_side: u8,
+        matrix_description: MatrixDescription,
     ) -> Stream<G, ((u8, u8), K, D)> {
-        // TODO: maybe scatter the communication in multiple rounds
         self.unary(PipelinePact, "matrix distribute", move |_, _| {
             move |input, output| {
                 input.for_each(|t, data| {
@@ -482,14 +505,14 @@ where
                     for (k, v) in data.drain(..) {
                         match direction {
                             MatrixDirection::Rows => {
-                                let col = (k.route() % matrix_side as u64) as u8;
-                                for row in 0..matrix_side {
+                                let col = (k.route() % matrix_description.columns as u64) as u8;
+                                for row in 0..matrix_description.rows {
                                     session.give(((row, col), k.clone(), v.clone()));
                                 }
                             }
                             MatrixDirection::Columns => {
-                                let row = (k.route() % matrix_side as u64) as u8;
-                                for col in 0..matrix_side {
+                                let row = (k.route() % matrix_description.rows as u64) as u8;
+                                for col in 0..matrix_description.columns {
                                     session.give(((row, col), k.clone(), v.clone()));
                                 }
                             }
@@ -498,7 +521,7 @@ where
                 });
             }
         })
-        .exchange(move |tuple| row_major((tuple.0).0, (tuple.0).1, matrix_side))
+        .exchange(move |tuple| matrix_description.row_major((tuple.0).0, (tuple.0).1))
     }
 }
 
@@ -538,10 +561,13 @@ where
         P: Fn(&D1, &D2) -> bool + 'static,
     {
         // Round to the next power of two
-        let num_replicas = (workers as f64).sqrt().ceil() as u8;
-        info!("Each vector will be replicated {} times", num_replicas);
-        let left_replicas = self.matrix_distribute(MatrixDirection::Columns, num_replicas);
-        let right_replicas = right.matrix_distribute(MatrixDirection::Rows, num_replicas);
+        let matrix = MatrixDescription::for_workers(workers as usize);
+        info!(
+            "Each vector will be replicated on a {} x {} matrix",
+            matrix.rows, matrix.columns
+        );
+        let left_replicas = self.matrix_distribute(MatrixDirection::Rows, matrix);
+        let right_replicas = right.matrix_distribute(MatrixDirection::Columns, matrix);
 
         let mut left_stash = HashMap::new();
         let mut right_stash = HashMap::new();
@@ -764,9 +790,10 @@ where
         D2: Data + Abomonation + Sync + Send + Clone + Debug,
         F: Fn(&D1, &D2) -> bool + 'static,
     {
-        let left = self.matrix_distribute(MatrixDirection::Columns, workers as u8);
-        let right = right.matrix_distribute(MatrixDirection::Rows, workers as u8);
-        let center = center.pair_route(workers as u8).approximate_distinct();
+        let matrix = MatrixDescription::for_workers(workers as usize);
+        let left = self.matrix_distribute(MatrixDirection::Rows, matrix);
+        let right = right.matrix_distribute(MatrixDirection::Columns, matrix);
+        let center = center.pair_route(matrix).approximate_distinct();
 
         let mut left_stash = HashMap::new();
         let mut right_stash = HashMap::new();
@@ -1068,8 +1095,9 @@ mod tests {
         assert_eq!(check, expected);
     }
 
-    fn test_matrix_distribute(threads: usize, matrix_side: u8, num_elements: u32) {
+    fn test_matrix_distribute(threads: usize, num_workers: u8, num_elements: u32) {
         // Check that elemens are distributed equally
+        let matrix_description = MatrixDescription::for_workers(num_workers as usize);
         let conf = timely::Configuration::Process(threads).try_build().unwrap();
         let (send, recv) = mpsc::channel();
         let send = Arc::new(Mutex::new(send));
@@ -1080,8 +1108,10 @@ mod tests {
                 let mut probe = ProbeHandle::new();
                 let (lin, left) = scope.new_input();
                 let (rin, right) = scope.new_input();
-                let left_distribute = left.matrix_distribute(MatrixDirection::Columns, matrix_side);
-                let right_distribute = right.matrix_distribute(MatrixDirection::Rows, matrix_side);
+                let left_distribute =
+                    left.matrix_distribute(MatrixDirection::Rows, matrix_description);
+                let right_distribute =
+                    right.matrix_distribute(MatrixDirection::Columns, matrix_description);
 
                 left_distribute
                     .concat(&right_distribute)
@@ -1114,8 +1144,8 @@ mod tests {
                 _ => (),
             }
         }
-        for i in 0..matrix_side {
-            for j in 0..matrix_side {
+        for i in 0..matrix_description.rows {
+            for j in 0..matrix_description.columns {
                 print!(
                     " {:4} ",
                     check
@@ -1130,8 +1160,8 @@ mod tests {
 
         let first = check.get(&(0, 0)).unwrap();
         let mut count = 0;
-        for i in 0..matrix_side {
-            for j in 0..matrix_side {
+        for i in 0..matrix_description.rows {
+            for j in 0..matrix_description.columns {
                 let opt_cnt = check.get(&(i, j));
                 assert!(opt_cnt.is_some());
                 let cnt = opt_cnt.unwrap();
@@ -1139,7 +1169,11 @@ mod tests {
                 count += cnt;
             }
         }
-        assert_eq!(count, num_elements * 2 * matrix_side as u32);
+        assert_eq!(
+            count,
+            num_elements
+                * (matrix_description.rows as u32 + matrix_description.columns as u32) as u32
+        );
     }
 
     #[test]
@@ -1149,6 +1183,20 @@ mod tests {
         test_matrix_distribute(1, 4, 4);
         test_matrix_distribute(1, 4, 1000);
         test_matrix_distribute(4, 4, 1000);
+        test_matrix_distribute(4, 40, 4000);
+    }
+
+    #[test]
+    fn test_matrix_description_builder() {
+        let m = MatrixDescription::for_workers(16);
+        assert_eq!(m.rows, 4);
+        assert_eq!(m.columns, 4);
+        let m = MatrixDescription::for_workers(32);
+        assert_eq!(m.rows, 4);
+        assert_eq!(m.columns, 8);
+        let m = MatrixDescription::for_workers(40);
+        assert_eq!(m.rows, 5);
+        assert_eq!(m.columns, 8);
     }
 
 }
