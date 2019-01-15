@@ -448,12 +448,12 @@ pub enum MatrixDirection {
 
 #[derive(Clone, Copy, Debug)]
 pub struct MatrixDescription {
-    rows: u8,
-    columns: u8,
+    pub rows: u8,
+    pub columns: u8,
 }
 
 impl MatrixDescription {
-    fn for_workers(num_workers: usize) -> MatrixDescription {
+    pub fn for_workers(num_workers: usize) -> MatrixDescription {
         let mut r: usize = (num_workers as f64).sqrt().floor() as usize;
         loop {
             if num_workers % r == 0 {
@@ -465,8 +465,14 @@ impl MatrixDescription {
         }
     }
 
-    fn row_major(&self, i: u8, j: u8) -> u64 {
-        i as u64 * self.rows as u64 + j as u64
+    pub fn row_major(&self, i: u8, j: u8) -> u64 {
+        i as u64 * self.columns as u64 + j as u64
+    }
+
+    pub fn row_major_to_pair(&self, idx: u64) -> (u8, u8) {
+        let i = idx / self.columns as u64;
+        let j = idx % self.columns as u64;
+        (i as u8, j as u8)
     }
 }
 
@@ -1197,6 +1203,18 @@ mod tests {
         let m = MatrixDescription::for_workers(40);
         assert_eq!(m.rows, 5);
         assert_eq!(m.columns, 8);
+    }
+
+    #[test]
+    fn test_index_conversions() {
+        let matrix = MatrixDescription::for_workers(40);
+        println!("Initialized matrix {:?}", matrix);
+        for i in 0..matrix.rows {
+            println!("i={}", i);
+            for j in 0..matrix.columns {
+                assert_eq!((i, j), matrix.row_major_to_pair(matrix.row_major(i, j)));
+            }
+        }
     }
 
 }

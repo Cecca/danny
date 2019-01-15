@@ -103,4 +103,16 @@ impl Config {
         }
         XorShiftRng::seed_from_u64(seed)
     }
+
+    pub fn get_threads(&self) -> usize {
+        self.threads
+    }
+
+    pub fn get_total_workers(&self) -> usize {
+        if self.hosts.len() == 0 {
+            self.threads
+        } else {
+            self.hosts.len() * self.threads
+        }
+    }
 }

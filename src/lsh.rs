@@ -1,4 +1,6 @@
+use crate::config::Config;
 use crate::io::ReadDataFile;
+use crate::logging::ToSpaceString;
 use crate::operators::*;
 use abomonation::Abomonation;
 use core::any::Any;
@@ -16,7 +18,9 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::num::Wrapping as w;
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::channel;
+use std::sync::{Arc, Mutex, RwLock};
+use std::thread;
 use std::time::Instant;
 use timely::communication::allocator::generic::GenericBuilder;
 use timely::dataflow::channels::pact::{Exchange as ExchangePact, Pipeline};
@@ -271,7 +275,6 @@ where
         let hash_coll = hash_coll.clone();
         let mut stash: Vec<Option<(Capability<G::Timestamp>, Vec<(K, D)>)>> =
             vec![None; repetitions + 1]; // The last cell is always None: it is just to simplify the code below
-        info!("Initial stash size {:?} ", stash.len());
         self.unary(Pipeline, "hash", move |_, _| {
             move |input, output| {
                 let hash_coll = hash_coll.clone();
@@ -518,7 +521,7 @@ pub fn fixed_param_lsh<D, F, H, O>(
     right_path: &String,
     hash_fn: LSHCollection<H, O>,
     sim_pred: F,
-    timely_builder: (Vec<GenericBuilder>, Box<dyn Any + 'static>),
+    config: Config,
 ) -> usize
 where
     D: ReadDataFile + Data + Sync + Send + Clone + Abomonation + Debug + HeapSizeOf,
@@ -526,31 +529,134 @@ where
     H: LSHFunction<Input = D, Output = O> + Sync + Send + Clone + 'static,
     O: Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash,
 {
+    let timely_builder = config.get_timely_builder();
     // This channel is used to get the results
-    let (output_send_ch, recv) = ::std::sync::mpsc::channel();
+    let (output_send_ch, recv) = channel();
     let output_send_ch = Arc::new(Mutex::new(output_send_ch));
 
     let left_path = left_path.clone();
     let right_path = right_path.clone();
+    let left_path_main = left_path.clone();
+    let right_path_main = right_path.clone();
     let repetitions = hash_fn.repetitions();
+
+    // These two maps hold the vectors that need to be accessed by all threads in this machine.
+    let global_left_write: Arc<RwLock<HashMap<u64, D>>> = Arc::new(RwLock::new(HashMap::new()));
+    let global_right_write: Arc<RwLock<HashMap<u64, D>>> = Arc::new(RwLock::new(HashMap::new()));
+    let global_left_read = global_left_write.clone();
+    let global_right_read = global_right_write.clone();
+
+    let (send_coords, recv_coords) = channel();
+    let send_coords = Arc::new(Mutex::new(send_coords));
+
+    let worker_threads = config.get_threads();
+    let waiting_threads = worker_threads + 1;
+    let io_barrier = Arc::new(std::sync::Barrier::new(waiting_threads));
+    let io_barrier_reader = io_barrier.clone();
+    debug!(
+        "Cloned the barrier, which waits on {} threads",
+        waiting_threads
+    );
+
+    // Read the coordinates, to load in memory the relevant sections of the files
+    let reader_handle = thread::spawn(move || {
+        let start = Instant::now();
+        let matrix_desc = MatrixDescription::for_workers(config.get_total_workers());
+        info!(
+            "Data partitioned according to {} x {}",
+            matrix_desc.rows, matrix_desc.columns
+        );
+        let mut row_set = HashSet::new();
+        let mut column_set = HashSet::new();
+        let mut global_left = global_left_write.write().unwrap();
+        let mut global_right = global_right_write.write().unwrap();
+        debug!("Getting the pairs on the main thread");
+        for _ in 0..worker_threads {
+            // We know we will receive exactly that many messages
+            let (i, j) = recv_coords.recv().expect("Problem receiving coordinate");
+            row_set.insert(i);
+            column_set.insert(j);
+        }
+        info!("This machine is responsible for rows: {:?}", row_set);
+        info!("This machine is responsible for columns: {:?}", column_set);
+        ReadDataFile::from_file_partially(
+            &left_path_main.into(),
+            |l| row_set.contains(&((l % matrix_desc.rows as u64) as u8)),
+            |c, v| {
+                global_left.insert(c, v);
+            },
+        );
+        ReadDataFile::from_file_partially(
+            &right_path_main.into(),
+            |l| column_set.contains(&((l % matrix_desc.columns as u64) as u8)),
+            |c, v| {
+                global_right.insert(c, v);
+            },
+        );
+        let end = Instant::now();
+        let elapsed = end - start;
+        info!(
+            "Loaded {} left vectors ({} bytes) and {} right vectors ({} bytes) (in {:?})",
+            global_left.len(),
+            global_left.heap_size_of_children().to_space_string(),
+            global_right.len(),
+            global_right.heap_size_of_children().to_space_string(),
+            elapsed
+        );
+
+        debug!("Reader is calling wait on the main barrier");
+        io_barrier_reader.wait();
+        debug!("After reader barrier!");
+    });
 
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |worker| {
         let output_send_ch = output_send_ch.lock().unwrap().clone();
         let sim_pred = sim_pred.clone();
         let index = worker.index();
         let peers = worker.peers() as u64;
+
+        let send_coords = send_coords.lock().unwrap().clone();
+        let matrix_coords =
+            MatrixDescription::for_workers(peers as usize).row_major_to_pair(index as u64);
+        debug!("Sending coordinates {:?}", matrix_coords);
+        send_coords
+            .send(matrix_coords)
+            .expect("Error while pushing into coordinates channel");
+        debug!("Waiting for input to be loaded");
+        io_barrier.wait();
+        debug!("After worker barrier!");
+
+        let global_left_read = global_left_read.clone();
+        let global_right_read = global_right_read.clone();
+
         let hash_fn = hash_fn.clone();
-        info!("Started worker {}/{}", index, peers);
+        debug!("Started worker {}/{}", index, peers);
         let (mut left, mut right, probe) = worker.dataflow(move |scope| {
+            // TODO: check if these two clones are harmful
+            let global_left = global_left_read.read().unwrap().clone();
+            let global_right = global_right_read.read().unwrap().clone();
+
             let (left_in, left_stream) = scope.new_input::<(u64, D)>();
             let (right_in, right_stream) = scope.new_input::<(u64, D)>();
             let mut probe = ProbeHandle::new();
             let hash_fn = hash_fn;
 
-            let candidate_pairs = left_stream.colliding_pairs(&right_stream, &hash_fn);
-
-            left_stream
-                .three_way_join(&candidate_pairs, &right_stream, sim_pred, peers)
+            let matrix = MatrixDescription::for_workers(peers as usize);
+            let candidate_pairs = left_stream
+                .colliding_pairs(&right_stream, &hash_fn)
+                .pair_route(matrix)
+                .approximate_distinct();
+            candidate_pairs
+                .map(|pair| pair.1)
+                .filter(move |(lk, rk)| {
+                    let lv = global_left
+                        .get(lk)
+                        .expect(&format!("Missing vector {} from global left", lk));
+                    let rv = global_right
+                        .get(rk)
+                        .expect(&format!("Missing vector {} from global right", lk));
+                    sim_pred(lv, rv)
+                })
                 .count()
                 .exchange(|_| 0)
                 .probe_with(&mut probe)
@@ -560,7 +666,7 @@ where
         });
 
         // Push data into the dataflow graph. Each worker will read some of the lines of the input
-        info!("Reading data files:\n\t{:?}\n\t{:?}", left_path, right_path);
+        debug!("Reading data files:\n\t{:?}\n\t{:?}", left_path, right_path);
         let start = Instant::now();
         let left_path = left_path.clone();
         let right_path = right_path.clone();
@@ -580,13 +686,17 @@ where
         right.advance_to(repetitions as u32);
         let end = Instant::now();
         let elapsed = end - start;
-        println!(
+        info!(
             "Time to feed the input to the dataflow graph: {:?}",
             elapsed
         );
         worker.step_while(|| probe.less_than(&(repetitions as u32)));
     })
     .unwrap();
+
+    reader_handle
+        .join()
+        .expect("Problem joining the reader thread");
 
     // From `recv` we get an entry for each timestamp, containing a one-element vector with the
     // count of output pairs for a given timestamp. We sum across all the timestamps, so we need to

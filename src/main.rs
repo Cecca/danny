@@ -104,7 +104,7 @@ fn main() {
                     &right_path,
                     lsh::Hyperplane::collection(k, repetitions, dim, &mut rng),
                     move |a, b| Cosine::cosine(a, b) >= threshold,
-                    timely_builder,
+                    config,
                 )
             }
             _ => unimplemented!("Unknown measure {}", measure),
