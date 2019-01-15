@@ -2,6 +2,7 @@ use crate::io::ReadDataFile;
 use crate::operators::*;
 use abomonation::Abomonation;
 use core::any::Any;
+use heapsize::HeapSizeOf;
 use measure::InnerProduct;
 use operators::{Duplicate, Route};
 use probabilistic_collections::cuckoo::CuckooFilter;
@@ -520,7 +521,7 @@ pub fn fixed_param_lsh<D, F, H, O>(
     timely_builder: (Vec<GenericBuilder>, Box<dyn Any + 'static>),
 ) -> usize
 where
-    D: ReadDataFile + Data + Sync + Send + Clone + Abomonation + Debug,
+    D: ReadDataFile + Data + Sync + Send + Clone + Abomonation + Debug + HeapSizeOf,
     F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
     H: LSHFunction<Input = D, Output = O> + Sync + Send + Clone + 'static,
     O: Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash,

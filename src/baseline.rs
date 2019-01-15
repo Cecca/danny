@@ -2,6 +2,7 @@ use crate::io::ReadDataFile;
 use crate::operators::*;
 use abomonation::Abomonation;
 use core::any::Any;
+use heapsize::HeapSizeOf;
 use std::clone::Clone;
 use std::fmt::Debug;
 use std::path::PathBuf;
@@ -18,13 +19,20 @@ use timely::Data;
 #[allow(dead_code)]
 pub fn sequential<T, F>(thresh: f64, left_path: &String, right_path: &String, sim_fn: F) -> usize
 where
-    T: ReadDataFile,
+    T: ReadDataFile + HeapSizeOf,
     F: Fn(&T, &T) -> f64,
 {
     let mut left = Vec::new();
     let mut right = Vec::new();
     ReadDataFile::from_file(&left_path.into(), |v| left.push(v));
     ReadDataFile::from_file(&right_path.into(), |v| right.push(v));
+    println!(
+        "Loaded data:\n  left: {} ({} bytes)\n  right: {} ({} bytes)",
+        left.len(),
+        left.heap_size_of_children(),
+        right.len(),
+        right.heap_size_of_children()
+    );
 
     let mut sim_cnt = 0;
     for l in left.iter() {

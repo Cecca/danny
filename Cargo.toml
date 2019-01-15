@@ -18,4 +18,5 @@ smallbitvec = "2.3"
 rand = "0.6"
 rand_xorshift = "0.1.0"
 probabilistic-collections = "0.5"
+heapsize = "0.4"
 
