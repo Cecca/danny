@@ -103,6 +103,21 @@ fn main() {
                     config,
                 )
             }
+            "jaccard" => {
+                let k: usize = matches
+                    .value_of("K")
+                    .unwrap()
+                    .parse()
+                    .expect("k should be an unsigned integer");
+                let repetitions = lsh::MinHash::repetitions_at_range(threshold, k);
+                lsh::fixed_param_lsh::<BagOfWords, _, _, _>(
+                    &left_path,
+                    &right_path,
+                    lsh::MinHash::collection(k, repetitions, &mut rng),
+                    move |a, b| Jaccard::jaccard(a, b) >= threshold,
+                    config,
+                )
+            }
             _ => unimplemented!("Unknown measure {}", measure),
         },
         "all-2-all" => match measure.as_ref() {

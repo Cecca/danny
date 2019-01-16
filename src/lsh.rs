@@ -137,6 +137,7 @@ impl LSHFunction for Hyperplane {
 }
 
 /// Produces 64 bit hashes of 32 bits values
+#[derive(Clone)]
 struct TabulatedHasher {
     table0: [u64; 256],
     table1: [u64; 256],
@@ -183,7 +184,8 @@ impl TabulatedHasher {
     }
 }
 
-struct MinHash {
+#[derive(Clone)]
+pub struct MinHash {
     k: usize,
     hashers: Vec<TabulatedHasher>,
     coeffs: Vec<u64>,
@@ -202,6 +204,17 @@ impl MinHash {
             coeffs.push(uniform.sample(rng));
         }
         MinHash { k, hashers, coeffs }
+    }
+
+    pub fn collection<R>(k: usize, repetitions: usize, rng: &mut R) -> LSHCollection<MinHash, u32>
+    where
+        R: Rng + ?Sized,
+    {
+        let mut functions = Vec::with_capacity(repetitions);
+        for _ in 0..repetitions {
+            functions.push(MinHash::new(k, rng));
+        }
+        LSHCollection { functions }
     }
 }
 
