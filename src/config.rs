@@ -116,3 +116,72 @@ impl Config {
         }
     }
 }
+
+pub struct CmdlineConfig {
+    pub measure: String,
+    pub threshold: f64,
+    pub left_path: String,
+    pub right_path: String,
+    pub algorithm: String,
+    pub k: Option<usize>,
+    pub dimension: Option<usize>,
+}
+
+impl CmdlineConfig {
+    pub fn get() -> CmdlineConfig {
+        let matches = clap_app!(danny =>
+            (version: "0.1")
+            (author: "Matteo Ceccarello <mcec@itu.dk>")
+            (about: format!("Distributed Approximate Near Neighbours, Yo!\n\n{}", Config::help_str()).as_ref())
+            (@arg ALGORITHM: -a --algorithm +takes_value "The algorithm to be used: (fixed-lsh, all-2-all)")
+            (@arg MEASURE: -m --measure +required +takes_value "The similarity measure to be used")
+            (@arg K: -k +takes_value "The number of concatenations of the hash function")
+            (@arg THRESHOLD: -r --range +required +takes_value "The similarity threshold")
+            (@arg DIMENSION: --dimension --dim +takes_value "The dimension of the space, required for Hyperplane LSH")
+            (@arg LEFT: +required "Path to the left hand side of the join")
+            (@arg RIGHT: +required "Path to the right hand side of the join")
+        )
+        .get_matches();
+
+        let measure = matches
+            .value_of("MEASURE")
+            .expect("measure is a required argument")
+            .to_owned();
+        let threshold: f64 = matches
+            .value_of("THRESHOLD")
+            .expect("range is a required argument")
+            .parse()
+            .expect("Cannot convert the threshold into a f64");
+        let left_path = matches
+            .value_of("LEFT")
+            .expect("left is a required argument")
+            .to_owned();
+        let right_path = matches
+            .value_of("RIGHT")
+            .expect("right is a required argument")
+            .to_owned();
+        let algorithm = matches
+            .value_of("ALGORITHM")
+            .unwrap_or("all-2-all")
+            .to_owned();
+        let k = matches.value_of("K").map(|k_str| {
+            k_str
+                .parse::<usize>()
+                .expect("k should be an unsigned integer")
+        });
+        let dimension = matches.value_of("DIMENSION").map(|k_str| {
+            k_str
+                .parse::<usize>()
+                .expect("The dimension should be usize")
+        });
+        CmdlineConfig {
+            measure,
+            threshold,
+            left_path,
+            right_path,
+            algorithm,
+            k,
+            dimension,
+        }
+    }
+}
