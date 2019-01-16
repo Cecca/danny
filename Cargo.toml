@@ -21,3 +21,5 @@ probabilistic-collections = "0.5"
 heapsize = "0.4"
 chrono = "0.4"
 
+[build-dependencies]
+vergen = "0.1"

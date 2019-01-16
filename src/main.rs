@@ -35,6 +35,9 @@ mod operators;
 /// which might be useful to understand their behaviour
 mod stats;
 mod types;
+mod version {
+    include!(concat!(env!("OUT_DIR"), "/version.rs"));
+}
 
 use crate::config::*;
 use crate::experiment::Experiment;

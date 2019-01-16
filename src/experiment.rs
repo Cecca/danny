@@ -1,4 +1,5 @@
 use crate::config::*;
+use crate::version;
 use chrono::prelude::*;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -31,7 +32,9 @@ impl Experiment {
             .tag("threshold", cmdline.threshold)
             .tag("left_path", cmdline.left_path.clone())
             .tag("right_path", cmdline.right_path.clone())
-            .tag("algorithm", cmdline.algorithm.clone());
+            .tag("algorithm", cmdline.algorithm.clone())
+            .tag("git_revision", version::short_sha())
+            .tag("git_commit_date", version::commit_date());
         let experiment = if cmdline.k.is_some() {
             experiment.tag("k", cmdline.k.unwrap())
         } else {
