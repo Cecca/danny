@@ -15,12 +15,6 @@ unsafe_abomonate!(VectorWithNorm: data, norm);
 impl Debug for VectorWithNorm {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "VectorWithNorm({})", self.norm)
-        // write!(
-        //     f,
-        //     "VectorWithNorm({}, {:?})",
-        //     self.norm,
-        //     self.data.iter().take(3)
-        // )
     }
 }
 

@@ -33,13 +33,9 @@ mod stats;
 mod types;
 
 use crate::config::Config;
-use crate::io::ReadDataFile;
 use crate::lsh::LSHFunction;
 use crate::measure::{Cosine, Jaccard};
 use crate::types::{BagOfWords, VectorWithNorm};
-use rand::rngs::StdRng;
-use rand::SeedableRng;
-use std::path::PathBuf;
 
 fn main() {
     let config = Config::get();

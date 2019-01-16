@@ -5,18 +5,16 @@ use core::any::Any;
 use heapsize::HeapSizeOf;
 use std::clone::Clone;
 use std::fmt::Debug;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use timely::communication::allocator::generic::GenericBuilder;
-use timely::dataflow::operators::capture::{EventLink, Extract, Replay};
+use timely::dataflow::operators::capture::Extract;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use timely::Data;
 
 // TODO: Implement a Baseline data type
 
-#[allow(dead_code)]
 pub fn sequential<T, F>(thresh: f64, left_path: &String, right_path: &String, sim_fn: F) -> usize
 where
     T: ReadDataFile + HeapSizeOf,

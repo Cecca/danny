@@ -3,28 +3,22 @@ use crate::io::ReadDataFile;
 use crate::logging::ToSpaceString;
 use crate::operators::*;
 use abomonation::Abomonation;
-use core::any::Any;
 use heapsize::HeapSizeOf;
 use measure::InnerProduct;
-use operators::{Duplicate, Route};
+use operators::Route;
 use probabilistic_collections::cuckoo::CuckooFilter;
 use rand::distributions::{Distribution, Normal, Uniform};
-use rand::rngs::StdRng;
 use rand::Rng;
-use rand::SeedableRng;
-use smallbitvec::SmallBitVec;
 use std::clone::Clone;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::num::Wrapping as w;
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Instant;
-use timely::communication::allocator::generic::GenericBuilder;
 use timely::dataflow::channels::pact::{Exchange as ExchangePact, Pipeline};
-use timely::dataflow::operators::capture::{EventLink, Extract, Replay};
+use timely::dataflow::operators::capture::Extract;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use timely::order::Product;
@@ -515,7 +509,6 @@ where
     }
 }
 
-#[allow(dead_code)]
 pub fn fixed_param_lsh<D, F, H, O>(
     left_path: &String,
     right_path: &String,
@@ -712,6 +705,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     #[test]
     fn test_hyperplane() {

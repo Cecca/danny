@@ -1,8 +1,6 @@
 use crate::config::Config;
 use env_logger::Builder;
-use heapsize::HeapSizeOf;
 use std::io::Write;
-use std::ops::Deref;
 use std::process::Command;
 
 fn get_hostname() -> String {
