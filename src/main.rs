@@ -55,6 +55,7 @@ fn main() {
     println!("Starting...");
     let mut rng = config.get_random_generator(0);
 
+    let start = std::time::Instant::now();
     let count = match args.algorithm.as_ref() {
         "fixed-lsh" => match args.measure.as_ref() {
             "cosine" => {
@@ -120,7 +121,13 @@ fn main() {
         },
         _ => unimplemented!("Unknown algorithm {}", args.algorithm),
     };
+    let end = std::time::Instant::now();
+    let total_time = end - start;
+    let total_time = total_time.as_secs() * 1000 + total_time.subsec_millis() as u64;
     println!("Pairs above similarity {} are {}", args.threshold, count);
-    experiment.append("result", row!("output_size" => count));
+    experiment.append(
+        "result",
+        row!("output_size" => count, "total_time_ms" => total_time),
+    );
     experiment.save();
 }
