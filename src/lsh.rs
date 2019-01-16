@@ -453,11 +453,11 @@ where
                     }
                     // Clean up the entries with empty buckets from the left (from the right we
                     // already did it)
-                    left_buckets.retain(|t, buckets| {
+                    left_buckets.retain(|_t, buckets| {
                         let to_keep = buckets.len() > 0;
                         to_keep
                     });
-                    right_buckets.retain(|t, buckets| {
+                    right_buckets.retain(|_t, buckets| {
                         let to_keep = buckets.len() > 0;
                         to_keep
                     });
@@ -729,7 +729,6 @@ mod tests {
     #[test]
     fn test_minhash() {
         let mut rng = StdRng::seed_from_u64(123);
-        let k = 2;
         let hasher = MinHash::new(20, &mut rng);
         let a = BagOfWords::new(10, vec![1, 3, 4]);
         let ha = hasher.hash(&a);

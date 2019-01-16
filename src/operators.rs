@@ -20,7 +20,7 @@ where
     // TODO: specialize for optimization (e.g. direct sum for integers)
     fn succs(&self, n: usize) -> Self {
         let mut x = self.clone();
-        for i in 0..n {
+        for _i in 0..n {
             x = x.succ();
         }
         x
@@ -425,7 +425,7 @@ mod tests {
         for output in recv.iter() {
             println!("{:?} ", output);
             match output {
-                Event::Messages(t, data) => {
+                Event::Messages(_t, data) => {
                     for pair in data.iter() {
                         check.insert(pair.clone());
                     }
@@ -451,7 +451,6 @@ mod tests {
         let (send, recv) = mpsc::channel();
         let send = Arc::new(Mutex::new(send));
         timely::execute::execute_from(conf.0, conf.1, move |worker| {
-            let peers = worker.peers();
             let send = send.lock().unwrap().clone();
             let (mut left, mut right, probe) = worker.dataflow::<u32, _, _>(|scope| {
                 let mut probe = ProbeHandle::new();
@@ -484,7 +483,7 @@ mod tests {
         let mut check = HashMap::new();
         for output in recv.iter() {
             match output {
-                Event::Messages(t, data) => {
+                Event::Messages(_t, data) => {
                     for (idx, _, _) in data.iter() {
                         let cnt = check.entry(idx.clone()).or_insert(0);
                         *cnt += 1;

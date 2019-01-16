@@ -17,7 +17,7 @@ where
         Self::from_file_with_count(path, |_, d| fun(d));
     }
 
-    fn from_file_with_count<F>(path: &PathBuf, mut fun: F) -> ()
+    fn from_file_with_count<F>(path: &PathBuf, fun: F) -> ()
     where
         F: FnMut(u64, Self) -> (),
     {
