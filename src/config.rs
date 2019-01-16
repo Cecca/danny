@@ -104,6 +104,10 @@ impl Config {
         XorShiftRng::seed_from_u64(seed)
     }
 
+    pub fn get_seed(&self) -> u64 {
+        self.seed
+    }
+
     pub fn get_threads(&self) -> usize {
         self.threads
     }
@@ -114,6 +118,14 @@ impl Config {
         } else {
             self.hosts.len() * self.threads
         }
+    }
+
+    pub fn get_hosts(&self) -> &Vec<String> {
+        &self.hosts
+    }
+
+    pub fn get_num_hosts(&self) -> usize {
+        self.hosts.len()
     }
 }
 

@@ -23,6 +23,7 @@ extern crate timely;
 
 mod baseline;
 mod config;
+#[macro_use]
 mod experiment;
 /// Provides facilities to read and write files
 mod io;
@@ -40,11 +41,14 @@ use crate::experiment::Experiment;
 use crate::lsh::LSHFunction;
 use crate::measure::{Cosine, Jaccard};
 use crate::types::{BagOfWords, VectorWithNorm};
+use serde_json::Value;
+use std::collections::HashMap;
 
 fn main() {
     let config = Config::get();
     crate::logging::init_logging(&config);
     let args = CmdlineConfig::get();
+    let mut experiment = Experiment::from_config(&config, &args);
 
     // Build timely context
     let timely_builder = config.get_timely_builder();
@@ -117,4 +121,6 @@ fn main() {
         _ => unimplemented!("Unknown algorithm {}", args.algorithm),
     };
     println!("Pairs above similarity {} are {}", args.threshold, count);
+    experiment.append("result", row!("output_size" => count));
+    experiment.save();
 }
