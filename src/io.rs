@@ -24,7 +24,7 @@ where
         Self::from_file_partially(path, |_| true, fun);
     }
 
-    fn from_file_partially<P, F>(path: &PathBuf, pred: P, mut fun: F) -> ()
+    fn from_file_partially<P, F>(path: &PathBuf, pred: P, fun: F) -> ()
     where
         P: Fn(u64) -> bool,
         F: FnMut(u64, Self) -> ();

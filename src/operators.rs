@@ -392,13 +392,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::rngs::StdRng;
-    use rand::SeedableRng;
     use std::collections::HashSet;
     use std::sync::mpsc;
     use std::sync::{Arc, Mutex};
     use timely::dataflow::operators::capture::event::Event;
-    use timely::dataflow::operators::{Capture, Inspect, Probe};
+    use timely::dataflow::operators::{Capture, Probe};
     use timely::dataflow::ProbeHandle;
 
     #[test]
