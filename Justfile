@@ -32,3 +32,9 @@ merge BRANCH:
   git push
   git push --delete origin {{BRANCH}}
   git branch -d {{BRANCH}}
+
+@list-branches:
+  git branch \
+    --sort=-committerdate \
+    --format "[%(committerdate:short)] %(HEAD) %(color:green)%(refname:short) %(color:yellow)%(committerdate:relative) %(color:reset)"
+
