@@ -2,3 +2,9 @@
 smt-configure:
   smt configure --archive ./archive -d results
 
+fixed-lsh:
+  smt run -e ./fixed_lsh.sh
+
+all-to-all:
+  smt run -e ./all_to_all_baselines.sh
+
