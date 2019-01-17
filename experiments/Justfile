@@ -1,0 +1,4 @@
+# Configure Sumatra 
+smt-configure:
+  smt configure --archive ./archive -d results
+
