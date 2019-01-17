@@ -67,6 +67,7 @@ impl Experiment {
     pub fn save(self) {
         let json_str =
             serde_json::to_string(&self).expect("Error converting the experiment to string");
+        info!("Writing result file");
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
@@ -75,6 +76,7 @@ impl Experiment {
         file.write_all(json_str.as_bytes())
             .expect("Error writing data");
         file.write(b"\n").expect("Error writing final newline");
+        info!("Results file written");
     }
 }
 

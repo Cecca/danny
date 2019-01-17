@@ -1,4 +1,8 @@
+.smt
+archive/
+__pycache__
 results.json
+results/
 /target
 **/*.rs.bk
 **/*.swp
