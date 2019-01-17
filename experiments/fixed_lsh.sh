@@ -44,6 +44,7 @@ function small() {
   done
 
   python ../json_to_table.py results.json > table.txt
+  python ../plot_fixed_lsh.py results.json result
 
   popd
 

@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from functools import wraps
 import msgpack
-import uuid
 
 
 def load_mpk(path, tablename):
@@ -29,7 +28,6 @@ def load_mpk(path, tablename):
             try:
                 date = dateutil.parser.parse(data['date'])
                 tags = data["tags"]
-                tags["UUID"] = str(uuid.uuid4())
                 for data_row in data["tables"][tablename]:
                     row = dict()
                     row["date"] = date
@@ -73,7 +71,6 @@ def load_table(globpath, tablename):
                 try:
                     date = dateutil.parser.parse(data['date'])
                     tags = data["tags"]
-                    tags["UUID"] = str(uuid.uuid4())
                     for data_row in data["tables"][tablename]:
                         row = dict()
                         row["date"] = date
