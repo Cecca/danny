@@ -3,6 +3,7 @@ use rand::rngs::StdRng;
 use rand::RngCore;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
+use std::path::PathBuf;
 use timely::communication::allocator::generic::GenericBuilder;
 use timely::communication::initialize::Configuration as TimelyConfig;
 
@@ -18,6 +19,8 @@ pub struct Config {
     report: bool,
     #[serde(default = "Config::default_seed")]
     seed: u64,
+    #[serde(default = "Config::default_baselines_path")]
+    baselines_path: PathBuf,
 }
 
 #[allow(dead_code)]
@@ -38,6 +41,10 @@ impl Config {
             Ok(config) => config,
             Err(error) => panic!("{:#?}", error),
         }
+    }
+
+    fn default_baselines_path() -> PathBuf {
+        PathBuf::from("baselines.csv")
     }
 
     fn default_seed() -> u64 {
@@ -66,6 +73,10 @@ impl Config {
         } else {
             None
         }
+    }
+
+    pub fn get_baselines_path(&self) -> PathBuf {
+        self.baselines_path.clone()
     }
 
     pub fn get_timely_builder(&self) -> (Vec<GenericBuilder>, Box<dyn Any + 'static>) {

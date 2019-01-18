@@ -1,3 +1,4 @@
+use crate::config::Config;
 use crate::io::ReadDataFile;
 use crate::operators::*;
 use abomonation::Abomonation;
@@ -5,6 +6,12 @@ use core::any::Any;
 use heapsize::HeapSizeOf;
 use std::clone::Clone;
 use std::fmt::Debug;
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Write;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use timely::communication::allocator::generic::GenericBuilder;
@@ -13,7 +20,71 @@ use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use timely::Data;
 
-// TODO: Implement a Baseline data type
+#[derive(Serialize, Deserialize)]
+pub struct Baselines {
+    path: PathBuf,
+    baselines: Vec<(String, String, f64, usize)>,
+}
+
+impl Baselines {
+    pub fn new(config: &Config) -> Self {
+        let path = config.get_baselines_path();
+        let mut baselines = Vec::new();
+        match File::open(path.clone()) {
+            Ok(file) => {
+                let file = BufReader::new(file);
+                for line in file.lines() {
+                    let line = line.expect("Problem reading line");
+                    let mut tokens = line.split(",");
+                    let left = tokens
+                        .next()
+                        .expect("There should be the left path")
+                        .to_owned();
+                    let right = tokens
+                        .next()
+                        .expect("There should be the right path")
+                        .to_owned();
+                    let range: f64 = tokens
+                        .next()
+                        .expect("There should be the range")
+                        .parse()
+                        .expect("Problem parsing range");
+                    let count: usize = tokens
+                        .next()
+                        .expect("There should be the count")
+                        .parse()
+                        .expect("Problem parsing the count");
+                    baselines.push((left, right, range, count));
+                }
+            }
+            Err(_) => (),
+        };
+        Baselines { path, baselines }
+    }
+
+    pub fn get(&self, left: &String, right: &String, range: f64) -> Option<usize> {
+        self.baselines
+            .iter()
+            .find(|(l, r, t, _)| l == left && r == right && t == &range)
+            .map(|tup| tup.3)
+    }
+
+    pub fn add(self, left: &String, right: &String, range: f64, count: usize) -> () {
+        if self.get(left, right, range).is_none() {
+            let mut file = OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(self.path)
+                .expect("problem opening file for writing");
+            writeln!(file, "{},{},{},{}", left, right, range, count).expect("Error appending line");
+        }
+    }
+
+    pub fn recall(&self, left: &String, right: &String, range: f64, count: usize) -> Option<f64> {
+        self.get(left, right, range)
+            .map(|base_count| count as f64 / base_count as f64)
+    }
+}
 
 pub fn sequential<T, F>(thresh: f64, left_path: &String, right_path: &String, sim_fn: F) -> usize
 where
@@ -50,18 +121,21 @@ pub fn all_pairs_parallel<T, F>(
     left_path: &String,
     right_path: &String,
     sim_fn: F,
-    timely_builder: (Vec<GenericBuilder>, Box<dyn Any + 'static>),
+    config: &Config,
 ) -> usize
 where
     T: ReadDataFile + Data + Sync + Send + Clone + Abomonation + Debug,
     F: Fn(&T, &T) -> f64 + Send + Clone + Sync + 'static,
 {
+    let timely_builder = config.get_timely_builder();
     // This channel is used to get the results
     let (output_send_ch, recv) = ::std::sync::mpsc::channel();
     let output_send_ch = Arc::new(Mutex::new(output_send_ch));
 
     let left_path = left_path.clone();
     let right_path = right_path.clone();
+    let left_path_2 = left_path.clone();
+    let right_path_2 = right_path.clone();
 
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |worker| {
         let index = worker.index();
@@ -129,5 +203,6 @@ where
         .map(|pair| pair.1.clone().iter().sum::<usize>())
         .next() // The iterator has one item for each timestamp. We have just one timestamp, 0
         .expect("Failed to get the result out of the channel");
+    Baselines::new(config).add(&left_path_2, &right_path_2, threshold, count);
     count
 }

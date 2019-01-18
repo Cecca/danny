@@ -527,7 +527,7 @@ pub fn fixed_param_lsh<D, F, H, O>(
     right_path: &String,
     hash_fn: LSHCollection<H, O>,
     sim_pred: F,
-    config: Config,
+    config: &Config,
 ) -> usize
 where
     D: ReadDataFile + Data + Sync + Send + Clone + Abomonation + Debug + HeapSizeOf,
@@ -555,6 +555,7 @@ where
     let (send_coords, recv_coords) = channel();
     let send_coords = Arc::new(Mutex::new(send_coords));
 
+    let total_workers = config.get_total_workers();
     let worker_threads = config.get_threads();
     let waiting_threads = worker_threads + 1;
     let io_barrier = Arc::new(std::sync::Barrier::new(waiting_threads));
@@ -567,7 +568,7 @@ where
     // Read the coordinates, to load in memory the relevant sections of the files
     let reader_handle = thread::spawn(move || {
         let start = Instant::now();
-        let matrix_desc = MatrixDescription::for_workers(config.get_total_workers());
+        let matrix_desc = MatrixDescription::for_workers(total_workers);
         info!(
             "Data partitioned according to {} x {}",
             matrix_desc.rows, matrix_desc.columns

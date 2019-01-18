@@ -39,6 +39,7 @@ mod version {
     include!(concat!(env!("OUT_DIR"), "/version.rs"));
 }
 
+use crate::baseline::Baselines;
 use crate::config::*;
 use crate::experiment::Experiment;
 use crate::lsh::LSHFunction;
@@ -73,7 +74,7 @@ fn main() {
                     &args.right_path,
                     lsh::Hyperplane::collection(k, repetitions, dim, &mut rng),
                     move |a, b| Cosine::cosine(a, b) >= threshold,
-                    config,
+                    &config,
                 )
             }
             "jaccard" => {
@@ -85,7 +86,7 @@ fn main() {
                     &args.right_path,
                     lsh::MinHash::collection(k, repetitions, &mut rng),
                     move |a, b| Jaccard::jaccard(a, b) >= threshold,
-                    config,
+                    &config,
                 )
             }
             _ => unimplemented!("Unknown measure {}", args.measure),
@@ -96,14 +97,14 @@ fn main() {
                 &args.left_path,
                 &args.right_path,
                 Cosine::cosine,
-                timely_builder,
+                &config,
             ),
             "jaccard" => baseline::all_pairs_parallel::<BagOfWords, _>(
                 args.threshold,
                 &args.left_path,
                 &args.right_path,
                 Jaccard::jaccard,
-                timely_builder,
+                &config,
             ),
             _ => unimplemented!(),
         },
@@ -127,10 +128,16 @@ fn main() {
     let end = std::time::Instant::now();
     let total_time = end - start;
     let total_time = total_time.as_secs() * 1000 + total_time.subsec_millis() as u64;
-    println!("Pairs above similarity {} are {}", args.threshold, count);
+    let recall = Baselines::new(&config)
+        .recall(&args.left_path, &args.right_path, args.threshold, count)
+        .expect("Could not compute the recall! Missing entry in the baseline file?");
+    println!(
+        "Pairs above similarity {} are {} (recall {})",
+        args.threshold, count, recall
+    );
     experiment.append(
         "result",
-        row!("output_size" => count, "total_time_ms" => total_time),
+        row!("output_size" => count, "total_time_ms" => total_time, "recall" => recall),
     );
     experiment.save();
 }

@@ -67,7 +67,6 @@ impl Experiment {
     pub fn save(self) {
         let json_str =
             serde_json::to_string(&self).expect("Error converting the experiment to string");
-        println!("Experiment json is {}", json_str);
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
