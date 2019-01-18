@@ -3,16 +3,15 @@
 # fail on subcommand failure
 set -e
 
-
-# DATA_DIR=/mnt/fast_storage/users/mcec
-DATA_DIR=~/Datasets
-DANNY_BASELINE_PATH=$DATA_DIR/baselines.csv
-# RUN_DANNY=$(pwd)/../run-danny.sh
-RUN_DANNY=$(pwd)/../target/release/danny
+DATA_DIR=/mnt/fast_storage/users/mcec
+# DATA_DIR=~/Datasets
+export DANNY_BASELINES_PATH=$DATA_DIR/baselines.csv
+RUN_DANNY=$(pwd)/../run-danny.sh
+# RUN_DANNY=$(pwd)/../target/release/danny
 RESULTS_DIR=results
 
-# export DANNY_HOSTS=sss00:2001,sss01:2001,sss02:2001,sss03:2001,sss04:2001
-export DANNY_THREADS=4
+export DANNY_HOSTS=sss00:2001,sss01:2001,sss02:2001,sss03:2001,sss04:2001
+export DANNY_THREADS=8
 export RUST_LOG=info
 
 function nth {
@@ -21,7 +20,8 @@ function nth {
 
 function small() {
   declare -a DATASETS=(
-    "cosine GoogleWords/google-1k.txt GoogleWords/google-1k.txt 0.6"
+    # "cosine GoogleWords/google-1k.txt GoogleWords/google-1k.txt 0.6"
+    "cosine google-10k-left.txt google-10k-right.txt 0.6"
     # "cosine google-100k-left.txt google-100k-right.txt 0.6"
     # "jaccard wiki-10k-100k-left.txt wiki-10k-100k-right.txt 0.5"
   )

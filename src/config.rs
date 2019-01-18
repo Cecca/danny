@@ -4,8 +4,16 @@ use rand::RngCore;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
 use std::path::PathBuf;
+use std::process::Command;
 use timely::communication::allocator::generic::GenericBuilder;
 use timely::communication::initialize::Configuration as TimelyConfig;
+
+pub fn get_hostname() -> String {
+    let output = Command::new("hostname")
+        .output()
+        .expect("Failed to run the hostname command");
+    String::from_utf8_lossy(&output.stdout).trim().to_owned()
+}
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
@@ -73,6 +81,10 @@ impl Config {
         } else {
             None
         }
+    }
+
+    pub fn is_master(&self) -> bool {
+        self.process_id == 0
     }
 
     pub fn get_baselines_path(&self) -> PathBuf {

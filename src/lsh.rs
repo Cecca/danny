@@ -705,15 +705,19 @@ where
         .join()
         .expect("Problem joining the reader thread");
 
-    // From `recv` we get an entry for each timestamp, containing a one-element vector with the
-    // count of output pairs for a given timestamp. We sum across all the timestamps, so we need to
-    // remove the duplicates
-    let count: usize = recv
-        .extract()
-        .iter()
-        .map(|pair| pair.1.clone().iter().sum::<usize>())
-        .sum();
-    count
+    if config.is_master() {
+        // From `recv` we get an entry for each timestamp, containing a one-element vector with the
+        // count of output pairs for a given timestamp. We sum across all the timestamps, so we need to
+        // remove the duplicates
+        let count: usize = recv
+            .extract()
+            .iter()
+            .map(|pair| pair.1.clone().iter().sum::<usize>())
+            .sum();
+        count
+    } else {
+        0
+    }
 }
 
 #[cfg(test)]

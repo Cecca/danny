@@ -9,40 +9,7 @@ import pandas as pd
 import gzip
 import bz2
 import matplotlib.pyplot as plt
-import seaborn as sns
 from functools import wraps
-import msgpack
-
-
-def load_mpk(path, tablename):
-    if path.endswith(".gz"):
-        fh = gzip.open(path, "rb")
-    elif path.endswith(".bz2"):
-        fh = bz2.open(path, "rb")
-    else:
-        fh = open(path, "r")
-    rows = []
-    unpacker = msgpack.Unpacker(fh, encoding="utf-8")
-    for data in unpacker:
-        if tablename in data["tables"]:
-            try:
-                date = dateutil.parser.parse(data['date'])
-                tags = data["tags"]
-                for data_row in data["tables"][tablename]:
-                    row = dict()
-                    row["date"] = date
-                    row.update(data_row)
-                    row.update(tags)
-                    rows.append(row)
-            except Exception as e:
-                print("*ERROR* while handling a line of", path)
-                print(e)
-    df = pd.DataFrame(rows)
-    if len(df) == 0:
-        raise Exception("Empty dataframe!")
-    df.set_index("date", inplace=True)
-    return df
-
 
 def load_table(globpath, tablename):
     rows = []

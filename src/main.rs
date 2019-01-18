@@ -128,16 +128,18 @@ fn main() {
     let end = std::time::Instant::now();
     let total_time = end - start;
     let total_time = total_time.as_secs() * 1000 + total_time.subsec_millis() as u64;
-    let recall = Baselines::new(&config)
-        .recall(&args.left_path, &args.right_path, args.threshold, count)
-        .expect("Could not compute the recall! Missing entry in the baseline file?");
-    println!(
-        "Pairs above similarity {} are {} (recall {})",
-        args.threshold, count, recall
-    );
-    experiment.append(
-        "result",
-        row!("output_size" => count, "total_time_ms" => total_time, "recall" => recall),
-    );
-    experiment.save();
+    if config.is_master() {
+        let recall = Baselines::new(&config)
+            .recall(&args.left_path, &args.right_path, args.threshold, count)
+            .expect("Could not compute the recall! Missing entry in the baseline file?");
+        println!(
+            "Pairs above similarity {} are {} (recall {})",
+            args.threshold, count, recall
+        );
+        experiment.append(
+            "result",
+            row!("output_size" => count, "total_time_ms" => total_time, "recall" => recall),
+        );
+        experiment.save();
+    }
 }

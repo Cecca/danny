@@ -2,7 +2,6 @@ use crate::config::Config;
 use crate::io::ReadDataFile;
 use crate::operators::*;
 use abomonation::Abomonation;
-use core::any::Any;
 use heapsize::HeapSizeOf;
 use std::clone::Clone;
 use std::fmt::Debug;
@@ -14,7 +13,6 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use timely::communication::allocator::generic::GenericBuilder;
 use timely::dataflow::operators::capture::Extract;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
@@ -29,6 +27,7 @@ pub struct Baselines {
 impl Baselines {
     pub fn new(config: &Config) -> Self {
         let path = config.get_baselines_path();
+        info!("Reading baseline from {:?}", path);
         let mut baselines = Vec::new();
         match File::open(path.clone()) {
             Ok(file) => {
@@ -71,12 +70,18 @@ impl Baselines {
 
     pub fn add(self, left: &String, right: &String, range: f64, count: usize) -> () {
         if self.get(left, right, range).is_none() {
+            info!("Writing baseline to {:?}", self.path);
             let mut file = OpenOptions::new()
                 .append(true)
                 .create(true)
                 .open(self.path)
                 .expect("problem opening file for writing");
             writeln!(file, "{},{},{},{}", left, right, range, count).expect("Error appending line");
+        } else {
+            info!(
+                "Baseline entry already present in {:?}, skipping",
+                self.path
+            );
         }
     }
 
@@ -197,12 +202,16 @@ where
     })
     .expect("Something went wrong with the timely dataflow execution");
 
-    let count: usize = recv
-        .extract()
-        .iter()
-        .map(|pair| pair.1.clone().iter().sum::<usize>())
-        .next() // The iterator has one item for each timestamp. We have just one timestamp, 0
-        .expect("Failed to get the result out of the channel");
-    Baselines::new(config).add(&left_path_2, &right_path_2, threshold, count);
-    count
+    if config.is_master() {
+        let count: usize = recv
+            .extract()
+            .iter()
+            .map(|pair| pair.1.clone().iter().sum::<usize>())
+            .next() // The iterator has one item for each timestamp. We have just one timestamp, 0
+            .expect("Failed to get the result out of the channel");
+        Baselines::new(config).add(&left_path_2, &right_path_2, threshold, count);
+        count
+    } else {
+        0
+    }
 }
