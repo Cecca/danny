@@ -23,4 +23,13 @@ g = (ggplot(data, aes(x='k', y='total_time_ms'))
 g.draw()
 g.save('total_time.png')
 
+g = (ggplot(data, aes(x='k', y='recall'))
+     + geom_point()
+     + geom_errorbar(stat='summary')
+     + facet_wrap('input')
+     + theme_bw()
+     + theme())
+g.draw()
+g.save('recall.png')
+
 

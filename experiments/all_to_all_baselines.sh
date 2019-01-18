@@ -5,6 +5,7 @@ set -e
 
 # DATA_DIR=/mnt/fast_storage/users/mcec
 DATA_DIR=~/Datasets
+DANNY_BASELINE_PATH=$DATA_DIR/baselines.csv
 # RUN_DANNY=$(pwd)/../run-danny.sh
 RUN_DANNY=$(pwd)/../target/release/danny
 RESULTS_DIR=results
