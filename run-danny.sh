@@ -24,18 +24,23 @@ then
   exit 1
 fi
 
-FIRST_HOST=$(echo $DANNY_HOSTS | tr ',' '\n' | head -n1)
-OTHER_HOSTS=$(echo $DANNY_HOSTS | tr ',' '\n' | sed 1d)
+HOSTS=$(echo $DANNY_HOSTS | tr ',' '\n')
 
+declare -a PIDS
 ID=1
-for HOST_PAIR in $OTHER_HOSTS
+for HOST_PAIR in $HOSTS
 do
+  sleep 5
   echo "Spinning up host $ID ( $HOST_PAIR )"
   # Detach from remote processes
   run_remotely $ID $HOST_PAIR &
+  PIDS[$(( $ID - 1 ))]=$!
   ID=$(( $ID + 1 ))
 done
 
-echo "Spinning up host 0 ( $FIRST_HOST )"
-run_remotely 0 $FIRST_HOST
+# wait for all pids
+for pid in ${pids[*]}; do
+  wait $pid
+done
 echo "Done"
+

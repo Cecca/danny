@@ -59,7 +59,7 @@ fn main() {
 
     // Build timely context
     let timely_builder = config.get_timely_builder();
-    println!("Starting...");
+    info!("Starting...");
     let mut rng = config.get_random_generator(0);
 
     let start = std::time::Instant::now();

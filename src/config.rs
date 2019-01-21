@@ -95,7 +95,7 @@ impl Config {
         let timely_config = if self.hosts.len() > 1 {
             let hosts: Vec<String> = self.hosts.clone();
             println!(
-                "Running on {:#?}, using {} threads in each process",
+                "Running on {:?}, using {} threads in each process",
                 hosts, self.threads
             );
             TimelyConfig::Cluster {
