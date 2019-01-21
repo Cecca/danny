@@ -22,8 +22,10 @@ function small() {
   declare -a DATASETS=(
     # "cosine GoogleWords/google-1k.txt GoogleWords/google-1k.txt 0.6"
     "cosine google-10k-left.txt google-10k-right.txt 0.6"
-    # "cosine google-100k-left.txt google-100k-right.txt 0.6"
-    # "jaccard wiki-10k-100k-left.txt wiki-10k-100k-right.txt 0.5"
+    "cosine google-100k-left.txt google-100k-right.txt 0.6"
+    "cosine google-500k-left.txt google-500k-right.txt 0.6"
+    "jaccard wiki-10k-100k-left.txt wiki-10k-100k-right.txt 0.5"
+    "jaccard wiki-10k-500k-left.txt wiki-10k-500k-right.txt 0.5"
   )
   
   test -d $RESULTS_DIR || mkdir $RESULTS_DIR
