@@ -94,7 +94,7 @@ impl Config {
     pub fn get_timely_builder(&self) -> (Vec<GenericBuilder>, Box<dyn Any + 'static>) {
         let timely_config = if self.hosts.len() > 1 {
             let hosts: Vec<String> = self.hosts.clone();
-            println!(
+            info!(
                 "Running on {:?}, using {} threads in each process",
                 hosts, self.threads
             );

@@ -27,19 +27,19 @@ fi
 HOSTS=$(echo $DANNY_HOSTS | tr ',' '\n')
 
 declare -a PIDS
-ID=1
+ID=0
 for HOST_PAIR in $HOSTS
 do
-  sleep 5
+  sleep 1
   echo "Spinning up host $ID ( $HOST_PAIR )"
   # Detach from remote processes
   run_remotely $ID $HOST_PAIR &
-  PIDS[$(( $ID - 1 ))]=$!
+  PIDS[${ID}]=$!
   ID=$(( $ID + 1 ))
 done
 
 # wait for all pids
-for pid in ${pids[*]}; do
+for pid in ${PIDS[*]}; do
   wait $pid
 done
 echo "Done"

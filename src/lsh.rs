@@ -304,12 +304,15 @@ where
                 for i in 0..repetitions {
                     let mut to_move: Vec<(K, D)> =
                         if let Some((time, data)) = stash[i].iter_mut().next() {
+                            // TODO: maybe here there is room for optimization
                             if !probe2.less_than(time.time()) {
                                 let mut session = output.session(&time);
+                                let mut cnt = 0;
                                 for (k, v) in data.iter() {
                                     let h = hash_coll.hash(&v, i);
                                     session.give((h, k.clone()));
                                 }
+                                debug!("Emitted {} hashes for repetition {}", cnt, i);
                                 data.drain(..).collect()
                             } else {
                                 Vec::new()
@@ -480,12 +483,9 @@ where
         let item_count = 1 << 28;
         let fpp = 0.01;
         let fingerprint = 8;
-        let mut filter =
-            CuckooFilter::<(K, K)>::from_fingerprint_bit_count(item_count, fpp, fingerprint);
-        debug!(
-            "Initialized Cockoo filter of {} bytes in bucketing function",
-            std::mem::size_of_val(&filter)
-        );
+        // let mut filter =
+        //     CuckooFilter::<(K, K)>::from_fingerprint_bit_count(item_count, fpp, fingerprint);
+        let logger = self.scope().danny_logger();
 
         self.binary_frontier(
             &right,
@@ -541,12 +541,20 @@ where
                     // Emit some output pairs
                     for (time, mut generator) in generators.iter_mut() {
                         let mut session = output.session(time);
-                        for pair in generator.take(100) {
-                            if !filter.contains(&pair) {
-                                filter.insert(&pair);
-                                session.give(pair);
-                            }
+                        let mut cnt = 0;
+                        for pair in generator.take(10000) {
+                            // if !filter.contains(&pair) {
+                            //     filter.insert(&pair);
+                            session.give(pair);
+                            cnt += 1;
+                            // }
                         }
+                        debug!(
+                            "Emitted batch of {} pairs (is done: {})",
+                            cnt,
+                            generator.done()
+                        );
+                        log_event!(logger, LogEvent::GeneratedPairs(cnt));
                     }
 
                     // Cleanup exhausted generators
@@ -560,15 +568,11 @@ where
         let mut left_buckets = HashMap::new();
         let mut right_buckets = HashMap::new();
 
-        let item_count = 1 << 28;
+        let item_count = 1 << 30;
         let fpp = 0.01;
         let fingerprint = 8;
         let mut filter =
             CuckooFilter::<(K, K)>::from_fingerprint_bit_count(item_count, fpp, fingerprint);
-        info!(
-            "Initialized Cockoo filter of {} bytes in bucketing function",
-            std::mem::size_of_val(&filter)
-        );
 
         self.binary_frontier(
             &right,
@@ -619,9 +623,7 @@ where
                                                 let out_pair = (kl.clone(), kr.clone());
                                                 if !filter.contains(&out_pair) {
                                                     filter.insert(&out_pair);
-                                                    if filter.is_nearly_full() {
-                                                        warn!("Cockoo filter for bucketing is nearly full!");
-                                                    }
+                                                    assert!(!filter.is_nearly_full(), "Cockoo filter for bucketing is nearly full!");
                                                     session.give(out_pair);
                                                     cnt += 1;
                                                 }
@@ -629,7 +631,7 @@ where
                                         }
                                     }
                                 }
-                                debug!(
+                                info!(
                                     "[{:?}] Output {} candidates (out of {} potential ones, discarded {})",
                                     time.time(),
                                     cnt,
@@ -691,6 +693,8 @@ where
     ) -> Stream<G, (K, K)> {
         self.scope()
             .scoped::<Product<_, u32>, _, _>("candidate generation", |inner| {
+                // TODO: Reconsider if you have to buffer the repetitions: maybe batching the pairs
+                // is sufficient.
                 let left_hashes = self.enter(inner).hash_buffered(&hash_coll);
                 let right_hashes = right.enter(inner).hash_buffered(&hash_coll);
                 let candidate_pairs = left_hashes.bucket_batched(&right_hashes);
@@ -832,8 +836,7 @@ where
             let matrix = MatrixDescription::for_workers(peers as usize);
             let candidate_pairs = left_stream
                 .colliding_pairs(&right_stream, &hash_fn)
-                .pair_route(matrix)
-                .approximate_distinct();
+                .pair_route(matrix);
             candidate_pairs
                 .map(|pair| pair.1)
                 .filter(move |(lk, rk)| {
@@ -845,6 +848,7 @@ where
                         .expect(&format!("Missing vector {} from global right", lk));
                     sim_pred(lv, rv)
                 })
+                .approximate_distinct()
                 .count()
                 .exchange(|_| 0)
                 .probe_with(&mut probe)

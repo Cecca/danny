@@ -1,6 +1,6 @@
 use crate::logging::*;
 use abomonation::Abomonation;
-use probabilistic_collections::cuckoo::CuckooFilter;
+use probabilistic_collections::bloom::BloomFilter;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -364,33 +364,30 @@ where
     fn approximate_distinct(&self) -> Stream<G, D> {
         let item_count = 1 << 28;
         let fpp = 0.01;
-        let fingerprint = 8;
-        let mut filter =
-            CuckooFilter::<D>::from_fingerprint_bit_count(item_count, fpp, fingerprint);
-        debug!(
-            "Initialized Cockoo filter of {} bytes",
-            std::mem::size_of_val(&filter)
-        );
+        let mut filter = BloomFilter::<D>::new(item_count, fpp);
         let logger = self.scope().danny_logger();
         self.unary(PipelinePact, "approximate-distinct", move |_, _| {
             move |input, output| {
                 input.for_each(|t, d| {
                     let mut cnt = 0;
                     let mut data = d.replace(Vec::new());
+                    let mut cnt = 0;
+                    let mut received = 0;
                     for v in data.drain(..) {
+                        received += 1;
                         if !filter.contains(&v) {
                             filter.insert(&v);
-                            if filter.is_nearly_full() {
-                                warn!("Cockoo filter for bucketing is nearly full!");
-                            }
+                            // TODO: check that the filter is not full
                             output.session(&t).give(v);
                             cnt += 1;
                         }
                     }
                     log_event!(logger, LogEvent::UniqueCandidates(cnt));
-                    // logger
-                    //     .clone()
-                    //     .map(|l| l.log(LogEvent::UniqueCandidates(cnt)));
+                    debug!(
+                        "Filtered {} elements out of {} received",
+                        received - cnt,
+                        received
+                    );
                 });
             }
         })
