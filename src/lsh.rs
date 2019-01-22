@@ -364,6 +364,95 @@ where
     }
 }
 
+struct PairGenerator<H, K>
+where
+    H: Hash + Eq,
+{
+    left: HashMap<H, Vec<K>>,
+    right: HashMap<H, Vec<K>>,
+    cur_left: Vec<K>,
+    cur_right: Vec<K>,
+    cur_left_idx: usize,
+    cur_right_idx: usize,
+}
+
+impl<H: Hash + Eq + Clone, K: Clone> PairGenerator<H, K> {
+    fn new(left: HashMap<H, Vec<K>>, right: HashMap<H, Vec<K>>) -> Self {
+        PairGenerator {
+            left,
+            right,
+            cur_left: Vec::new(),
+            cur_right: Vec::new(),
+            cur_left_idx: 0,
+            cur_right_idx: 0,
+        }
+    }
+
+    fn done(&self) -> bool {
+        self.left.is_empty()
+            && self.right.is_empty()
+            && self.cur_left.is_empty()
+            && self.cur_right.is_empty()
+    }
+}
+
+impl<H: Hash + Eq + Clone, K: Clone> Iterator for PairGenerator<H, K> {
+    type Item = (K, K);
+
+    fn next(&mut self) -> Option<(K, K)> {
+        if self.done() {
+            return None;
+        }
+        if self.cur_left.is_empty() {
+            assert!(
+                self.cur_right.is_empty(),
+                "left vector is empty, but right one is not"
+            );
+            let k = self
+                .left
+                .keys()
+                .cloned()
+                .filter(|k| self.right.contains_key(k))
+                .next();
+            if k.is_none() {
+                // No more common keys between left and right, cleanup and return
+                self.left.clear();
+                self.right.clear();
+                return None;
+            }
+            let key = k.unwrap();
+            self.cur_left = self
+                .left
+                .remove(&key)
+                .expect("This left key should be present");
+            self.cur_right = self
+                .right
+                .remove(&key)
+                .expect("This right key should be present");
+            self.cur_left_idx = 0;
+            self.cur_right_idx = 0;
+        }
+        let left_elem = self.cur_left[self.cur_left_idx].clone();
+        let right_elem = self.cur_right[self.cur_right_idx].clone();
+        let pair = (left_elem, right_elem);
+        // Move the index
+        if self.cur_right_idx + 1 >= self.cur_right.len() {
+            self.cur_right_idx = 0;
+            if self.cur_left_idx + 1 >= self.cur_left.len() {
+                // We are done for this key
+                self.cur_left.clear();
+                self.cur_right.clear();
+            } else {
+                self.cur_left_idx += 1;
+            }
+        } else {
+            self.cur_right_idx += 1;
+        }
+
+        Some(pair)
+    }
+}
+
 trait BucketStream<G, H, K>
 where
     G: Scope,
@@ -371,6 +460,7 @@ where
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)>;
+    fn bucket_batched(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)>;
 }
 
 impl<G, H, K> BucketStream<G, H, K> for Stream<G, (H, K)>
@@ -379,6 +469,90 @@ where
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
     K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
 {
+    fn bucket_batched(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)> {
+        let mut left_buckets = HashMap::new();
+        let mut right_buckets = HashMap::new();
+        let mut generators = HashMap::new();
+
+        let item_count = 1 << 28;
+        let fpp = 0.01;
+        let fingerprint = 8;
+        let mut filter =
+            CuckooFilter::<(K, K)>::from_fingerprint_bit_count(item_count, fpp, fingerprint);
+        debug!(
+            "Initialized Cockoo filter of {} bytes in bucketing function",
+            std::mem::size_of_val(&filter)
+        );
+
+        self.binary_frontier(
+            &right,
+            ExchangePact::new(|pair: &(H, K)| pair.0.route()),
+            ExchangePact::new(|pair: &(H, K)| pair.0.route()),
+            "bucket",
+            move |_, _| {
+                move |left_in, right_in, output| {
+                    left_in.for_each(|t, d| {
+                        debug!(
+                            "Received batch of left messages for time {:?}:\n\t{:?}",
+                            t.time(),
+                            d.iter()
+                        );
+                        let rep_entry = left_buckets.entry(t.retain()).or_insert(HashMap::new());
+                        let mut data = d.replace(Vec::new());
+                        for (h, k) in data.drain(..) {
+                            rep_entry.entry(h).or_insert(Vec::new()).push(k);
+                        }
+                    });
+                    right_in.for_each(|t, d| {
+                        debug!(
+                            "Received batch of right messages for time {:?}:\n\t{:?}",
+                            t.time(),
+                            d.iter()
+                        );
+                        let rep_entry = right_buckets.entry(t.retain()).or_insert(HashMap::new());
+                        let mut data = d.replace(Vec::new());
+                        for (h, k) in data.drain(..) {
+                            rep_entry.entry(h).or_insert(Vec::new()).push(k);
+                        }
+                    });
+                    let frontiers = &[left_in.frontier(), right_in.frontier()];
+                    let time = left_buckets
+                        .keys()
+                        .cloned()
+                        .filter(|t| {
+                            right_buckets.contains_key(t)
+                                && frontiers.iter().all(|f| !f.less_equal(t))
+                        })
+                        .next();
+                    match time {
+                        Some(time) => {
+                            // We got all data for the repetition at `time`
+                            // Enqueue the pairs generator
+                            let left_buckets = left_buckets.remove(&time).unwrap();
+                            let right_buckets = right_buckets.remove(&time).unwrap();
+                            let generator = PairGenerator::new(left_buckets, right_buckets);
+                            generators.insert(time.clone(), generator);
+                        }
+                        None => (),
+                    }
+                    // Emit some output pairs
+                    for (time, mut generator) in generators.iter_mut() {
+                        let mut session = output.session(time);
+                        for pair in generator.take(100) {
+                            if !filter.contains(&pair) {
+                                filter.insert(&pair);
+                                session.give(pair);
+                            }
+                        }
+                    }
+
+                    // Cleanup exhausted generators
+                    generators.retain(|_, gen| !gen.done());
+                }
+            },
+        )
+    }
+
     fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)> {
         let mut left_buckets = HashMap::new();
         let mut right_buckets = HashMap::new();
@@ -516,7 +690,7 @@ where
             .scoped::<Product<_, u32>, _, _>("candidate generation", |inner| {
                 let left_hashes = self.enter(inner).hash_buffered(&hash_coll);
                 let right_hashes = right.enter(inner).hash_buffered(&hash_coll);
-                let candidate_pairs = left_hashes.bucket(&right_hashes);
+                let candidate_pairs = left_hashes.bucket_batched(&right_hashes);
                 candidate_pairs.leave()
             })
     }
@@ -761,5 +935,39 @@ mod tests {
 
         assert!(ha != hb);
         assert!(hc == hb);
+    }
+
+    #[test]
+    fn test_pair_iterator() {
+        let mut left = HashMap::new();
+        left.insert(0, vec![1, 2, 3]);
+        left.insert(2, vec![1, 2, 3, 4]);
+        left.insert(3, vec![3, 4]);
+        let mut right = HashMap::new();
+        right.insert(0, vec![10, 11, 12]);
+        right.insert(1, vec![19]);
+        right.insert(3, vec![30]);
+
+        let mut expected = HashSet::new();
+        for l in left.get(&0).unwrap() {
+            for r in right.get(&0).unwrap() {
+                expected.insert((l.clone(), r.clone()));
+            }
+        }
+        for l in left.get(&3).unwrap() {
+            for r in right.get(&3).unwrap() {
+                expected.insert((l.clone(), r.clone()));
+            }
+        }
+
+        let mut iterator = PairGenerator::new(left, right);
+        let mut actual = HashSet::new();
+        assert!(!iterator.done());
+        while let Some(pair) = iterator.next() {
+            actual.insert(pair);
+        }
+
+        assert_eq!(expected, actual);
+        assert!(iterator.done());
     }
 }
