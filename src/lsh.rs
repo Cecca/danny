@@ -1,6 +1,8 @@
 use crate::config::Config;
 use crate::io::ReadDataFile;
+use crate::logging::init_event_logging;
 use crate::logging::ToSpaceString;
+use crate::logging::*;
 use crate::operators::*;
 use abomonation::Abomonation;
 use heapsize::HeapSizeOf;
@@ -18,11 +20,12 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Instant;
 use timely::dataflow::channels::pact::{Exchange as ExchangePact, Pipeline};
-use timely::dataflow::operators::capture::Extract;
+use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use timely::order::Product;
 use timely::progress::Timestamp;
+use timely::worker::AsWorker;
 use timely::Data;
 use types::{BagOfWords, VectorWithNorm};
 
@@ -714,6 +717,9 @@ where
     let (output_send_ch, recv) = channel();
     let output_send_ch = Arc::new(Mutex::new(output_send_ch));
 
+    let (send_exec_summary, recv_exec_summary) = channel();
+    let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
+
     let left_path = left_path.clone();
     let right_path = right_path.clone();
     let left_path_main = left_path.clone();
@@ -790,7 +796,8 @@ where
         debug!("After reader barrier!");
     });
 
-    timely::execute::execute_from(timely_builder.0, timely_builder.1, move |worker| {
+    timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
+        let execution_summary = init_event_logging(&worker);
         let output_send_ch = output_send_ch.lock().unwrap().clone();
         let sim_pred = sim_pred.clone();
         let index = worker.index();
@@ -872,6 +879,12 @@ where
             elapsed
         );
         worker.step_while(|| probe.less_than(&(repetitions as u32)));
+
+        info!(
+            "Execution summary for worker {}: {:?}",
+            index, execution_summary
+        );
+        collect_execution_summaries(execution_summary, send_exec_summary.clone(), &mut worker);
     })
     .unwrap();
 
@@ -880,6 +893,17 @@ where
         .expect("Problem joining the reader thread");
 
     if config.is_master() {
+        let mut exec_summaries = Vec::new();
+        for summary in recv_exec_summary.iter() {
+            match summary {
+                TimelyEvent::Messages(_, msgs) => exec_summaries.extend(msgs),
+                _ => (),
+            }
+        }
+        let global_summary = exec_summaries
+            .iter()
+            .fold(FrozenExecutionSummary::zero(), |a, b| a.sum(b));
+        println!("Global summary {:?}", global_summary);
         // From `recv` we get an entry for each timestamp, containing a one-element vector with the
         // count of output pairs for a given timestamp. We sum across all the timestamps, so we need to
         // remove the duplicates

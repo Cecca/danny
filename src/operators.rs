@@ -1,3 +1,4 @@
+use crate::logging::*;
 use abomonation::Abomonation;
 use probabilistic_collections::cuckoo::CuckooFilter;
 use std::collections::HashMap;
@@ -370,9 +371,11 @@ where
             "Initialized Cockoo filter of {} bytes",
             std::mem::size_of_val(&filter)
         );
+        let logger = self.scope().danny_logger();
         self.unary(PipelinePact, "approximate-distinct", move |_, _| {
             move |input, output| {
                 input.for_each(|t, d| {
+                    let mut cnt = 0;
                     let mut data = d.replace(Vec::new());
                     for v in data.drain(..) {
                         if !filter.contains(&v) {
@@ -381,8 +384,13 @@ where
                                 warn!("Cockoo filter for bucketing is nearly full!");
                             }
                             output.session(&t).give(v);
+                            cnt += 1;
                         }
                     }
+                    log_event!(logger, LogEvent::UniqueCandidates(cnt));
+                    // logger
+                    //     .clone()
+                    //     .map(|l| l.log(LogEvent::UniqueCandidates(cnt)));
                 });
             }
         })

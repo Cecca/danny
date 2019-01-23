@@ -11,6 +11,8 @@ extern crate serde;
 extern crate clap;
 #[macro_use]
 extern crate abomonation;
+#[macro_use]
+extern crate abomonation_derive;
 extern crate chrono;
 extern crate core;
 extern crate heapsize;
@@ -27,6 +29,7 @@ mod config;
 mod experiment;
 /// Provides facilities to read and write files
 mod io;
+#[macro_use]
 mod logging;
 mod lsh;
 mod measure;
