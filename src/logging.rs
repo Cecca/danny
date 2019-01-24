@@ -1,5 +1,8 @@
 use crate::config::*;
+use crate::experiment::Experiment;
 use env_logger::Builder;
+use serde_json::Value;
+use std::collections::HashMap;
 use std::io::Write;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -160,5 +163,15 @@ impl FrozenExecutionSummary {
             distinct_pairs: self.distinct_pairs + other.distinct_pairs,
             generated_pairs: self.generated_pairs + other.generated_pairs,
         }
+    }
+
+    pub fn add_to_experiment(&self, table: &str, experiment: &mut Experiment) {
+        experiment.append(
+            table,
+            row!(
+                "distinct_pairs" => self.distinct_pairs,
+                "generated_pairs" => self.generated_pairs
+            ),
+        )
     }
 }

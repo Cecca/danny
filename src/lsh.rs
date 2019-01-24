@@ -4,6 +4,7 @@ use crate::logging::init_event_logging;
 use crate::logging::ToSpaceString;
 use crate::logging::*;
 use crate::operators::*;
+use crate::Experiment;
 use abomonation::Abomonation;
 use heapsize::HeapSizeOf;
 use measure::InnerProduct;
@@ -709,6 +710,7 @@ pub fn fixed_param_lsh<D, F, H, O>(
     hash_fn: LSHCollection<H, O>,
     sim_pred: F,
     config: &Config,
+    experiment: &mut Experiment,
 ) -> usize
 where
     D: ReadDataFile + Data + Sync + Send + Clone + Abomonation + Debug + HeapSizeOf,
@@ -903,6 +905,7 @@ where
         let global_summary = exec_summaries
             .iter()
             .fold(FrozenExecutionSummary::zero(), |a, b| a.sum(b));
+        global_summary.add_to_experiment("execution_summary", experiment);
         println!("Global summary {:?}", global_summary);
         // From `recv` we get an entry for each timestamp, containing a one-element vector with the
         // count of output pairs for a given timestamp. We sum across all the timestamps, so we need to

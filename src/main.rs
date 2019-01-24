@@ -78,6 +78,7 @@ fn main() {
                     lsh::Hyperplane::collection(k, repetitions, dim, &mut rng),
                     move |a, b| Cosine::cosine(a, b) >= threshold,
                     &config,
+                    &mut experiment,
                 )
             }
             "jaccard" => {
@@ -90,6 +91,7 @@ fn main() {
                     lsh::MinHash::collection(k, repetitions, &mut rng),
                     move |a, b| Jaccard::jaccard(a, b) >= threshold,
                     &config,
+                    &mut experiment,
                 )
             }
             _ => unimplemented!("Unknown measure {}", args.measure),
