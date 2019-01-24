@@ -96,6 +96,7 @@ impl ToSpaceString for usize {
 #[derive(Debug, Clone, Abomonation)]
 pub enum LogEvent {
     DistinctPairs(usize),
+    DuplicatesDiscarded(usize),
     GeneratedPairs(usize),
 }
 
@@ -115,6 +116,7 @@ where
 #[derive(Debug)]
 pub struct ExecutionSummary {
     distinct_pairs: AtomicUsize,
+    duplicates_discarded: AtomicUsize,
     generated_pairs: AtomicUsize,
 }
 
@@ -122,6 +124,7 @@ impl ExecutionSummary {
     pub fn new() -> Self {
         ExecutionSummary {
             distinct_pairs: 0.into(),
+            duplicates_discarded: 0.into(),
             generated_pairs: 0.into(),
         }
     }
@@ -129,6 +132,7 @@ impl ExecutionSummary {
     pub fn freeze(&self) -> FrozenExecutionSummary {
         FrozenExecutionSummary {
             distinct_pairs: self.distinct_pairs.load(Ordering::Acquire),
+            duplicates_discarded: self.duplicates_discarded.load(Ordering::Acquire),
             generated_pairs: self.generated_pairs.load(Ordering::Acquire),
         }
     }
@@ -137,6 +141,10 @@ impl ExecutionSummary {
         match event {
             LogEvent::DistinctPairs(count) => {
                 self.distinct_pairs.fetch_add(count, Ordering::Relaxed);
+            }
+            LogEvent::DuplicatesDiscarded(count) => {
+                self.duplicates_discarded
+                    .fetch_add(count, Ordering::Relaxed);
             }
             LogEvent::GeneratedPairs(count) => {
                 self.generated_pairs.fetch_add(count, Ordering::Relaxed);
@@ -148,6 +156,7 @@ impl ExecutionSummary {
 #[derive(Debug, Abomonation, Clone)]
 pub struct FrozenExecutionSummary {
     pub distinct_pairs: usize,
+    pub duplicates_discarded: usize,
     pub generated_pairs: usize,
 }
 
@@ -155,12 +164,14 @@ impl FrozenExecutionSummary {
     pub fn zero() -> Self {
         FrozenExecutionSummary {
             distinct_pairs: 0,
+            duplicates_discarded: 0,
             generated_pairs: 0,
         }
     }
     pub fn sum(&self, other: &Self) -> Self {
         FrozenExecutionSummary {
             distinct_pairs: self.distinct_pairs + other.distinct_pairs,
+            duplicates_discarded: self.duplicates_discarded + other.duplicates_discarded,
             generated_pairs: self.generated_pairs + other.generated_pairs,
         }
     }

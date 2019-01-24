@@ -369,7 +369,6 @@ where
         self.unary(PipelinePact, "approximate-distinct", move |_, _| {
             move |input, output| {
                 input.for_each(|t, d| {
-                    let mut cnt = 0;
                     let mut data = d.replace(Vec::new());
                     let mut cnt = 0;
                     let mut received = 0;
@@ -383,6 +382,7 @@ where
                         }
                     }
                     log_event!(logger, LogEvent::DistinctPairs(cnt));
+                    log_event!(logger, LogEvent::DuplicatesDiscarded(received - cnt));
                     debug!(
                         "Filtered {} elements out of {} received",
                         received - cnt,
