@@ -92,7 +92,7 @@ impl ToSpaceString for usize {
 
 #[derive(Debug, Clone, Abomonation)]
 pub enum LogEvent {
-    UniqueCandidates(usize),
+    DistinctPairs(usize),
     GeneratedPairs(usize),
 }
 
@@ -111,29 +111,29 @@ where
 
 #[derive(Debug)]
 pub struct ExecutionSummary {
-    unique_candidates: AtomicUsize,
+    distinct_pairs: AtomicUsize,
     generated_pairs: AtomicUsize,
 }
 
 impl ExecutionSummary {
     pub fn new() -> Self {
         ExecutionSummary {
-            unique_candidates: 0.into(),
+            distinct_pairs: 0.into(),
             generated_pairs: 0.into(),
         }
     }
 
     pub fn freeze(&self) -> FrozenExecutionSummary {
         FrozenExecutionSummary {
-            unique_candidates: self.unique_candidates.load(Ordering::Acquire),
+            distinct_pairs: self.distinct_pairs.load(Ordering::Acquire),
             generated_pairs: self.generated_pairs.load(Ordering::Acquire),
         }
     }
 
     pub fn add(&self, event: LogEvent) {
         match event {
-            LogEvent::UniqueCandidates(count) => {
-                self.unique_candidates.fetch_add(count, Ordering::Relaxed);
+            LogEvent::DistinctPairs(count) => {
+                self.distinct_pairs.fetch_add(count, Ordering::Relaxed);
             }
             LogEvent::GeneratedPairs(count) => {
                 self.generated_pairs.fetch_add(count, Ordering::Relaxed);
@@ -144,20 +144,20 @@ impl ExecutionSummary {
 
 #[derive(Debug, Abomonation, Clone)]
 pub struct FrozenExecutionSummary {
-    pub unique_candidates: usize,
+    pub distinct_pairs: usize,
     pub generated_pairs: usize,
 }
 
 impl FrozenExecutionSummary {
     pub fn zero() -> Self {
         FrozenExecutionSummary {
-            unique_candidates: 0,
+            distinct_pairs: 0,
             generated_pairs: 0,
         }
     }
     pub fn sum(&self, other: &Self) -> Self {
         FrozenExecutionSummary {
-            unique_candidates: self.unique_candidates + other.unique_candidates,
+            distinct_pairs: self.distinct_pairs + other.distinct_pairs,
             generated_pairs: self.generated_pairs + other.generated_pairs,
         }
     }

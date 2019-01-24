@@ -382,7 +382,7 @@ where
                             cnt += 1;
                         }
                     }
-                    log_event!(logger, LogEvent::UniqueCandidates(cnt));
+                    log_event!(logger, LogEvent::DistinctPairs(cnt));
                     debug!(
                         "Filtered {} elements out of {} received",
                         received - cnt,
