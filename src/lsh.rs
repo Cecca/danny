@@ -840,12 +840,8 @@ where
             candidate_pairs
                 .map(|pair| pair.1)
                 .filter(move |(lk, rk)| {
-                    let lv = global_left
-                        .get(lk)
-                        .expect(&format!("Missing vector {} from global left", lk));
-                    let rv = global_right
-                        .get(rk)
-                        .expect(&format!("Missing vector {} from global right", lk));
+                    let lv = global_left.get(lk).unwrap();
+                    let rv = global_right.get(rk).unwrap();
                     sim_pred(lv, rv)
                 })
                 .approximate_distinct()
