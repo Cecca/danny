@@ -20,10 +20,12 @@ extern crate probabilistic_collections;
 extern crate rand;
 extern crate rand_xorshift;
 extern crate serde_json;
+extern crate siphasher;
 extern crate smallbitvec;
 extern crate timely;
 
 mod baseline;
+mod bloom;
 mod config;
 #[macro_use]
 mod experiment;
