@@ -4,7 +4,6 @@ use env_logger::Builder;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io::Write;
-use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;

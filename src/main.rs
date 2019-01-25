@@ -1,8 +1,7 @@
 #[macro_use]
 extern crate log;
-extern crate log_panics;
-// extern crate syslog;
 extern crate env_logger;
+extern crate log_panics;
 #[macro_use]
 extern crate serde_derive;
 extern crate envy;
@@ -16,7 +15,6 @@ extern crate abomonation_derive;
 extern crate chrono;
 extern crate core;
 extern crate heapsize;
-extern crate probabilistic_collections;
 extern crate rand;
 extern crate rand_xorshift;
 extern crate serde_json;
@@ -59,8 +57,6 @@ fn main() {
     let args = CmdlineConfig::get();
     let mut experiment = Experiment::from_config(&config, &args);
 
-    // Build timely context
-    let timely_builder = config.get_timely_builder();
     info!("Starting...");
     let mut rng = config.get_random_generator(0);
 

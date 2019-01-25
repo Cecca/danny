@@ -1,12 +1,10 @@
 use crate::logging::ToSpaceString;
 use heapsize::HeapSizeOf;
-use rand::{Rng, XorShiftRng};
+use rand::Rng;
 use siphasher::sip::SipHasher;
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::mem::size_of;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 
 pub struct BloomFilter<T> {
     num_bits: usize,
@@ -55,6 +53,7 @@ impl<T: Hash> BloomFilter<T> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn show_bits(&self) -> String {
         let mut s = String::new();
         for b in self.bits.iter() {

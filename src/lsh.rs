@@ -9,7 +9,6 @@ use abomonation::Abomonation;
 use heapsize::HeapSizeOf;
 use measure::InnerProduct;
 use operators::Route;
-use probabilistic_collections::cuckoo::CuckooFilter;
 use rand::distributions::{Distribution, Normal, Uniform};
 use rand::Rng;
 use std::clone::Clone;
@@ -26,7 +25,6 @@ use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use timely::order::Product;
 use timely::progress::Timestamp;
-use timely::worker::AsWorker;
 use timely::Data;
 use types::{BagOfWords, VectorWithNorm};
 
@@ -38,7 +36,9 @@ pub trait LSHFunction {
 
     fn repetitions_at_range(range: f64, k: usize) -> usize {
         let p = Self::probability_at_range(range);
-        (1_f64 / p).powi(k as i32).ceil() as usize
+        let reps = (1_f64 / p).powi(k as i32).ceil() as usize;
+        info!("Probability at range {} is {} (reps: {})", range, p, reps);
+        reps
     }
 }
 
@@ -481,11 +481,6 @@ where
         let mut right_buckets = HashMap::new();
         let mut generators = HashMap::new();
 
-        let item_count = 1 << 28;
-        let fpp = 0.01;
-        let fingerprint = 8;
-        // let mut filter =
-        //     CuckooFilter::<(K, K)>::from_fingerprint_bit_count(item_count, fpp, fingerprint);
         let logger = self.scope().danny_logger();
 
         self.binary_frontier(
@@ -544,11 +539,8 @@ where
                         let mut session = output.session(time);
                         let mut cnt = 0;
                         for pair in generator.take(10000) {
-                            // if !filter.contains(&pair) {
-                            //     filter.insert(&pair);
                             session.give(pair);
                             cnt += 1;
-                            // }
                         }
                         debug!(
                             "Emitted batch of {} pairs (is done: {})",
@@ -568,12 +560,7 @@ where
     fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)> {
         let mut left_buckets = HashMap::new();
         let mut right_buckets = HashMap::new();
-
-        let item_count = 1 << 30;
-        let fpp = 0.01;
-        let fingerprint = 8;
-        let mut filter =
-            CuckooFilter::<(K, K)>::from_fingerprint_bit_count(item_count, fpp, fingerprint);
+        let logger = self.scope().danny_logger();
 
         self.binary_frontier(
             &right,
@@ -612,33 +599,20 @@ where
                             let mut session = output.session(&time);
                             // We got all data for the repetition at `time`
                             if let Some(right_buckets) = right_buckets.get_mut(time) {
-                                debug!("Start to generate candidates from bucket");
                                 let mut cnt = 0;
-                                let mut potential = 0;
                                 for (h, left_keys) in left_buckets.drain() {
                                     if let Some(right_keys) = right_buckets.get(&h) {
                                         for kl in left_keys.iter() {
                                             for kr in right_keys.iter() {
                                                 //  do output
-                                                potential += 1;
                                                 let out_pair = (kl.clone(), kr.clone());
-                                                if !filter.contains(&out_pair) {
-                                                    filter.insert(&out_pair);
-                                                    assert!(!filter.is_nearly_full(), "Cockoo filter for bucketing is nearly full!");
-                                                    session.give(out_pair);
-                                                    cnt += 1;
-                                                }
+                                                session.give(out_pair);
+                                                cnt += 1;
                                             }
                                         }
                                     }
                                 }
-                                info!(
-                                    "[{:?}] Output {} candidates (out of {} potential ones, discarded {})",
-                                    time.time(),
-                                    cnt,
-                                    potential,
-                                    potential - cnt
-                                );
+                                log_event!(logger, LogEvent::GeneratedPairs(cnt));
                             }
                             // Remove the repetition from the right buckets
                             right_buckets.remove(time);
@@ -836,17 +810,16 @@ where
             let hash_fn = hash_fn;
 
             let matrix = MatrixDescription::for_workers(peers as usize);
-            let candidate_pairs = left_stream
+            left_stream
                 .colliding_pairs(&right_stream, &hash_fn)
-                .pair_route(matrix);
-            candidate_pairs
+                .pair_route(matrix)
                 .map(|pair| pair.1)
+                .approximate_distinct(1 << 30, 0.05, 123123123)
                 .filter(move |(lk, rk)| {
                     let lv = global_left.get(lk).unwrap();
                     let rv = global_right.get(rk).unwrap();
                     sim_pred(lv, rv)
                 })
-                .approximate_distinct(1 << 30, 0.05, 123123123)
                 .count()
                 .exchange(|_| 0)
                 .probe_with(&mut probe)
