@@ -40,11 +40,6 @@ impl Experiment {
         } else {
             experiment
         };
-        let experiment = if cmdline.dimension.is_some() {
-            experiment.tag("dimension", cmdline.dimension.unwrap())
-        } else {
-            experiment
-        };
 
         experiment
     }

@@ -159,7 +159,6 @@ pub struct CmdlineConfig {
     pub right_path: String,
     pub algorithm: String,
     pub k: Option<usize>,
-    pub dimension: Option<usize>,
 }
 
 impl CmdlineConfig {
@@ -172,7 +171,6 @@ impl CmdlineConfig {
             (@arg MEASURE: -m --measure +required +takes_value "The similarity measure to be used")
             (@arg K: -k +takes_value "The number of concatenations of the hash function")
             (@arg THRESHOLD: -r --range +required +takes_value "The similarity threshold")
-            (@arg DIMENSION: --dimension --dim +takes_value "The dimension of the space, required for Hyperplane LSH")
             (@arg LEFT: +required "Path to the left hand side of the join")
             (@arg RIGHT: +required "Path to the right hand side of the join")
         )
@@ -204,11 +202,6 @@ impl CmdlineConfig {
                 .parse::<usize>()
                 .expect("k should be an unsigned integer")
         });
-        let dimension = matches.value_of("DIMENSION").map(|k_str| {
-            k_str
-                .parse::<usize>()
-                .expect("The dimension should be usize")
-        });
         CmdlineConfig {
             measure,
             threshold,
@@ -216,7 +209,6 @@ impl CmdlineConfig {
             right_path,
             algorithm,
             k,
-            dimension,
         }
     }
 }

@@ -43,6 +43,7 @@ mod version {
 }
 
 use crate::baseline::Baselines;
+use crate::io::ReadDataFile;
 use crate::config::*;
 use crate::experiment::Experiment;
 use crate::lsh::LSHFunction;
@@ -66,9 +67,7 @@ fn main() {
             "cosine" => {
                 let k = args.k.expect("K is needed on the command line");
                 let repetitions = lsh::Hyperplane::repetitions_at_range(args.threshold, k);
-                let dim: usize = args
-                    .dimension
-                    .expect("Dimension is needed on the command line");
+                let dim = VectorWithNorm::peek_first(&args.left_path.clone().into()).dim();
                 let threshold = args.threshold;
                 lsh::fixed_param_lsh::<VectorWithNorm, _, _, _>(
                     &args.left_path,

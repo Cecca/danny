@@ -19,7 +19,6 @@ impl Debug for VectorWithNorm {
 }
 
 impl VectorWithNorm {
-    #[allow(dead_code)]
     pub fn dim(&self) -> usize {
         self.data.len()
     }
