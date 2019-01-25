@@ -880,6 +880,16 @@ where
         let global_summary = exec_summaries
             .iter()
             .fold(FrozenExecutionSummary::zero(), |a, b| a.sum(b));
+        // From `recv` we get an entry for each timestamp, containing a one-element vector with the
+        // count of output pairs for a given timestamp. We sum across all the timestamps, so we need to
+        // remove the duplicates
+        let count: usize = recv
+            .extract()
+            .iter()
+            .map(|pair| pair.1.clone().iter().sum::<usize>())
+            .sum();
+
+        let precision = count as f64 / global_summary.distinct_pairs as f64;
         let potential_pairs =
             D::num_elements(&left_path_final.into()) * D::num_elements(&right_path_final.into());
         let fraction_distinct = global_summary.distinct_pairs as f64 / potential_pairs as f64;
@@ -889,15 +899,9 @@ where
             fraction_distinct,
             global_summary.distinct_pairs, potential_pairs
         );
+        info!("Precision: {}", precision);
         info!("Global summary {:?}", global_summary);
-        // From `recv` we get an entry for each timestamp, containing a one-element vector with the
-        // count of output pairs for a given timestamp. We sum across all the timestamps, so we need to
-        // remove the duplicates
-        let count: usize = recv
-            .extract()
-            .iter()
-            .map(|pair| pair.1.clone().iter().sum::<usize>())
-            .sum();
+
         count
     } else {
         0
