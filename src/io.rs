@@ -54,6 +54,12 @@ where
         Self::from_line(&first_line)
     }
 
+    fn num_elements(path: &PathBuf) -> usize {
+        let file = File::open(path).expect("Error opening file");
+        let buf_reader = BufReader::new(file);
+        buf_reader.lines().count()
+    }
+
     fn from_line(line: &str) -> Self;
 }
 

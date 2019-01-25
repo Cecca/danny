@@ -704,6 +704,8 @@ where
     let right_path = right_path.clone();
     let left_path_main = left_path.clone();
     let right_path_main = right_path.clone();
+    let left_path_final = left_path.clone();
+    let right_path_final = right_path.clone();
     let repetitions = hash_fn.repetitions();
 
     // These two maps hold the vectors that need to be accessed by all threads in this machine.
@@ -878,8 +880,16 @@ where
         let global_summary = exec_summaries
             .iter()
             .fold(FrozenExecutionSummary::zero(), |a, b| a.sum(b));
+        let potential_pairs =
+            D::num_elements(&left_path_final.into()) * D::num_elements(&right_path_final.into());
+        let fraction_distinct = global_summary.distinct_pairs as f64 / potential_pairs as f64;
         global_summary.add_to_experiment("execution_summary", experiment);
-        println!("Global summary {:?}", global_summary);
+        info!(
+            "Evaluated fraction of the potential pairs: {} ({}/{})",
+            fraction_distinct,
+            global_summary.distinct_pairs, potential_pairs
+        );
+        info!("Global summary {:?}", global_summary);
         // From `recv` we get an entry for each timestamp, containing a one-element vector with the
         // count of output pairs for a given timestamp. We sum across all the timestamps, so we need to
         // remove the duplicates
