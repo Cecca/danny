@@ -846,7 +846,7 @@ where
                     let rv = global_right.get(rk).unwrap();
                     sim_pred(lv, rv)
                 })
-                .approximate_distinct()
+                .approximate_distinct(1 << 30, 0.05, 123123123)
                 .count()
                 .exchange(|_| 0)
                 .probe_with(&mut probe)

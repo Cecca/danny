@@ -1,6 +1,8 @@
+use crate::bloom::BloomFilter;
 use crate::logging::*;
 use abomonation::Abomonation;
-use probabilistic_collections::bloom::BloomFilter;
+use rand::SeedableRng;
+use rand_xorshift::XorShiftRng;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -353,7 +355,7 @@ where
     G: Scope,
     D: Data,
 {
-    fn approximate_distinct(&self) -> Stream<G, D>;
+    fn approximate_distinct(&self, expected_elements: usize, fpp: f64, seed: u64) -> Stream<G, D>;
 }
 
 impl<G, D> ApproximateDistinct<G, D> for Stream<G, D>
@@ -361,10 +363,10 @@ where
     G: Scope,
     D: Data + Hash,
 {
-    fn approximate_distinct(&self) -> Stream<G, D> {
-        let item_count = 1 << 28;
-        let fpp = 0.01;
-        let mut filter = BloomFilter::<D>::new(item_count, fpp);
+    fn approximate_distinct(&self, expected_elements: usize, fpp: f64, seed: u64) -> Stream<G, D> {
+        let mut rng = XorShiftRng::seed_from_u64(seed);
+        let mut filter = BloomFilter::<D>::new(expected_elements, fpp, &mut rng);
+        info!("Initialized {:?}", filter);
         let logger = self.scope().danny_logger();
         self.unary(PipelinePact, "approximate-distinct", move |_, _| {
             move |input, output| {

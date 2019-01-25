@@ -17,12 +17,13 @@ pub struct BloomFilter<T> {
     _marker: std::marker::PhantomData<T>,
 }
 
-impl<T> Debug for BloomFilter<T> {
+impl<T: Hash> Debug for BloomFilter<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
         write!(
             f,
-            "BloomFilter(bits per element: {}, k: {}, expected elements: {}, num bits: {} [{}])",
+            "BloomFilter(bits per element: {}, fpp: {}, k: {}, expected elements: {}, num bits: {} [{}])",
             self.num_bits as f64 / self.expected_elements as f64,
+            self.fpp(),
             self.k,
             self.expected_elements,
             self.num_bits,
@@ -32,15 +33,11 @@ impl<T> Debug for BloomFilter<T> {
 }
 
 impl<T: Hash> BloomFilter<T> {
-    fn new<R: Rng>(elements: usize, fpp: f64, rng: &mut R) -> Self {
+    pub fn new<R: Rng>(elements: usize, fpp: f64, rng: &mut R) -> Self {
         let word_length = size_of::<usize>() * 8;
         let num_bits = (-(elements as f64) * fpp.log2() / 2f64.ln()).ceil() as usize;
         let k = (2f64.ln() * (num_bits as f64 / elements as f64)).ceil() as usize;
         let num_words = (num_bits as f64 / word_length as f64).ceil() as usize;
-        println!(
-            "Built bloom filter for {} elements with {} bits, k={} for false positive probability {}",
-            elements, num_bits, k, fpp
-        );
         let bits = vec![0usize; num_words];
         let mut hashers = Vec::with_capacity(k);
         for _ in 0..k {
@@ -58,7 +55,7 @@ impl<T: Hash> BloomFilter<T> {
         }
     }
 
-    fn show_bits(&self) -> String {
+    pub fn show_bits(&self) -> String {
         let mut s = String::new();
         for b in self.bits.iter() {
             s.push_str(&format!("{:64b}", b));
@@ -66,7 +63,7 @@ impl<T: Hash> BloomFilter<T> {
         s
     }
 
-    fn contains(&self, x: &T) -> bool {
+    pub fn contains(&self, x: &T) -> bool {
         let word_length = size_of::<usize>() * 8;
         for hasher in self.hashers.iter() {
             let mut hasher = *hasher;
@@ -82,7 +79,7 @@ impl<T: Hash> BloomFilter<T> {
         true
     }
 
-    fn insert(&mut self, x: &T) {
+    pub fn insert(&mut self, x: &T) {
         let word_length = size_of::<usize>() * 8;
         for hasher in self.hashers.iter() {
             let mut hasher = *hasher;
