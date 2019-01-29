@@ -41,6 +41,9 @@ mod version {
     include!(concat!(env!("OUT_DIR"), "/version.rs"));
 }
 
+#[global_allocator]
+static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
 use crate::baseline::Baselines;
 use crate::config::*;
 use crate::experiment::Experiment;
