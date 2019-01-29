@@ -91,7 +91,7 @@ impl Hyperplane {
         for _ in 0..k {
             let mut plane = Vec::with_capacity(dim);
             for _ in 0..dim {
-                plane.push(gaussian.sample(rng));
+                plane.push(gaussian.sample(rng) as f32);
             }
             let plane = VectorWithNorm::new(plane);
             planes.push(plane);

@@ -11,12 +11,12 @@ pub trait InnerProduct {
     }
 }
 
-impl InnerProduct for Vec<f64> {
-    fn inner_product(a: &Vec<f64>, b: &Vec<f64>) -> f64 {
-        a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
+impl InnerProduct for Vec<f32> {
+    fn inner_product(a: &Vec<f32>, b: &Vec<f32>) -> f64 {
+        a.iter().zip(b.iter()).map(|(x, y)| x * y).sum::<f32>() as f64
     }
-    fn norm_2(a: &Vec<f64>) -> f64 {
-        let squared_sum: f64 = a.iter().map(|a| a * a).sum();
+    fn norm_2(a: &Vec<f32>) -> f64 {
+        let squared_sum: f64 = a.iter().map(|a| a * a).sum::<f32>() as f64;
         squared_sum.sqrt()
     }
 }

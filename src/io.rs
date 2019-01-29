@@ -65,11 +65,11 @@ where
 
 impl ReadDataFile for VectorWithNorm {
     fn from_line(line: &str) -> Self {
-        let data: Vec<f64> = line
+        let data: Vec<f32> = line
             .split_whitespace()
             .skip(1)
             .map(|s| {
-                s.parse::<f64>()
+                s.parse::<f32>()
                     .expect(&format!("Error parsing floating point number `{}`", s))
             })
             .collect();

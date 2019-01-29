@@ -5,7 +5,7 @@ use std::fmt::Debug;
 
 #[derive(Clone)]
 pub struct VectorWithNorm {
-    data: Vec<f64>,
+    data: Vec<f32>,
     norm: f64,
 }
 
@@ -22,12 +22,12 @@ impl VectorWithNorm {
         self.data.len()
     }
 
-    pub fn new(data: Vec<f64>) -> VectorWithNorm {
+    pub fn new(data: Vec<f32>) -> VectorWithNorm {
         let norm = InnerProduct::norm_2(&data);
         VectorWithNorm { data, norm }
     }
 
-    pub fn data(&self) -> &Vec<f64> {
+    pub fn data(&self) -> &Vec<f32> {
         &self.data
     }
 
