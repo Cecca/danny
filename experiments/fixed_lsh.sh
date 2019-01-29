@@ -24,8 +24,6 @@ function small() {
     "cosine google-10k-left.txt google-10k-right.txt 0.6"
     "cosine google-100k-left.txt google-100k-right.txt 0.6"
     "cosine google-500k-left.txt google-500k-right.txt 0.6"
-    "jaccard wiki-10k-100k-left.txt wiki-10k-100k-right.txt 0.5"
-    "jaccard wiki-10k-500k-left.txt wiki-10k-500k-right.txt 0.5"
   )
   
   test -d $RESULTS_DIR || mkdir $RESULTS_DIR
@@ -37,12 +35,32 @@ function small() {
     LEFT=$DATA_DIR/`nth 2 "$TUPLE"`
     RIGHT=$DATA_DIR/`nth 3 "$TUPLE"`
     THRESHOLD=`nth 4 "$TUPLE"`
-    for K in 10 14 16
+    for K in 12 14 16
     do
-      for SEED in 24834 1231 20459812948 123092 1091 098140
+      for SEED in 24834 
       do
         export DANNY_SEED=$SEED
-        $RUN_DANNY --algorithm fixed-lsh -k $K --dim 300 --range $THRESHOLD --measure $MEASURE $LEFT $RIGHT
+        $RUN_DANNY --algorithm fixed-lsh -k $K --range $THRESHOLD --measure $MEASURE $LEFT $RIGHT
+      done
+    done
+  done
+
+  declare -a DATASETS=(
+    "jaccard wiki-10k-100k-left.txt wiki-10k-100k-right.txt 0.5"
+    "jaccard wiki-10k-500k-left.txt wiki-10k-500k-right.txt 0.5"
+  )
+  for TUPLE in "${DATASETS[@]}"
+  do
+    MEASURE=`nth 1 "$TUPLE"`
+    LEFT=$DATA_DIR/`nth 2 "$TUPLE"`
+    RIGHT=$DATA_DIR/`nth 3 "$TUPLE"`
+    THRESHOLD=`nth 4 "$TUPLE"`
+    for K in 1 2 3 4 5
+    do
+      for SEED in 24834 
+      do
+        export DANNY_SEED=$SEED
+        $RUN_DANNY --algorithm fixed-lsh -k $K --range $THRESHOLD --measure $MEASURE $LEFT $RIGHT
       done
     done
   done
