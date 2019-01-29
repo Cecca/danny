@@ -1,12 +1,10 @@
 use crate::config::Config;
 use crate::io::ReadDataFile;
 use crate::logging::init_event_logging;
-use crate::logging::ToSpaceString;
 use crate::logging::*;
 use crate::operators::*;
 use crate::Experiment;
 use abomonation::Abomonation;
-use heapsize::HeapSizeOf;
 use measure::InnerProduct;
 use operators::Route;
 use rand::distributions::{Distribution, Normal, Uniform};
@@ -687,7 +685,7 @@ pub fn fixed_param_lsh<D, F, H, O>(
     experiment: &mut Experiment,
 ) -> usize
 where
-    D: ReadDataFile + Data + Sync + Send + Clone + Abomonation + Debug + HeapSizeOf,
+    D: ReadDataFile + Data + Sync + Send + Clone + Abomonation + Debug,
     F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
     H: LSHFunction<Input = D, Output = O> + Sync + Send + Clone + 'static,
     O: Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash,
@@ -765,11 +763,9 @@ where
         let end = Instant::now();
         let elapsed = end - start;
         info!(
-            "Loaded {} left vectors ({} bytes) and {} right vectors ({} bytes) (in {:?})",
+            "Loaded {} left vectors and {} right vectors (in {:?})",
             global_left.len(),
-            global_left.heap_size_of_children().to_space_string(),
             global_right.len(),
-            global_right.heap_size_of_children().to_space_string(),
             elapsed
         );
 
@@ -896,8 +892,7 @@ where
         global_summary.add_to_experiment("execution_summary", experiment);
         info!(
             "Evaluated fraction of the potential pairs: {} ({}/{})",
-            fraction_distinct,
-            global_summary.distinct_pairs, potential_pairs
+            fraction_distinct, global_summary.distinct_pairs, potential_pairs
         );
         info!("Precision: {}", precision);
         info!("Global summary {:?}", global_summary);

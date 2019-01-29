@@ -2,7 +2,6 @@ use crate::config::Config;
 use crate::io::ReadDataFile;
 use crate::operators::*;
 use abomonation::Abomonation;
-use heapsize::HeapSizeOf;
 use std::clone::Clone;
 use std::fmt::Debug;
 use std::fs::File;
@@ -93,7 +92,7 @@ impl Baselines {
 
 pub fn sequential<T, F>(thresh: f64, left_path: &String, right_path: &String, sim_fn: F) -> usize
 where
-    T: ReadDataFile + HeapSizeOf,
+    T: ReadDataFile,
     F: Fn(&T, &T) -> f64,
 {
     let mut left = Vec::new();
@@ -101,11 +100,9 @@ where
     ReadDataFile::from_file(&left_path.into(), |v| left.push(v));
     ReadDataFile::from_file(&right_path.into(), |v| right.push(v));
     println!(
-        "Loaded data:\n  left: {} ({} bytes)\n  right: {} ({} bytes)",
+        "Loaded data:\n  left: {}\n  right: {}",
         left.len(),
-        left.heap_size_of_children(),
         right.len(),
-        right.heap_size_of_children()
     );
 
     let mut sim_cnt = 0;

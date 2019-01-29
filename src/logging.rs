@@ -73,25 +73,6 @@ macro_rules! log_event {
     };
 }
 
-pub trait ToSpaceString {
-    fn to_space_string(self) -> String;
-}
-
-impl ToSpaceString for usize {
-    fn to_space_string(self) -> String {
-        let bytes = self;
-        if bytes >= 1024 * 1024 * 1024 {
-            format!("{:.2} Gb", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
-        } else if bytes >= 1024 * 1024 {
-            format!("{:.2} Mb", bytes as f64 / (1024.0 * 1024.0))
-        } else if bytes >= 1024 {
-            format!("{:.2} Kb", bytes as f64 / 1024.0)
-        } else {
-            format!("{} bytes", bytes)
-        }
-    }
-}
-
 #[derive(Debug, Clone, Abomonation)]
 pub enum LogEvent {
     DistinctPairs(usize),

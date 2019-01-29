@@ -1,6 +1,5 @@
 use crate::measure::{InnerProduct, Jaccard};
 use abomonation::Abomonation;
-use heapsize::HeapSizeOf;
 use std::fmt;
 use std::fmt::Debug;
 
@@ -37,12 +36,6 @@ impl VectorWithNorm {
     }
 }
 
-impl HeapSizeOf for VectorWithNorm {
-    fn heap_size_of_children(&self) -> usize {
-        self.data.heap_size_of_children()
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct BagOfWords {
     universe: u32,
@@ -63,12 +56,6 @@ impl BagOfWords {
 
     pub fn word_at(&self, i: usize) -> u32 {
         self.words[i]
-    }
-}
-
-impl HeapSizeOf for BagOfWords {
-    fn heap_size_of_children(&self) -> usize {
-        self.words.heap_size_of_children()
     }
 }
 

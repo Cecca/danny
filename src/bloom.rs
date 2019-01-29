@@ -1,5 +1,3 @@
-use crate::logging::ToSpaceString;
-use heapsize::HeapSizeOf;
 use rand::Rng;
 use siphasher::sip::SipHasher;
 use std::fmt::{Debug, Formatter};
@@ -19,13 +17,12 @@ impl<T: Hash> Debug for BloomFilter<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
         write!(
             f,
-            "BloomFilter(bits per element: {}, fpp: {}, k: {}, expected elements: {}, num bits: {} [{}])",
+            "BloomFilter(bits per element: {}, fpp: {}, k: {}, expected elements: {}, num bits: {})",
             self.num_bits as f64 / self.expected_elements as f64,
             self.fpp(),
             self.k,
             self.expected_elements,
             self.num_bits,
-            self.heap_size_of_children().to_space_string()
         )
     }
 }
@@ -93,12 +90,6 @@ impl<T: Hash> BloomFilter<T> {
 
     fn fpp(&self) -> f64 {
         0.5_f64.powi(self.k as i32)
-    }
-}
-
-impl<T> HeapSizeOf for BloomFilter<T> {
-    fn heap_size_of_children(&self) -> usize {
-        self.bits.heap_size_of_children()
     }
 }
 

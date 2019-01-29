@@ -18,7 +18,6 @@ log-panics = "2.0.0"
 smallbitvec = "2.3"
 rand = "0.6"
 rand_xorshift = "0.1.0"
-heapsize = "0.4"
 chrono = "0.4"
 siphasher = "0.3"
 

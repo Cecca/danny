@@ -14,7 +14,6 @@ extern crate abomonation;
 extern crate abomonation_derive;
 extern crate chrono;
 extern crate core;
-extern crate heapsize;
 extern crate rand;
 extern crate rand_xorshift;
 extern crate serde_json;
@@ -43,9 +42,9 @@ mod version {
 }
 
 use crate::baseline::Baselines;
-use crate::io::ReadDataFile;
 use crate::config::*;
 use crate::experiment::Experiment;
+use crate::io::ReadDataFile;
 use crate::lsh::LSHFunction;
 use crate::measure::{Cosine, Jaccard};
 use crate::types::{BagOfWords, VectorWithNorm};
