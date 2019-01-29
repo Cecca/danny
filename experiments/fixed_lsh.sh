@@ -45,25 +45,25 @@ function small() {
     done
   done
 
-  declare -a DATASETS=(
-    "jaccard wiki-10k-100k-left.txt wiki-10k-100k-right.txt 0.5"
-    "jaccard wiki-10k-500k-left.txt wiki-10k-500k-right.txt 0.5"
-  )
-  for TUPLE in "${DATASETS[@]}"
-  do
-    MEASURE=`nth 1 "$TUPLE"`
-    LEFT=$DATA_DIR/`nth 2 "$TUPLE"`
-    RIGHT=$DATA_DIR/`nth 3 "$TUPLE"`
-    THRESHOLD=`nth 4 "$TUPLE"`
-    for K in 1 2 3 4 5
-    do
-      for SEED in 24834 
-      do
-        export DANNY_SEED=$SEED
-        $RUN_DANNY --algorithm fixed-lsh -k $K --range $THRESHOLD --measure $MEASURE $LEFT $RIGHT
-      done
-    done
-  done
+  # declare -a DATASETS=(
+  #   "jaccard wiki-10k-100k-left.txt wiki-10k-100k-right.txt 0.5"
+  #   "jaccard wiki-10k-500k-left.txt wiki-10k-500k-right.txt 0.5"
+  # )
+  # for TUPLE in "${DATASETS[@]}"
+  # do
+  #   MEASURE=`nth 1 "$TUPLE"`
+  #   LEFT=$DATA_DIR/`nth 2 "$TUPLE"`
+  #   RIGHT=$DATA_DIR/`nth 3 "$TUPLE"`
+  #   THRESHOLD=`nth 4 "$TUPLE"`
+  #   for K in 1 2 3 4 5
+  #   do
+  #     for SEED in 24834 
+  #     do
+  #       export DANNY_SEED=$SEED
+  #       $RUN_DANNY --algorithm fixed-lsh -k $K --range $THRESHOLD --measure $MEASURE $LEFT $RIGHT
+  #     done
+  #   done
+  # done
 
   python ../json_to_table.py results.json > table.txt
   python ../plot_fixed_lsh.py results.json result
