@@ -159,6 +159,7 @@ pub struct CmdlineConfig {
     pub right_path: String,
     pub algorithm: String,
     pub k: Option<usize>,
+    pub sketch_bits: Option<usize>,
 }
 
 impl CmdlineConfig {
@@ -171,6 +172,7 @@ impl CmdlineConfig {
             (@arg MEASURE: -m --measure +required +takes_value "The similarity measure to be used")
             (@arg K: -k +takes_value "The number of concatenations of the hash function")
             (@arg THRESHOLD: -r --range +required +takes_value "The similarity threshold")
+            (@arg BITS: --("sketch-bits") +takes_value "The number of bits to use for sketching")
             (@arg LEFT: +required "Path to the left hand side of the join")
             (@arg RIGHT: +required "Path to the right hand side of the join")
         )
@@ -202,6 +204,11 @@ impl CmdlineConfig {
                 .parse::<usize>()
                 .expect("k should be an unsigned integer")
         });
+        let sketch_bits = matches.value_of("BITS").map(|bits_str| {
+            bits_str
+                .parse::<usize>()
+                .expect("The number of bits should be an integer")
+        });
         CmdlineConfig {
             measure,
             threshold,
@@ -209,6 +216,11 @@ impl CmdlineConfig {
             right_path,
             algorithm,
             k,
+            sketch_bits,
         }
+    }
+
+    pub fn get_sketch_bits(&self) -> usize {
+        self.sketch_bits.unwrap_or(1024)
     }
 }

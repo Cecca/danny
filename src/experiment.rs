@@ -36,7 +36,9 @@ impl Experiment {
             .tag("git_revision", version::short_sha())
             .tag("git_commit_date", version::commit_date());
         let experiment = if cmdline.k.is_some() {
-            experiment.tag("k", cmdline.k.unwrap())
+            experiment
+                .tag("k", cmdline.k.unwrap())
+                .tag("sketch_bits", cmdline.get_sketch_bits())
         } else {
             experiment
         };

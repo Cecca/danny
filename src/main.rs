@@ -73,7 +73,7 @@ fn main() {
                 let repetitions = lsh::Hyperplane::repetitions_at_range(args.threshold, k);
                 let dim = UnitNormVector::peek_first(&args.left_path.clone().into()).dim();
                 let threshold = args.threshold;
-                let sketcher = LongSimHash::new(128, dim, &mut rng);
+                let sketcher = LongSimHash::new(args.get_sketch_bits(), dim, &mut rng);
                 lsh::fixed_param_lsh::<UnitNormVector, _, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,
@@ -89,7 +89,7 @@ fn main() {
                 let k = args.k.expect("K is needed on the command line");
                 let repetitions = lsh::MinHash::repetitions_at_range(args.threshold, k);
                 let threshold = args.threshold;
-                let sketcher = OneBitMinHash::new(128, &mut rng);
+                let sketcher = OneBitMinHash::new(args.get_sketch_bits(), &mut rng);
                 lsh::fixed_param_lsh::<BagOfWords, _, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,
