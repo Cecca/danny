@@ -87,6 +87,10 @@ impl BagOfWords {
     pub fn word_at(&self, i: usize) -> u32 {
         self.words[i]
     }
+
+    pub fn words(&self) -> &Vec<u32> {
+        &self.words
+    }
 }
 
 impl Jaccard for BagOfWords {

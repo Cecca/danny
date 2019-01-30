@@ -1,31 +1,34 @@
-use crate::lsh::Hyperplane;
-use crate::lsh::LSHFunction;
+use crate::lsh::*;
 use crate::measure::*;
 use crate::types::*;
-use rand::distributions::{Distribution, Normal, Uniform};
+use rand::distributions::{Distribution, Normal};
 use rand::Rng;
 
-// Marker structs
-pub struct SketchCosine {}
-pub struct SketchJaccard {}
-
-pub trait SketchEstimate<T> {
+pub trait SketchEstimate {
     fn estimate(a: Self, b: Self) -> f64;
 }
 
-impl SketchEstimate<SketchCosine> for u32 {
-    fn estimate(a: u32, b: u32) -> f64 {
-        (a ^ b).count_zeros() as f64 / 32.0
+impl SketchEstimate for SimHashValue {
+    fn estimate(a: SimHashValue, b: SimHashValue) -> f64 {
+        a.bits
+            .iter()
+            .zip(b.bits.iter())
+            .map(|(x, y)| (x ^ y).count_zeros())
+            .sum::<u32>() as f64
+            / (32.0 * a.bits.len() as f64)
     }
 }
 
-impl SketchEstimate<SketchCosine> for Vec<u32> {
-    fn estimate(a: Vec<u32>, b: Vec<u32>) -> f64 {
-        a.iter()
-            .zip(b.iter())
+impl SketchEstimate for OneBitMinHashValue {
+    fn estimate(a: OneBitMinHashValue, b: OneBitMinHashValue) -> f64 {
+        let p = a
+            .bits
+            .iter()
+            .zip(b.bits.iter())
             .map(|(x, y)| (x ^ y).count_zeros())
             .sum::<u32>() as f64
-            / (32.0 * a.len() as f64)
+            / (32.0 * a.bits.len() as f64);
+        2.0 * p - 1.0
     }
 }
 
@@ -43,6 +46,10 @@ impl Sketcher for Hyperplane {
     fn sketch(&self, v: &UnitNormVector) -> u32 {
         self.hash(v)
     }
+}
+
+pub struct SimHashValue {
+    bits: Vec<u32>,
 }
 
 pub struct LongSimHash {
@@ -71,9 +78,9 @@ impl LongSimHash {
 
 impl Sketcher for LongSimHash {
     type Input = UnitNormVector;
-    type Output = Vec<u32>;
+    type Output = SimHashValue;
 
-    fn sketch(&self, v: &UnitNormVector) -> Vec<u32> {
+    fn sketch(&self, v: &UnitNormVector) -> SimHashValue {
         let num_elems = (self.k as f64 / 4.0).ceil() as usize;
         let mut sketch = Vec::with_capacity(num_elems);
         let mut part = 0u32;
@@ -91,6 +98,53 @@ impl Sketcher for LongSimHash {
         if sketch.len() != num_elems {
             sketch.push(part);
         }
-        sketch
+        SimHashValue { bits: sketch }
+    }
+}
+
+pub struct OneBitMinHash {
+    k: usize,
+    hashers: Vec<TabulatedHasher>,
+}
+
+pub struct OneBitMinHashValue {
+    bits: Vec<u32>,
+}
+
+impl OneBitMinHash {
+    fn new<R>(k: usize, rng: &mut R) -> Self
+    where
+        R: Rng + ?Sized,
+    {
+        let mut hashers = Vec::with_capacity(k);
+        for _ in 0..k {
+            hashers.push(TabulatedHasher::new(rng));
+        }
+        OneBitMinHash { k, hashers }
+    }
+}
+
+impl Sketcher for OneBitMinHash {
+    type Input = BagOfWords;
+    type Output = OneBitMinHashValue;
+
+    fn sketch(&self, v: &BagOfWords) -> OneBitMinHashValue {
+        let num_elems = (self.k as f32 / 32.0).ceil() as usize;
+        let mut bits = Vec::with_capacity(num_elems);
+        let mut part = 0u32;
+
+        for (i, hasher) in self.hashers.iter().enumerate() {
+            if i % 32 == 0 && i > 0 {
+                bits.push(part);
+                part = 0;
+            }
+            let h = v.words().iter().map(|w| hasher.hash(*w)).min().unwrap();
+            part = (part << 1) | (1 & h) as u32;
+        }
+        if bits.len() < num_elems {
+            bits.push(part);
+        }
+
+        OneBitMinHashValue { bits }
     }
 }

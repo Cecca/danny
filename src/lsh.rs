@@ -143,7 +143,7 @@ impl LSHFunction for Hyperplane {
 
 /// Produces 64 bit hashes of 32 bits values
 #[derive(Clone)]
-struct TabulatedHasher {
+pub struct TabulatedHasher {
     table0: [u64; 256],
     table1: [u64; 256],
     table2: [u64; 256],
@@ -151,7 +151,7 @@ struct TabulatedHasher {
 }
 
 impl TabulatedHasher {
-    fn new<R>(rng: &mut R) -> TabulatedHasher
+    pub fn new<R>(rng: &mut R) -> TabulatedHasher
     where
         R: Rng + ?Sized,
     {
@@ -180,7 +180,7 @@ impl TabulatedHasher {
         }
     }
 
-    fn hash(&self, x: u32) -> u64 {
+    pub fn hash(&self, x: u32) -> u64 {
         let mut h = self.table0[(x & 0xFF) as usize];
         h ^= self.table1[((x >> 8) & 0xFF) as usize];
         h ^= self.table2[((x >> 16) & 0xFF) as usize];
