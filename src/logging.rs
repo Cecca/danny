@@ -75,6 +75,7 @@ macro_rules! log_event {
 
 #[derive(Debug, Clone, Abomonation)]
 pub enum LogEvent {
+    SketchDiscarded(usize),
     DistinctPairs(usize),
     DuplicatesDiscarded(usize),
     GeneratedPairs(usize),
@@ -95,6 +96,7 @@ where
 
 #[derive(Debug)]
 pub struct ExecutionSummary {
+    sketch_discarded: AtomicUsize,
     distinct_pairs: AtomicUsize,
     duplicates_discarded: AtomicUsize,
     generated_pairs: AtomicUsize,
@@ -103,6 +105,7 @@ pub struct ExecutionSummary {
 impl ExecutionSummary {
     pub fn new() -> Self {
         ExecutionSummary {
+            sketch_discarded: 0.into(),
             distinct_pairs: 0.into(),
             duplicates_discarded: 0.into(),
             generated_pairs: 0.into(),
@@ -111,6 +114,7 @@ impl ExecutionSummary {
 
     pub fn freeze(&self) -> FrozenExecutionSummary {
         FrozenExecutionSummary {
+            sketch_discarded: self.sketch_discarded.load(Ordering::Acquire),
             distinct_pairs: self.distinct_pairs.load(Ordering::Acquire),
             duplicates_discarded: self.duplicates_discarded.load(Ordering::Acquire),
             generated_pairs: self.generated_pairs.load(Ordering::Acquire),
@@ -119,6 +123,9 @@ impl ExecutionSummary {
 
     pub fn add(&self, event: LogEvent) {
         match event {
+            LogEvent::SketchDiscarded(count) => {
+                self.sketch_discarded.fetch_add(count, Ordering::Relaxed);
+            }
             LogEvent::DistinctPairs(count) => {
                 self.distinct_pairs.fetch_add(count, Ordering::Relaxed);
             }
@@ -135,6 +142,7 @@ impl ExecutionSummary {
 
 #[derive(Debug, Abomonation, Clone)]
 pub struct FrozenExecutionSummary {
+    pub sketch_discarded: usize,
     pub distinct_pairs: usize,
     pub duplicates_discarded: usize,
     pub generated_pairs: usize,
@@ -143,6 +151,7 @@ pub struct FrozenExecutionSummary {
 impl FrozenExecutionSummary {
     pub fn zero() -> Self {
         FrozenExecutionSummary {
+            sketch_discarded: 0,
             distinct_pairs: 0,
             duplicates_discarded: 0,
             generated_pairs: 0,
@@ -150,6 +159,7 @@ impl FrozenExecutionSummary {
     }
     pub fn sum(&self, other: &Self) -> Self {
         FrozenExecutionSummary {
+            sketch_discarded: self.sketch_discarded + other.sketch_discarded,
             distinct_pairs: self.distinct_pairs + other.distinct_pairs,
             duplicates_discarded: self.duplicates_discarded + other.duplicates_discarded,
             generated_pairs: self.generated_pairs + other.generated_pairs,
@@ -160,7 +170,9 @@ impl FrozenExecutionSummary {
         experiment.append(
             table,
             row!(
+                "sketch_discarded" => self.sketch_discarded,
                 "distinct_pairs" => self.distinct_pairs,
+                "duplicates_discarded" => self.duplicates_discarded,
                 "generated_pairs" => self.generated_pairs
             ),
         )

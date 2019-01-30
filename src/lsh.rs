@@ -813,6 +813,7 @@ where
         S: Sketcher<Input = D, Output = V> + Clone + 'static,
         V: SketchEstimate + Data + Debug + Send + Sync + Abomonation + Clone,
     {
+        let logger = self.scope().danny_logger();
         self.scope()
             .scoped::<Product<_, u32>, _, _>("candidate generation", |inner| {
                 // TODO: Reconsider if you have to buffer the repetitions: maybe batching the pairs
@@ -821,10 +822,28 @@ where
                 let right_hashes = right
                     .enter(inner)
                     .hash_sketch_buffered(&hash_coll, sketcher);
-                let candidate_pairs = left_hashes
-                    .bucket_batched(&right_hashes)
-                    .filter(move |(p1, p2)| V::estimate(&p1.0, &p2.0) >= threshold)
-                    .map(|(p1, p2)| (p1.1, p2.1));
+                let candidate_pairs = left_hashes.bucket_batched(&right_hashes).unary(
+                    Pipeline,
+                    "sketch filtering",
+                    move |_, _| {
+                        move |input, output| {
+                            let mut discarded = 0;
+                            input.for_each(|t, data| {
+                                let t = t.retain();
+                                let mut session = output.session(&t);
+                                let mut data = data.replace(Vec::new());
+                                for (p1, p2) in data.drain(..) {
+                                    if V::estimate(&p1.0, &p2.0) >= threshold {
+                                        session.give((p1.1, p2.1));
+                                    } else {
+                                        discarded += 1;
+                                    }
+                                }
+                            });
+                            log_event!(logger, LogEvent::SketchDiscarded(discarded));
+                        }
+                    },
+                );
                 candidate_pairs.leave()
             })
     }
