@@ -1,4 +1,4 @@
-use crate::types::VectorWithNorm;
+use crate::types::*;
 
 pub trait Measure {
     fn similarity(a: &Self, b: &Self) -> f64;
@@ -28,6 +28,16 @@ impl InnerProduct for VectorWithNorm {
 
     fn norm_2(a: &VectorWithNorm) -> f64 {
         a.norm()
+    }
+}
+
+impl InnerProduct for UnitNormVector {
+    fn inner_product(a: &UnitNormVector, b: &UnitNormVector) -> f64 {
+        InnerProduct::inner_product(a.data(), &b.data())
+    }
+
+    fn norm_2(a: &UnitNormVector) -> f64 {
+        1.0
     }
 }
 
@@ -71,8 +81,8 @@ mod tests {
 
     #[test]
     fn test1() {
-        let a: Vec<f64> = vec![1f64, 2f64];
-        let b: Vec<f64> = vec![1f64, 2f64];
+        let a: Vec<f32> = vec![1f32, 2.0];
+        let b: Vec<f32> = vec![1f32, 2.0];
         let expected = 1.0;
         let actual = generic_dist(&a, &b, Cosine::cosine);
         assert!((expected - actual).abs() < 10e-10_f64)

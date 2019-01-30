@@ -36,6 +36,35 @@ impl VectorWithNorm {
     }
 }
 
+#[derive(Clone, Abomonation)]
+pub struct UnitNormVector {
+    data: Vec<f32>,
+}
+
+impl UnitNormVector {
+    fn new(data: Vec<f32>) -> Self {
+        let norm = InnerProduct::norm_2(&data) as f32;
+        let data = data.iter().map(|x| x / norm).collect();
+        UnitNormVector { data }
+    }
+
+    pub fn data(&self) -> &Vec<f32> {
+        &self.data
+    }
+
+    pub fn dim(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl From<VectorWithNorm> for UnitNormVector {
+    fn from(v: VectorWithNorm) -> Self {
+        let norm = v.norm() as f32;
+        let data = v.data.iter().map(|x| x / norm).collect();
+        UnitNormVector { data }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct BagOfWords {
     universe: u32,
