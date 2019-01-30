@@ -5,7 +5,31 @@ use crate::types::*;
 use rand::distributions::{Distribution, Normal, Uniform};
 use rand::Rng;
 
-trait Sketcher {
+// Marker structs
+pub struct SketchCosine {}
+pub struct SketchJaccard {}
+
+pub trait SketchEstimate<T> {
+    fn estimate(a: Self, b: Self) -> f64;
+}
+
+impl SketchEstimate<SketchCosine> for u32 {
+    fn estimate(a: u32, b: u32) -> f64 {
+        (a ^ b).count_zeros() as f64 / 32.0
+    }
+}
+
+impl SketchEstimate<SketchCosine> for Vec<u32> {
+    fn estimate(a: Vec<u32>, b: Vec<u32>) -> f64 {
+        a.iter()
+            .zip(b.iter())
+            .map(|(x, y)| (x ^ y).count_zeros())
+            .sum::<u32>() as f64
+            / (32.0 * a.len() as f64)
+    }
+}
+
+pub trait Sketcher {
     type Input;
     type Output;
 
@@ -21,7 +45,7 @@ impl Sketcher for Hyperplane {
     }
 }
 
-struct LongSimHash {
+pub struct LongSimHash {
     k: usize,
     planes: Vec<UnitNormVector>,
 }
