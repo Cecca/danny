@@ -1,4 +1,4 @@
-use crate::types::{BagOfWords, VectorWithNorm};
+use crate::types::*;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
@@ -74,6 +74,12 @@ impl ReadDataFile for VectorWithNorm {
             })
             .collect();
         VectorWithNorm::new(data)
+    }
+}
+
+impl ReadDataFile for UnitNormVector {
+    fn from_line(line: &str) -> Self {
+        VectorWithNorm::from_line(line).into()
     }
 }
 

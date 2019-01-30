@@ -3,6 +3,7 @@ use crate::io::ReadDataFile;
 use crate::logging::init_event_logging;
 use crate::logging::*;
 use crate::operators::*;
+use crate::types::*;
 use crate::Experiment;
 use abomonation::Abomonation;
 use measure::InnerProduct;
@@ -24,7 +25,6 @@ use timely::dataflow::*;
 use timely::order::Product;
 use timely::progress::Timestamp;
 use timely::Data;
-use types::{BagOfWords, VectorWithNorm};
 
 pub trait LSHFunction {
     type Input;
@@ -78,7 +78,7 @@ where
 #[derive(Clone)]
 pub struct Hyperplane {
     k: usize,
-    planes: Vec<VectorWithNorm>,
+    planes: Vec<UnitNormVector>,
 }
 
 impl Hyperplane {
@@ -93,7 +93,7 @@ impl Hyperplane {
             for _ in 0..dim {
                 plane.push(gaussian.sample(rng) as f32);
             }
-            let plane = VectorWithNorm::new(plane);
+            let plane = UnitNormVector::new(plane);
             planes.push(plane);
         }
         Hyperplane { k, planes }
@@ -117,11 +117,11 @@ impl Hyperplane {
 }
 
 impl LSHFunction for Hyperplane {
-    type Input = VectorWithNorm;
+    type Input = UnitNormVector;
     // TODO:use SmallBitVec
     type Output = Vec<bool>;
 
-    fn hash(&self, v: &VectorWithNorm) -> Vec<bool> {
+    fn hash(&self, v: &UnitNormVector) -> Vec<bool> {
         let mut h = Vec::with_capacity(self.k);
         for plane in self.planes.iter() {
             if InnerProduct::inner_product(plane, v) >= 0_f64 {
@@ -914,9 +914,9 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(123);
         let k = 20;
         let hasher = Hyperplane::new(20, 3, &mut rng);
-        let a = VectorWithNorm::new(vec![0.0, 1.0, 3.0]);
+        let a = UnitNormVector::new(vec![0.0, 1.0, 3.0]);
         let ha = hasher.hash(&a);
-        let b = VectorWithNorm::new(vec![1.0, 1.0, 3.0]);
+        let b = UnitNormVector::new(vec![1.0, 1.0, 3.0]);
         let hb = hasher.hash(&b);
 
         println!("{:?}", ha);

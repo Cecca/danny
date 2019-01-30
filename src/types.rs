@@ -36,13 +36,13 @@ impl VectorWithNorm {
     }
 }
 
-#[derive(Clone, Abomonation)]
+#[derive(Debug, Clone, Abomonation)]
 pub struct UnitNormVector {
     data: Vec<f32>,
 }
 
 impl UnitNormVector {
-    fn new(data: Vec<f32>) -> Self {
+    pub fn new(data: Vec<f32>) -> Self {
         let norm = InnerProduct::norm_2(&data) as f32;
         let data = data.iter().map(|x| x / norm).collect();
         UnitNormVector { data }

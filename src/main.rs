@@ -50,7 +50,7 @@ use crate::experiment::Experiment;
 use crate::io::ReadDataFile;
 use crate::lsh::LSHFunction;
 use crate::measure::{Cosine, Jaccard};
-use crate::types::{BagOfWords, VectorWithNorm};
+use crate::types::*;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -69,9 +69,9 @@ fn main() {
             "cosine" => {
                 let k = args.k.expect("K is needed on the command line");
                 let repetitions = lsh::Hyperplane::repetitions_at_range(args.threshold, k);
-                let dim = VectorWithNorm::peek_first(&args.left_path.clone().into()).dim();
+                let dim = UnitNormVector::peek_first(&args.left_path.clone().into()).dim();
                 let threshold = args.threshold;
-                lsh::fixed_param_lsh::<VectorWithNorm, _, _, _>(
+                lsh::fixed_param_lsh::<UnitNormVector, _, _, _>(
                     &args.left_path,
                     &args.right_path,
                     lsh::Hyperplane::collection(k, repetitions, dim, &mut rng),
