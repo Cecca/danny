@@ -48,6 +48,7 @@ impl Sketcher for Hyperplane {
     }
 }
 
+#[derive(Abomonation, Clone, Debug)]
 pub struct SimHashValue {
     bits: Vec<u32>,
 }
@@ -107,6 +108,7 @@ pub struct OneBitMinHash {
     hashers: Vec<TabulatedHasher>,
 }
 
+#[derive(Abomonation, Clone, Debug)]
 pub struct OneBitMinHashValue {
     bits: Vec<u32>,
 }
