@@ -86,6 +86,10 @@ impl Hyperplane {
     where
         R: Rng + ?Sized,
     {
+        assert!(
+            k < 32,
+            "Only k<32 is supported so to be able to pack hases in words"
+        );
         let mut planes = Vec::with_capacity(k);
         let gaussian = Normal::new(0.0, 1.0);
         for _ in 0..k {
@@ -104,7 +108,7 @@ impl Hyperplane {
         repetitions: usize,
         dim: usize,
         rng: &mut R,
-    ) -> LSHCollection<Hyperplane, Vec<bool>>
+    ) -> LSHCollection<Hyperplane, u32>
     where
         R: Rng + ?Sized,
     {
@@ -118,16 +122,15 @@ impl Hyperplane {
 
 impl LSHFunction for Hyperplane {
     type Input = UnitNormVector;
-    // TODO:use SmallBitVec
-    type Output = Vec<bool>;
+    type Output = u32;
 
-    fn hash(&self, v: &UnitNormVector) -> Vec<bool> {
-        let mut h = Vec::with_capacity(self.k);
+    fn hash(&self, v: &UnitNormVector) -> u32 {
+        let mut h = 0u32;
         for plane in self.planes.iter() {
             if InnerProduct::inner_product(plane, v) >= 0_f64 {
-                h.push(true);
+                h = (h << 1) | 1;
             } else {
-                h.push(false);
+                h = h << 1;
             }
         }
         h
@@ -913,7 +916,7 @@ mod tests {
     fn test_hyperplane() {
         let mut rng = StdRng::seed_from_u64(123);
         let k = 20;
-        let hasher = Hyperplane::new(20, 3, &mut rng);
+        let hasher = Hyperplane::new(k, 3, &mut rng);
         let a = UnitNormVector::new(vec![0.0, 1.0, 3.0]);
         let ha = hasher.hash(&a);
         let b = UnitNormVector::new(vec![1.0, 1.0, 3.0]);
@@ -922,8 +925,6 @@ mod tests {
         println!("{:?}", ha);
         println!("{:?}", hb);
 
-        assert!(ha.len() == k);
-        assert!(hb.len() == k);
         assert!(ha != hb);
     }
 
