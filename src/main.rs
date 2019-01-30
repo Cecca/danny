@@ -49,7 +49,7 @@ use crate::config::*;
 use crate::experiment::Experiment;
 use crate::io::ReadDataFile;
 use crate::lsh::LSHFunction;
-use crate::measure::{Cosine, Jaccard};
+use crate::measure::*;
 use crate::types::*;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -75,7 +75,7 @@ fn main() {
                     &args.left_path,
                     &args.right_path,
                     lsh::Hyperplane::collection(k, repetitions, dim, &mut rng),
-                    move |a, b| Cosine::cosine(a, b) >= threshold,
+                    move |a, b| InnerProduct::cosine(a, b) >= threshold,
                     &config,
                     &mut experiment,
                 )
@@ -100,7 +100,7 @@ fn main() {
                 args.threshold,
                 &args.left_path,
                 &args.right_path,
-                Cosine::cosine,
+                InnerProduct::cosine,
                 &config,
             ),
             "jaccard" => baseline::all_pairs_parallel::<BagOfWords, _>(
@@ -117,7 +117,7 @@ fn main() {
                 args.threshold,
                 &args.left_path,
                 &args.right_path,
-                Cosine::cosine,
+                InnerProduct::cosine,
             ),
             "jaccard" => baseline::sequential::<BagOfWords, _>(
                 args.threshold,
