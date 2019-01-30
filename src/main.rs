@@ -51,6 +51,7 @@ use crate::experiment::Experiment;
 use crate::io::ReadDataFile;
 use crate::lsh::LSHFunction;
 use crate::measure::*;
+use crate::sketch::*;
 use crate::types::*;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -72,10 +73,12 @@ fn main() {
                 let repetitions = lsh::Hyperplane::repetitions_at_range(args.threshold, k);
                 let dim = UnitNormVector::peek_first(&args.left_path.clone().into()).dim();
                 let threshold = args.threshold;
-                lsh::fixed_param_lsh::<UnitNormVector, _, _, _>(
+                let sketcher = LongSimHash::new(128, dim, &mut rng);
+                lsh::fixed_param_lsh::<UnitNormVector, _, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,
                     lsh::Hyperplane::collection(k, repetitions, dim, &mut rng),
+                    sketcher,
                     move |a, b| InnerProduct::cosine(a, b) >= threshold,
                     &config,
                     &mut experiment,
@@ -85,10 +88,12 @@ fn main() {
                 let k = args.k.expect("K is needed on the command line");
                 let repetitions = lsh::MinHash::repetitions_at_range(args.threshold, k);
                 let threshold = args.threshold;
-                lsh::fixed_param_lsh::<BagOfWords, _, _, _>(
+                let sketcher = OneBitMinHash::new(128, &mut rng);
+                lsh::fixed_param_lsh::<BagOfWords, _, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,
                     lsh::MinHash::collection(k, repetitions, &mut rng),
+                    sketcher,
                     move |a, b| Jaccard::jaccard(a, b) >= threshold,
                     &config,
                     &mut experiment,

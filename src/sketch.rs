@@ -116,7 +116,7 @@ pub struct OneBitMinHashValue {
 }
 
 impl OneBitMinHash {
-    fn new<R>(k: usize, rng: &mut R) -> Self
+    pub fn new<R>(k: usize, rng: &mut R) -> Self
     where
         R: Rng + ?Sized,
     {

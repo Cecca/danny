@@ -3,6 +3,7 @@ use crate::io::ReadDataFile;
 use crate::logging::init_event_logging;
 use crate::logging::*;
 use crate::operators::*;
+use crate::sketch::*;
 use crate::types::*;
 use crate::Experiment;
 use abomonation::Abomonation;
@@ -679,10 +680,11 @@ where
     }
 }
 
-pub fn fixed_param_lsh<D, F, H, O>(
+pub fn fixed_param_lsh<D, F, H, O, S, V>(
     left_path: &String,
     right_path: &String,
     hash_fn: LSHCollection<H, O>,
+    sketcher: S,
     sim_pred: F,
     config: &Config,
     experiment: &mut Experiment,
@@ -692,6 +694,8 @@ where
     F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
     H: LSHFunction<Input = D, Output = O> + Sync + Send + Clone + 'static,
     O: Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash,
+    S: Sketcher<Input = D, Output = V>,
+    V: Data + Sync + Send + Clone + Abomonation + SketchEstimate,
 {
     let timely_builder = config.get_timely_builder();
     // This channel is used to get the results
