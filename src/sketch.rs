@@ -10,12 +10,14 @@ pub trait SketchEstimate {
 
 impl SketchEstimate for SimHashValue {
     fn estimate(a: SimHashValue, b: SimHashValue) -> f64 {
-        a.bits
+        let p = a
+            .bits
             .iter()
             .zip(b.bits.iter())
             .map(|(x, y)| (x ^ y).count_zeros())
             .sum::<u32>() as f64
-            / (32.0 * a.bits.len() as f64)
+            / (32.0 * a.bits.len() as f64);
+        (std::f64::consts::PI * (1.0 - p)).cos()
     }
 }
 
@@ -148,5 +150,72 @@ impl Sketcher for OneBitMinHash {
         }
 
         OneBitMinHashValue { bits }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::Rng;
+    use rand::SeedableRng;
+    use rand_xorshift::XorShiftRng;
+
+    #[test]
+    fn test_one_bit_minhash() {
+        let samples = 1000;
+        let mut rng = XorShiftRng::seed_from_u64(123);
+        let s1 = BagOfWords::new(10000, vec![0, 1, 2, 4, 6, 7, 13, 22, 53]);
+        let s2 = BagOfWords::new(10000, vec![0, 1, 2, 4, 6, 7, 13, 22, 53, 54]);
+        let similarity = Jaccard::jaccard(&s1, &s2);
+        let k = 64;
+        let mut sum_squared_error = 0.0;
+        let mut sum_preds = 0.0;
+
+        for _ in 0..samples {
+            let sketcher = OneBitMinHash::new(k, &mut rng);
+            let h1 = sketcher.sketch(&s1);
+            let h2 = sketcher.sketch(&s2);
+            let predicted = SketchEstimate::estimate(h1, h2);
+            let error = predicted - similarity;
+            sum_squared_error += error * error;
+            sum_preds += predicted
+        }
+
+        let mean_squared_error = sum_squared_error / samples as f64;
+        let prediction = sum_preds / samples as f64;
+
+        println!("Pred: {}, MSE: {}", prediction, mean_squared_error);
+        assert!((prediction - similarity).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_simhash() {
+        let samples = 1000;
+        let mut rng = XorShiftRng::seed_from_u64(123);
+        let s1 = UnitNormVector::new(vec![1.0, 0.2, 0.3, 0.7]);
+        let s2 = UnitNormVector::new(vec![4.0, 0.2, 2.3, 0.7]);
+        let similarity = InnerProduct::cosine(&s1, &s2);
+        let k = 512;
+        let mut sum_squared_error = 0.0;
+        let mut sum_preds = 0.0;
+
+        for _ in 0..samples {
+            let sketcher = LongSimHash::new(k, s1.dim(), &mut rng);
+            let h1 = sketcher.sketch(&s1);
+            let h2 = sketcher.sketch(&s2);
+            let predicted = SketchEstimate::estimate(h1, h2);
+            let error = predicted - similarity;
+            sum_squared_error += error * error;
+            sum_preds += predicted
+        }
+
+        let mean_squared_error = sum_squared_error / samples as f64;
+        let prediction = sum_preds / samples as f64;
+
+        println!(
+            "actual: {}, predicted: {}, MSE: {}",
+            similarity, prediction, mean_squared_error
+        );
+        assert!((prediction - similarity).abs() < 0.01);
     }
 }
