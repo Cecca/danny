@@ -1,9 +1,5 @@
 use crate::types::*;
 
-pub trait Measure {
-    fn similarity(a: &Self, b: &Self) -> f64;
-}
-
 pub trait InnerProduct {
     fn inner_product(a: &Self, b: &Self) -> f64;
     fn norm_2(a: &Self) -> f64 {
@@ -51,15 +47,6 @@ where
 {
     fn cosine(a: &T, b: &T) -> f64 {
         T::inner_product(a, b) / (T::norm_2(a) * T::norm_2(b))
-    }
-}
-
-impl<T> Measure for T
-where
-    T: Cosine,
-{
-    fn similarity(a: &Self, b: &Self) -> f64 {
-        Self::cosine(a, b)
     }
 }
 
