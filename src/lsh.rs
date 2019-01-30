@@ -373,6 +373,117 @@ where
     }
 }
 
+pub trait HashSketchStream<G, K, D, S, V>
+where
+    G: Scope,
+    K: Data + Debug,
+    D: Data + Debug,
+    S: Sketcher<Input = D, Output = V>,
+    V: Data + SketchEstimate + Clone,
+{
+    fn hash_sketch_buffered<F, H>(
+        &self,
+        hash_coll: &LSHCollection<F, H>,
+        sketcher: &S,
+    ) -> Stream<G, (H, (V, K))>
+    where
+        F: LSHFunction<Input = D, Output = H> + Clone + 'static,
+        H: Data + Clone;
+}
+
+impl<G, T, K, D, S, V> HashSketchStream<G, K, D, S, V> for Stream<G, (K, D)>
+where
+    G: Scope<Timestamp = T>,
+    T: Succ + Clone + Timestamp,
+    K: Data + Debug,
+    D: Data + Debug,
+    S: Sketcher<Input = D, Output = V> + Clone + 'static,
+    V: Data + SketchEstimate + Clone,
+{
+    fn hash_sketch_buffered<F, H>(
+        &self,
+        hash_coll: &LSHCollection<F, H>,
+        sketcher: &S,
+    ) -> Stream<G, (H, (V, K))>
+    where
+        F: LSHFunction<Input = D, Output = H> + Clone + 'static,
+        H: Data + Clone,
+    {
+        let sketcher = sketcher.clone();
+        let repetitions = hash_coll.repetitions();
+        let mut probe1 = ProbeHandle::new();
+        let probe2 = probe1.clone();
+        let hash_coll = hash_coll.clone();
+        let mut stash: Vec<Option<(Capability<G::Timestamp>, Vec<(K, V, D)>)>> =
+            vec![None; repetitions + 1]; // The last cell is always None: it is just to simplify the code below
+        self.unary(Pipeline, "hash", move |_, _| {
+            move |input, output| {
+                let hash_coll = hash_coll.clone();
+                // Accumulate the vectors in the stash area. This stash vector has an entry per
+                // repetition, containing the vectors that need to be hashed for that repetition.
+                // A given vector starts at index 0 and then moves forward to the next cells,
+                // dropping out at the end of the vector. When a cell has no more associated
+                // vectors, its associated capability is dropped.
+                //
+                // While we are at it, we also sketch each vector
+                input.for_each(|t, data| {
+                    let mut data = data.replace(Vec::new());
+                    let mut data2 = Vec::with_capacity(data.len());
+                    for (k, v) in data.drain(..) {
+                        let s = sketcher.sketch(&v);
+                        data2.push((k, s, v));
+                    }
+                    stash[0]
+                        .get_or_insert((t.retain(), Vec::new()))
+                        .1
+                        .append(&mut data2)
+                });
+
+                for i in 0..repetitions {
+                    let mut to_move: Vec<(K, V, D)> =
+                        if let Some((time, data)) = stash[i].iter_mut().next() {
+                            // TODO: maybe here there is room for optimization
+                            if !probe2.less_than(time.time()) {
+                                let mut session = output.session(&time);
+                                let mut cnt = 0;
+                                for (k, s, v) in data.iter() {
+                                    let h = hash_coll.hash(&v, i);
+                                    session.give((h, (s.clone(), k.clone())));
+                                }
+                                debug!("Emitted {} hashes for repetition {}", cnt, i);
+                                data.drain(..).collect()
+                            } else {
+                                Vec::new()
+                            }
+                        } else {
+                            Vec::new()
+                        };
+                    if to_move.len() > 0 && i + 1 < repetitions {
+                        let time = stash[i]
+                            .as_ref()
+                            .expect(
+                                "At this point we should be sure that there are vectors to move",
+                            )
+                            .0
+                            .clone();
+                        let time = time.delayed(&(time.time().succ()));
+                        stash[i + 1]
+                            .get_or_insert((time, Vec::new()))
+                            .1
+                            .append(&mut to_move);
+                    }
+                }
+
+                // Remove items whose time is past the last repetition
+                for entry in stash.iter_mut() {
+                    *entry = entry.take().filter(|pair| pair.1.len() > 0);
+                }
+            }
+        })
+        .probe_with(&mut probe1)
+    }
+}
+
 struct PairGenerator<H, K>
 where
     H: Hash + Eq,
@@ -476,7 +587,8 @@ impl<G, H, K> BucketStream<G, H, K> for Stream<G, (H, K)>
 where
     G: Scope,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
-    K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
+    K: Data + Debug + Send + Sync + Abomonation + Clone,
+    // K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
 {
     fn bucket_batched(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)> {
         let mut left_buckets = HashMap::new();
@@ -652,6 +764,17 @@ where
         right: &Stream<G, (K, D)>,
         hash_coll: &LSHCollection<F, H>,
     ) -> Stream<G, (K, K)>;
+
+    fn colliding_pairs_sketch<S, V>(
+        &self,
+        right: &Stream<G, (K, D)>,
+        hash_coll: &LSHCollection<F, H>,
+        sketch: &S,
+        threshold: f64,
+    ) -> Stream<G, (K, K)>
+    where
+        S: Sketcher<Input = D, Output = V> + Clone + 'static,
+        V: SketchEstimate + Data + Debug + Send + Sync + Abomonation + Clone;
 }
 
 impl<G, T, K, D, F, H> CollidingPairs<G, T, K, D, F, H> for Stream<G, (K, D)>
@@ -678,6 +801,33 @@ where
                 candidate_pairs.leave()
             })
     }
+
+    fn colliding_pairs_sketch<S, V>(
+        &self,
+        right: &Stream<G, (K, D)>,
+        hash_coll: &LSHCollection<F, H>,
+        sketcher: &S,
+        threshold: f64,
+    ) -> Stream<G, (K, K)>
+    where
+        S: Sketcher<Input = D, Output = V> + Clone + 'static,
+        V: SketchEstimate + Data + Debug + Send + Sync + Abomonation + Clone,
+    {
+        self.scope()
+            .scoped::<Product<_, u32>, _, _>("candidate generation", |inner| {
+                // TODO: Reconsider if you have to buffer the repetitions: maybe batching the pairs
+                // is sufficient.
+                let left_hashes = self.enter(inner).hash_sketch_buffered(&hash_coll, sketcher);
+                let right_hashes = right
+                    .enter(inner)
+                    .hash_sketch_buffered(&hash_coll, sketcher);
+                let candidate_pairs = left_hashes
+                    .bucket_batched(&right_hashes)
+                    .filter(move |(p1, p2)| V::estimate(&p1.0, &p2.0) >= threshold)
+                    .map(|(p1, p2)| (p1.1, p2.1));
+                candidate_pairs.leave()
+            })
+    }
 }
 
 pub fn fixed_param_lsh<D, F, H, O, S, V>(
@@ -685,6 +835,7 @@ pub fn fixed_param_lsh<D, F, H, O, S, V>(
     right_path: &String,
     hash_fn: LSHCollection<H, O>,
     sketcher: S,
+    threshold: f64,
     sim_pred: F,
     config: &Config,
     experiment: &mut Experiment,
@@ -694,8 +845,8 @@ where
     F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
     H: LSHFunction<Input = D, Output = O> + Sync + Send + Clone + 'static,
     O: Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash,
-    S: Sketcher<Input = D, Output = V>,
-    V: Data + Sync + Send + Clone + Abomonation + SketchEstimate,
+    S: Sketcher<Input = D, Output = V> + Send + Sync + Clone + 'static,
+    V: Data + Debug + Sync + Send + Clone + Abomonation + SketchEstimate,
 {
     let timely_builder = config.get_timely_builder();
     // This channel is used to get the results
@@ -803,6 +954,7 @@ where
         let global_right_read = global_right_read.clone();
 
         let hash_fn = hash_fn.clone();
+        let sketcher = sketcher.clone();
         debug!("Started worker {}/{}", index, peers);
         let (mut left, mut right, probe) = worker.dataflow(move |scope| {
             // TODO: check if these two clones are harmful
@@ -813,10 +965,11 @@ where
             let (right_in, right_stream) = scope.new_input::<(u64, D)>();
             let mut probe = ProbeHandle::new();
             let hash_fn = hash_fn;
+            let sketcher = sketcher;
 
             let matrix = MatrixDescription::for_workers(peers as usize);
             left_stream
-                .colliding_pairs(&right_stream, &hash_fn)
+                .colliding_pairs_sketch(&right_stream, &hash_fn, &sketcher, threshold)
                 .pair_route(matrix)
                 .map(|pair| pair.1)
                 .approximate_distinct(1 << 30, 0.05, 123123123)

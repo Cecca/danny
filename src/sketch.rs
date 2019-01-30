@@ -5,11 +5,11 @@ use rand::distributions::{Distribution, Normal};
 use rand::Rng;
 
 pub trait SketchEstimate {
-    fn estimate(a: Self, b: Self) -> f64;
+    fn estimate(a: &Self, b: &Self) -> f64;
 }
 
 impl SketchEstimate for SimHashValue {
-    fn estimate(a: SimHashValue, b: SimHashValue) -> f64 {
+    fn estimate(a: &SimHashValue, b: &SimHashValue) -> f64 {
         let p = a
             .bits
             .iter()
@@ -22,7 +22,7 @@ impl SketchEstimate for SimHashValue {
 }
 
 impl SketchEstimate for OneBitMinHashValue {
-    fn estimate(a: OneBitMinHashValue, b: OneBitMinHashValue) -> f64 {
+    fn estimate(a: &OneBitMinHashValue, b: &OneBitMinHashValue) -> f64 {
         let p = a
             .bits
             .iter()
@@ -50,11 +50,12 @@ impl Sketcher for Hyperplane {
     }
 }
 
-#[derive(Abomonation, Clone, Debug)]
+#[derive(Abomonation, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SimHashValue {
     bits: Vec<u32>,
 }
 
+#[derive(Clone)]
 pub struct LongSimHash {
     k: usize,
     planes: Vec<UnitNormVector>,
@@ -105,12 +106,13 @@ impl Sketcher for LongSimHash {
     }
 }
 
+#[derive(Clone)]
 pub struct OneBitMinHash {
     k: usize,
     hashers: Vec<TabulatedHasher>,
 }
 
-#[derive(Abomonation, Clone, Debug)]
+#[derive(Abomonation, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct OneBitMinHashValue {
     bits: Vec<u32>,
 }
@@ -175,7 +177,7 @@ mod tests {
             let sketcher = OneBitMinHash::new(k, &mut rng);
             let h1 = sketcher.sketch(&s1);
             let h2 = sketcher.sketch(&s2);
-            let predicted = SketchEstimate::estimate(h1, h2);
+            let predicted = SketchEstimate::estimate(&h1, &h2);
             let error = predicted - similarity;
             sum_squared_error += error * error;
             sum_preds += predicted
@@ -203,7 +205,7 @@ mod tests {
             let sketcher = LongSimHash::new(k, s1.dim(), &mut rng);
             let h1 = sketcher.sketch(&s1);
             let h2 = sketcher.sketch(&s2);
-            let predicted = SketchEstimate::estimate(h1, h2);
+            let predicted = SketchEstimate::estimate(&h1, &h2);
             let error = predicted - similarity;
             sum_squared_error += error * error;
             sum_preds += predicted
