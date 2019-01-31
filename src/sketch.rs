@@ -158,7 +158,6 @@ impl Sketcher for OneBitMinHash {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::Rng;
     use rand::SeedableRng;
     use rand_xorshift::XorShiftRng;
 

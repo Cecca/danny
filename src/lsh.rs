@@ -11,12 +11,10 @@ use measure::InnerProduct;
 use operators::Route;
 use rand::distributions::{Distribution, Normal, Uniform};
 use rand::Rng;
-use siphasher::sip::SipHasher;
 use std::clone::Clone;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::hash::Hasher;
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
@@ -231,15 +229,12 @@ impl LSHFunction for MinHash {
     type Output = u32;
 
     fn hash(&self, v: &BagOfWords) -> u32 {
-        // let mut sip = SipHasher::new_with_keys(123, 42134);
         let mut h = 0u64;
         for (hasher, coeff) in self.hashers.iter().zip(self.coeffs.iter()) {
             let min_w = v.words().iter().map(|w| hasher.hash(*w)).min().unwrap();
             h = h.wrapping_add(coeff.wrapping_mul(min_w));
-            // sip.write_u64(min_w);
         }
         (h >> 32) as u32
-        // sip.finish() as u32
     }
 
     fn probability_at_range(range: f64) -> f64 {

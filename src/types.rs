@@ -103,14 +103,6 @@ impl BagOfWords {
         BagOfWords { universe, words }
     }
 
-    pub fn num_words(&self) -> usize {
-        self.words.len()
-    }
-
-    pub fn word_at(&self, i: usize) -> u32 {
-        self.words[i]
-    }
-
     pub fn words(&self) -> &Vec<u32> {
         &self.words
     }
