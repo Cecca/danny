@@ -640,17 +640,9 @@ where
                     // Emit some output pairs
                     for (time, mut generator) in generators.iter_mut() {
                         let mut session = output.session(time);
-                        let mut cnt = 0;
                         for pair in generator.take(10000) {
                             session.give(pair);
-                            cnt += 1;
                         }
-                        debug!(
-                            "Emitted batch of {} pairs (is done: {})",
-                            cnt,
-                            generator.done()
-                        );
-                        log_event!(logger, LogEvent::GeneratedPairs(cnt));
                     }
 
                     // Cleanup exhausted generators
@@ -780,13 +772,19 @@ where
         right: &Stream<G, (K, D)>,
         hash_coll: &LSHCollection<F, H>,
     ) -> Stream<G, (K, K)> {
+        let logger = self.scope().danny_logger();
         self.scope()
             .scoped::<Product<_, u32>, _, _>("candidate generation", |inner| {
                 // TODO: Reconsider if you have to buffer the repetitions: maybe batching the pairs
                 // is sufficient.
                 let left_hashes = self.enter(inner).hash_buffered(&hash_coll);
                 let right_hashes = right.enter(inner).hash_buffered(&hash_coll);
-                let candidate_pairs = left_hashes.bucket_batched(&right_hashes);
+                let candidate_pairs =
+                    left_hashes
+                        .bucket_batched(&right_hashes)
+                        .inspect_batch(move |_, data| {
+                            log_event!(logger, LogEvent::GeneratedPairs(data.len()));
+                        });
                 candidate_pairs.leave()
             })
     }
@@ -818,12 +816,14 @@ where
                     move |_, _| {
                         move |input, output| {
                             let mut discarded = 0;
+                            let mut cnt = 0;
                             input.for_each(|t, data| {
                                 let t = t.retain();
                                 let mut session = output.session(&t);
                                 let mut data = data.replace(Vec::new());
                                 for (p1, p2) in data.drain(..) {
                                     if sketch_predicate.eval(&p1.0, &p2.0) {
+                                        cnt += 1;
                                         session.give((p1.1, p2.1));
                                     } else {
                                         discarded += 1;
@@ -831,6 +831,7 @@ where
                                 }
                             });
                             log_event!(logger, LogEvent::SketchDiscarded(discarded));
+                            log_event!(logger, LogEvent::GeneratedPairs(cnt));
                         }
                     },
                 );
