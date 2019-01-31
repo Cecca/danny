@@ -52,6 +52,7 @@ impl UnitNormVector {
         UnitNormVector { data }
     }
 
+    #[allow(dead_code)]
     pub fn random_normal<R: Rng>(dim: usize, rng: &mut R) -> Self {
         let dist = Normal::new(0.0, 1.0);
         let data = dist.sample_iter(rng).take(dim).map(|x| x as f32).collect();
@@ -89,6 +90,7 @@ impl BagOfWords {
         BagOfWords { universe, words }
     }
 
+    #[allow(dead_code)]
     pub fn random<R: Rng>(universe: u32, lambda: f64, rng: &mut R) -> BagOfWords {
         let dist = Exp::new(lambda);
         let length = Uniform::new(0, universe).sample(rng) as usize;

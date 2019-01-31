@@ -11,10 +11,12 @@ use measure::InnerProduct;
 use operators::Route;
 use rand::distributions::{Distribution, Normal, Uniform};
 use rand::Rng;
+use siphasher::sip::SipHasher;
 use std::clone::Clone;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::hash::Hasher;
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
@@ -229,12 +231,15 @@ impl LSHFunction for MinHash {
     type Output = u32;
 
     fn hash(&self, v: &BagOfWords) -> u32 {
+        // let mut sip = SipHasher::new_with_keys(123, 42134);
         let mut h = 0u64;
         for (hasher, coeff) in self.hashers.iter().zip(self.coeffs.iter()) {
             let min_w = v.words().iter().map(|w| hasher.hash(*w)).min().unwrap();
             h = h.wrapping_add(coeff.wrapping_mul(min_w));
+            // sip.write_u64(min_w);
         }
         (h >> 32) as u32
+        // sip.finish() as u32
     }
 
     fn probability_at_range(range: f64) -> f64 {
@@ -1157,6 +1162,33 @@ mod tests {
                 "estimated p={}, expected={}",
                 p,
                 similarity
+            );
+        }
+    }
+
+    #[test]
+    fn test_minhash_2() {
+        let mut rng = StdRng::seed_from_u64(1232);
+        let k = 3;
+        for _ in 0..10 {
+            let a = BagOfWords::random(3000, 0.01, &mut rng);
+            let b = BagOfWords::random(3000, 0.01, &mut rng);
+            let similarity = Jaccard::jaccard(&a, &b);
+            let expected = similarity.powi(k as i32);
+            let mut collisions = 0;
+            let samples = 1000;
+            for _ in 0..samples {
+                let h = MinHash::new(k, &mut rng);
+                if h.hash(&a) == h.hash(&b) {
+                    collisions += 1;
+                }
+            }
+            let p = collisions as f64 / samples as f64;
+            assert!(
+                (p - expected).abs() <= 0.02,
+                "estimated p={}, expected={}",
+                p,
+                expected
             );
         }
     }
