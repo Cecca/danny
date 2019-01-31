@@ -759,11 +759,11 @@ where
         right: &Stream<G, (K, D)>,
         hash_coll: &LSHCollection<F, H>,
         sketch: &S,
-        threshold: f64,
+        sketch_predicate: SketchPredicate<V>,
     ) -> Stream<G, (K, K)>
     where
         S: Sketcher<Input = D, Output = V> + Clone + 'static,
-        V: SketchEstimate + Data + Debug + Send + Sync + Abomonation + Clone;
+        V: SketchEstimate + Data + Debug + Send + Sync + Abomonation + Clone + BitBasedSketch;
 }
 
 impl<G, T, K, D, F, H> CollidingPairs<G, T, K, D, F, H> for Stream<G, (K, D)>
@@ -796,13 +796,14 @@ where
         right: &Stream<G, (K, D)>,
         hash_coll: &LSHCollection<F, H>,
         sketcher: &S,
-        threshold: f64,
+        sketch_predicate: SketchPredicate<V>,
     ) -> Stream<G, (K, K)>
     where
         S: Sketcher<Input = D, Output = V> + Clone + 'static,
-        V: SketchEstimate + Data + Debug + Send + Sync + Abomonation + Clone,
+        V: SketchEstimate + Data + Debug + Send + Sync + Abomonation + Clone + BitBasedSketch,
     {
         let logger = self.scope().danny_logger();
+        let sketch_predicate = sketch_predicate;
         self.scope()
             .scoped::<Product<_, u32>, _, _>("candidate generation", |inner| {
                 // TODO: Reconsider if you have to buffer the repetitions: maybe batching the pairs
@@ -822,7 +823,7 @@ where
                                 let mut session = output.session(&t);
                                 let mut data = data.replace(Vec::new());
                                 for (p1, p2) in data.drain(..) {
-                                    if V::estimate(&p1.0, &p2.0) >= threshold {
+                                    if sketch_predicate.eval(&p1.0, &p2.0) {
                                         session.give((p1.1, p2.1));
                                     } else {
                                         discarded += 1;
@@ -842,8 +843,7 @@ pub fn fixed_param_lsh<D, F, H, O, S, V>(
     left_path: &String,
     right_path: &String,
     hash_fn: LSHCollection<H, O>,
-    sketcher: Option<S>,
-    threshold: f64,
+    sketcher_pair: Option<(S, SketchPredicate<V>)>,
     sim_pred: F,
     config: &Config,
     experiment: &mut Experiment,
@@ -854,7 +854,7 @@ where
     H: LSHFunction<Input = D, Output = O> + Sync + Send + Clone + 'static,
     O: Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash,
     S: Sketcher<Input = D, Output = V> + Send + Sync + Clone + 'static,
-    V: Data + Debug + Sync + Send + Clone + Abomonation + SketchEstimate,
+    V: Data + Debug + Sync + Send + Clone + Abomonation + SketchEstimate + BitBasedSketch,
 {
     let timely_builder = config.get_timely_builder();
     // This channel is used to get the results
@@ -962,7 +962,7 @@ where
         let global_right_read = global_right_read.clone();
 
         let hash_fn = hash_fn.clone();
-        let sketcher = sketcher.clone();
+        let sketcher_pair = sketcher_pair.clone();
         debug!("Started worker {}/{}", index, peers);
         let (mut left, mut right, probe) = worker.dataflow(move |scope| {
             // TODO: check if these two clones are harmful
@@ -973,15 +973,15 @@ where
             let (right_in, right_stream) = scope.new_input::<(u64, D)>();
             let mut probe = ProbeHandle::new();
             let hash_fn = hash_fn;
-            let sketcher = sketcher;
+            let sketcher_pair = sketcher_pair;
 
             let matrix = MatrixDescription::for_workers(peers as usize);
-            let candidates = match sketcher {
-                Some(sketcher) => left_stream.colliding_pairs_sketch(
+            let candidates = match sketcher_pair {
+                Some((sketcher, sketch_predicate)) => left_stream.colliding_pairs_sketch(
                     &right_stream,
                     &hash_fn,
                     &sketcher,
-                    threshold,
+                    sketch_predicate,
                 ),
                 None => left_stream.colliding_pairs(&right_stream, &hash_fn),
             };

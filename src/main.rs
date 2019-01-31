@@ -73,15 +73,17 @@ fn main() {
                 let repetitions = lsh::Hyperplane::repetitions_at_range(args.threshold, k);
                 let dim = UnitNormVector::peek_first(&args.left_path.clone().into()).dim();
                 let threshold = args.threshold;
-                let sketcher = args
-                    .sketch_bits
-                    .map(|bits| LongSimHash::new(bits, dim, &mut rng));
+                let sketcher_pair = args.sketch_bits.map(|bits| {
+                    (
+                        LongSimHash::new(bits, dim, &mut rng),
+                        SketchPredicate::cosine(bits, threshold, 0.001),
+                    )
+                });
                 lsh::fixed_param_lsh::<UnitNormVector, _, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,
                     lsh::Hyperplane::collection(k, repetitions, dim, &mut rng),
-                    sketcher,
-                    threshold,
+                    sketcher_pair,
                     move |a, b| InnerProduct::cosine(a, b) >= threshold,
                     &config,
                     &mut experiment,
@@ -91,15 +93,17 @@ fn main() {
                 let k = args.k.expect("K is needed on the command line");
                 let repetitions = lsh::MinHash::repetitions_at_range(args.threshold, k);
                 let threshold = args.threshold;
-                let sketcher = args
-                    .sketch_bits
-                    .map(|bits| OneBitMinHash::new(bits, &mut rng));
+                let sketcher_pair = args.sketch_bits.map(|bits| {
+                    (
+                        OneBitMinHash::new(bits, &mut rng),
+                        SketchPredicate::jaccard(bits, threshold, 0.001),
+                    )
+                });
                 lsh::fixed_param_lsh::<BagOfWords, _, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,
                     lsh::MinHash::collection(k, repetitions, &mut rng),
-                    sketcher,
-                    threshold,
+                    sketcher_pair,
                     move |a, b| Jaccard::jaccard(a, b) >= threshold,
                     &config,
                     &mut experiment,

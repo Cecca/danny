@@ -4,6 +4,62 @@ use crate::types::*;
 use rand::distributions::{Distribution, Normal};
 use rand::Rng;
 
+pub trait BitBasedSketch {
+    fn bits(&self) -> &Vec<u32>;
+}
+
+#[derive(Clone, Debug)]
+pub struct SketchPredicate<T>
+where
+    T: BitBasedSketch,
+{
+    /// The number of bits that can be different between two sketches without having to reject the
+    /// pair.
+    bit_threshold: usize,
+    _marker: std::marker::PhantomData<T>,
+}
+
+impl<T> SketchPredicate<T>
+where
+    T: BitBasedSketch,
+{
+    pub fn from_probability(k: usize, p: f64, epsilon: f64) -> Self {
+        let delta = (3.0 / (p * k as f64) * (1.0 / epsilon).ln()).sqrt().ceil();
+        let bit_threshold = ((1.0 + delta) * p * k as f64).ceil() as usize;
+        info!(
+            "Using bit thresold {} of different bits to reject",
+            bit_threshold
+        );
+        SketchPredicate {
+            bit_threshold,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    pub fn jaccard(k: usize, similarity: f64, epsilon: f64) -> Self {
+        let p = (1.0 - similarity) / 2.0; // The probability that two corresponding bits are different
+        Self::from_probability(k, p, epsilon)
+    }
+
+    pub fn cosine(k: usize, similarity: f64, epsilon: f64) -> Self {
+        let p = similarity.acos() / std::f64::consts::PI;
+        Self::from_probability(k, p, epsilon)
+    }
+
+    /// Return true if the two sketches represent vectors associated with vectors
+    /// within the similarity threshold this predicate was built with
+    pub fn eval(&self, a: &T, b: &T) -> bool {
+        let threshold = self.bit_threshold;
+        let different_bits: usize = a
+            .bits()
+            .iter()
+            .zip(b.bits().iter())
+            .map(|(x, y)| (x ^ y).count_ones() as usize)
+            .sum();
+        different_bits <= threshold
+    }
+}
+
 pub trait SketchEstimate {
     fn estimate(a: &Self, b: &Self) -> f64;
 }
@@ -18,6 +74,18 @@ impl SketchEstimate for SimHashValue {
             .sum::<u32>() as f64
             / (32.0 * a.bits.len() as f64);
         (std::f64::consts::PI * (1.0 - p)).cos()
+    }
+}
+
+impl BitBasedSketch for OneBitMinHashValue {
+    fn bits(&self) -> &Vec<u32> {
+        &self.bits
+    }
+}
+
+impl BitBasedSketch for SimHashValue {
+    fn bits(&self) -> &Vec<u32> {
+        &self.bits
     }
 }
 
