@@ -1,5 +1,8 @@
 use crate::measure::{InnerProduct, Jaccard};
 use abomonation::Abomonation;
+use rand::distributions::{Distribution, Exp, Uniform};
+use rand::Rng;
+use std::collections::BTreeSet;
 use std::fmt;
 use std::fmt::Debug;
 
@@ -77,6 +80,18 @@ unsafe_abomonate!(BagOfWords: universe, words);
 impl BagOfWords {
     pub fn new(universe: u32, mut words: Vec<u32>) -> BagOfWords {
         words.sort();
+        BagOfWords { universe, words }
+    }
+
+    pub fn random<R: Rng>(universe: u32, lambda: f64, rng: &mut R) -> BagOfWords {
+        let dist = Exp::new(lambda);
+        let length = Uniform::new(0, universe).sample(rng) as usize;
+        let mut words = BTreeSet::new();
+        for w in dist.sample_iter(rng).take(length) {
+            let w = w.floor() as u32;
+            words.insert(w);
+        }
+        let words = words.iter().cloned().collect();
         BagOfWords { universe, words }
     }
 

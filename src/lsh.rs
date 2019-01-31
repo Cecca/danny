@@ -229,22 +229,11 @@ impl LSHFunction for MinHash {
     type Output = u32;
 
     fn hash(&self, v: &BagOfWords) -> u32 {
-        let n = v.num_words();
         let mut h = 0u64;
-
-        for hi in 0..self.k {
-            let mut min_v = std::u64::MAX;
-            let mut min_idx = 0;
-            for vi in 0..n {
-                let x = self.hashers[hi].hash(v.word_at(vi));
-                if x < min_v {
-                    min_idx = vi;
-                    min_v = x;
-                }
-            }
-            h = h.wrapping_add(self.coeffs[hi].wrapping_mul(min_idx as u64));
+        for (hasher, coeff) in self.hashers.iter().zip(self.coeffs.iter()) {
+            let min_w = v.words().iter().map(|w| hasher.hash(*w)).min().unwrap();
+            h = h.wrapping_add(coeff.wrapping_mul(min_w));
         }
-
         (h >> 32) as u32
     }
 
@@ -1085,6 +1074,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::measure::*;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
 
@@ -1106,7 +1096,7 @@ mod tests {
 
     #[test]
     fn test_minhash() {
-        let mut rng = StdRng::seed_from_u64(123);
+        let mut rng = StdRng::seed_from_u64(1232);
         let hasher = MinHash::new(20, &mut rng);
         let a = BagOfWords::new(10, vec![1, 3, 4]);
         let ha = hasher.hash(&a);
@@ -1121,6 +1111,27 @@ mod tests {
 
         assert!(ha != hb);
         assert!(hc == hb);
+
+        for _ in 0..10 {
+            let a = BagOfWords::random(3000, 0.01, &mut rng);
+            let b = BagOfWords::random(3000, 0.01, &mut rng);
+            let similarity = Jaccard::jaccard(&a, &b);
+            let mut collisions = 0;
+            let samples = 10000;
+            for _ in 0..samples {
+                let h = MinHash::new(1, &mut rng);
+                if h.hash(&a) == h.hash(&b) {
+                    collisions += 1;
+                }
+            }
+            let p = collisions as f64 / samples as f64;
+            assert!(
+                (p - similarity).abs() <= 0.05,
+                "estimated p={}, expected={}",
+                p,
+                similarity
+            );
+        }
     }
 
     #[test]
