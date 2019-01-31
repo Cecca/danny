@@ -1092,6 +1092,33 @@ mod tests {
         println!("{:?}", hb);
 
         assert!(ha != hb);
+
+        let dim = 300;
+        for _ in 0..10 {
+            let a = UnitNormVector::random_normal(dim, &mut rng);
+            let b = UnitNormVector::random_normal(dim, &mut rng);
+            let cos = InnerProduct::cosine(&a, &b);
+            println!("Cosine between the vectors is {}", cos);
+            assert!(cos >= -1.0 && cos <= 1.0);
+            let acos = cos.acos();
+            assert!(!acos.is_nan());
+            let expected = 1.0 - acos / std::f64::consts::PI;
+            let mut collisions = 0;
+            let samples = 10000;
+            for _ in 0..samples {
+                let h = Hyperplane::new(1, dim, &mut rng);
+                if h.hash(&a) == h.hash(&b) {
+                    collisions += 1;
+                }
+            }
+            let p = collisions as f64 / samples as f64;
+            assert!(
+                (p - expected).abs() <= 0.01,
+                "estimated p={}, expected={}",
+                p,
+                expected
+            );
+        }
     }
 
     #[test]

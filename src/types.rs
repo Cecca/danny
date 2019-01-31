@@ -1,6 +1,6 @@
 use crate::measure::{InnerProduct, Jaccard};
 use abomonation::Abomonation;
-use rand::distributions::{Distribution, Exp, Uniform};
+use rand::distributions::{Distribution, Exp, Normal, Uniform};
 use rand::Rng;
 use std::collections::BTreeSet;
 use std::fmt;
@@ -50,6 +50,12 @@ impl UnitNormVector {
         let norm = InnerProduct::norm_2(&data) as f32;
         let data = data.iter().map(|x| x / norm).collect();
         UnitNormVector { data }
+    }
+
+    pub fn random_normal<R: Rng>(dim: usize, rng: &mut R) -> Self {
+        let dist = Normal::new(0.0, 1.0);
+        let data = dist.sample_iter(rng).take(dim).map(|x| x as f32).collect();
+        Self::new(data)
     }
 
     pub fn data(&self) -> &Vec<f32> {
