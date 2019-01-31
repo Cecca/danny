@@ -842,7 +842,7 @@ pub fn fixed_param_lsh<D, F, H, O, S, V>(
     left_path: &String,
     right_path: &String,
     hash_fn: LSHCollection<H, O>,
-    sketcher: S,
+    sketcher: Option<S>,
     threshold: f64,
     sim_pred: F,
     config: &Config,
@@ -976,8 +976,16 @@ where
             let sketcher = sketcher;
 
             let matrix = MatrixDescription::for_workers(peers as usize);
-            left_stream
-                .colliding_pairs_sketch(&right_stream, &hash_fn, &sketcher, threshold)
+            let candidates = match sketcher {
+                Some(sketcher) => left_stream.colliding_pairs_sketch(
+                    &right_stream,
+                    &hash_fn,
+                    &sketcher,
+                    threshold,
+                ),
+                None => left_stream.colliding_pairs(&right_stream, &hash_fn),
+            };
+            candidates
                 .pair_route(matrix)
                 .map(|pair| pair.1)
                 .approximate_distinct(1 << 30, 0.05, 123123123)
