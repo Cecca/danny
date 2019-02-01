@@ -1,64 +1,24 @@
 #[macro_use]
 extern crate log;
-extern crate env_logger;
-extern crate log_panics;
 #[macro_use]
-extern crate serde_derive;
-extern crate envy;
-extern crate serde;
-#[macro_use]
-extern crate clap;
-#[macro_use]
-extern crate abomonation;
-#[macro_use]
-extern crate abomonation_derive;
-extern crate chrono;
-extern crate core;
-extern crate rand;
-extern crate rand_xorshift;
-extern crate serde_json;
-extern crate siphasher;
-extern crate smallbitvec;
-extern crate timely;
+extern crate danny;
 
-mod baseline;
-mod bloom;
-mod config;
-#[macro_use]
-mod experiment;
-/// Provides facilities to read and write files
-mod io;
-#[macro_use]
-mod logging;
-mod lsh;
-mod measure;
-mod operators;
-mod sketch;
-/// This module collects algorithms to compute on some datasets,
-/// which might be useful to understand their behaviour
-mod stats;
-mod types;
-mod version {
-    include!(concat!(env!("OUT_DIR"), "/version.rs"));
-}
-
-#[global_allocator]
-static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
-
-use crate::baseline::Baselines;
-use crate::config::*;
-use crate::experiment::Experiment;
-use crate::io::ReadDataFile;
-use crate::lsh::LSHFunction;
-use crate::measure::*;
-use crate::sketch::*;
-use crate::types::*;
+use danny::baseline;
+use danny::baseline::Baselines;
+use danny::config::*;
+use danny::experiment::Experiment;
+use danny::io::ReadDataFile;
+use danny::lsh;
+use danny::lsh::LSHFunction;
+use danny::measure::*;
+use danny::sketch::*;
+use danny::types::*;
 use serde_json::Value;
 use std::collections::HashMap;
 
 fn main() {
     let config = Config::get();
-    crate::logging::init_logging(&config);
+    danny::logging::init_logging(&config);
     let args = CmdlineConfig::get();
     let mut experiment = Experiment::from_config(&config, &args);
 

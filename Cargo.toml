@@ -2,6 +2,7 @@
 name = "danny"
 version = "0.1.0"
 authors = ["Matteo Ceccarello <ceccarel@dei.unipd.it>"]
+edition = "2018"
 
 [dependencies]
 timely = "0.8"
@@ -21,6 +22,8 @@ rand_xorshift = "0.1.0"
 chrono = "0.4"
 siphasher = "0.3"
 jemallocator = "0.1.8"
+bincode = "1.0"
 
 [build-dependencies]
 vergen = "0.1"
+

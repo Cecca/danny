@@ -18,9 +18,10 @@ impl BinaryDataset {
         BinaryDataset { directory: path }
     }
 
-    pub fn read<T, F>(&self, worker: usize, mut fun: F)
+    pub fn read<T, P, F>(&self, predicate: P, mut fun: F)
     where
         for<'de> T: Deserialize<'de>,
+        P: Fn(usize) -> bool,
         F: FnMut(T) -> (),
     {
         assert!(self.directory.is_dir());
@@ -29,18 +30,15 @@ impl BinaryDataset {
             .read_dir()
             .expect("Problems reading the directory")
             .map(|entry| entry.expect("Problem reading entry").path())
-            .collect();
-        let num_files = files.len();
-        let files: Vec<PathBuf> = files
-            .iter()
-            .cloned()
             .filter(|path| {
-                path.to_string_lossy()
+                let file_id = path
+                    .file_name()
+                    .expect("error getting the file name")
+                    .to_string_lossy()
                     .to_string()
                     .parse::<usize>()
-                    .expect("Error parsing the file name into an integer")
-                    % num_files
-                    == worker
+                    .expect("Error parsing the file name into an integer");
+                predicate(file_id)
             })
             .collect();
         for path in files.iter() {
@@ -50,11 +48,10 @@ impl BinaryDataset {
                 let res: bincode::Result<T> = bincode::deserialize_from(&mut buf_reader);
                 match res {
                     Ok(element) => fun(element),
-                    Err(boxed_error) => panic!("{:?}", boxed_error),
+                    Err(_) => break,
                 }
             }
         }
-        unimplemented!()
     }
 
     pub fn write<T, I>(&self, num_chunks: usize, elements: I)

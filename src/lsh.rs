@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::experiment::Experiment;
 use crate::io::ReadDataFile;
 use crate::logging::init_event_logging;
 use crate::logging::*;
@@ -7,7 +8,6 @@ use crate::operators::Route;
 use crate::operators::*;
 use crate::sketch::*;
 use crate::types::*;
-use crate::Experiment;
 use abomonation::Abomonation;
 use rand::distributions::{Distribution, Normal, Uniform};
 use rand::Rng;

@@ -81,6 +81,7 @@ impl Experiment {
     }
 }
 
+#[macro_export]
 macro_rules! row(
     { $($key:expr => $value:expr),+ } => {
         {
