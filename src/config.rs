@@ -29,6 +29,8 @@ pub struct Config {
     seed: u64,
     #[serde(default = "Config::default_baselines_path")]
     baselines_path: PathBuf,
+    #[serde(default = "Config::default_sketch_epsilon")]
+    sketch_epsilon: f64,
 }
 
 #[allow(dead_code)]
@@ -41,7 +43,10 @@ impl Config {
                               to run (default=no hosts)
             DANNY_PROCESS_ID  in the context of multiple processes, the unique identifier
                               of the process, ranging from 0 until $DANNY_PROCESSES
-            DANNY_REPORT      ???"
+            DANNY_SEED        The seed for the random number generator
+            DANNY_SKETCH_EPSILON  The value of epsilon for the sketcher (if used)
+            DANNY_BASELINES_PATH  The path to the baselines file
+        "
     }
 
     pub fn get() -> Config {
@@ -57,6 +62,10 @@ impl Config {
 
     fn default_seed() -> u64 {
         98768473876234
+    }
+
+    fn default_sketch_epsilon() -> f64 {
+        0.01
     }
 
     fn default_threads() -> usize {
@@ -116,6 +125,10 @@ impl Config {
             Ok(pair) => pair,
             Err(msg) => panic!("Error while configuring timely: {}", msg),
         }
+    }
+
+    pub fn get_sketch_epsilon(&self) -> f64 {
+        self.sketch_epsilon
     }
 
     pub fn get_random_generator(&self, instance: usize) -> XorShiftRng {

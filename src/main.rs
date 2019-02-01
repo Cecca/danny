@@ -77,7 +77,7 @@ fn main() {
                 let sketcher_pair = args.sketch_bits.map(|bits| {
                     (
                         LongSimHash::new(bits, dim, &mut rng),
-                        SketchPredicate::cosine(bits, threshold, 0.001),
+                        SketchPredicate::cosine(bits, threshold, config.get_sketch_epsilon()),
                     )
                 });
                 lsh::fixed_param_lsh::<UnitNormVector, _, _, _, _, _>(
@@ -98,7 +98,7 @@ fn main() {
                 let sketcher_pair = args.sketch_bits.map(|bits| {
                     (
                         OneBitMinHash::new(bits, &mut rng),
-                        SketchPredicate::jaccard(bits, threshold, 0.001),
+                        SketchPredicate::jaccard(bits, threshold, config.get_sketch_epsilon()),
                     )
                 });
                 lsh::fixed_param_lsh::<BagOfWords, _, _, _, _, _>(

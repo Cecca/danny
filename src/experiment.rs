@@ -28,6 +28,7 @@ impl Experiment {
             .tag("num_hosts", config.get_num_hosts())
             .tag("total_threads", config.get_total_workers())
             .tag("seed", config.get_seed())
+            .tag("sketch_epsilon", config.get_sketch_epsilon())
             .tag("measure", cmdline.measure.clone())
             .tag("threshold", cmdline.threshold)
             .tag("left_path", cmdline.left_path.clone())

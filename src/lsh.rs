@@ -584,8 +584,6 @@ where
         let mut right_buckets = HashMap::new();
         let mut generators = HashMap::new();
 
-        let logger = self.scope().danny_logger();
-
         self.binary_frontier(
             &right,
             ExchangePact::new(|pair: &(H, K)| pair.0.route()),

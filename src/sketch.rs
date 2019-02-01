@@ -24,11 +24,12 @@ where
     T: BitBasedSketch,
 {
     pub fn from_probability(k: usize, p: f64, epsilon: f64) -> Self {
-        let delta = (3.0 / (p * k as f64) * (1.0 / epsilon).ln()).sqrt().ceil();
-        let bit_threshold = ((1.0 + delta) * p * k as f64).ceil() as usize;
+        let k = k as f64;
+        let delta = (3.0 / (p * k) * (1.0 / epsilon).ln()).sqrt();
+        let bit_threshold = ((1.0 + delta) * p * k).ceil() as usize;
         info!(
-            "Using bit thresold {} of different bits to reject",
-            bit_threshold
+            "Using bit thresold {} of different bits to reject (delta {} epsilon {})",
+            bit_threshold, delta, epsilon
         );
         SketchPredicate {
             bit_threshold,
