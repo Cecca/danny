@@ -1,8 +1,82 @@
+extern crate bincode;
+
 use crate::types::*;
+use serde::de::Deserialize;
+use serde::ser::Serialize;
+use std::fs::create_dir;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::path::PathBuf;
+
+pub struct BinaryDataset {
+    directory: PathBuf,
+}
+
+impl BinaryDataset {
+    pub fn new(path: PathBuf) -> Self {
+        BinaryDataset { directory: path }
+    }
+
+    pub fn read<T, F>(&self, worker: usize, mut fun: F)
+    where
+        for<'de> T: Deserialize<'de>,
+        F: FnMut(T) -> (),
+    {
+        assert!(self.directory.is_dir());
+        let files: Vec<PathBuf> = self
+            .directory
+            .read_dir()
+            .expect("Problems reading the directory")
+            .map(|entry| entry.expect("Problem reading entry").path())
+            .collect();
+        let num_files = files.len();
+        let files: Vec<PathBuf> = files
+            .iter()
+            .cloned()
+            .filter(|path| {
+                path.to_string_lossy()
+                    .to_string()
+                    .parse::<usize>()
+                    .expect("Error parsing the file name into an integer")
+                    % num_files
+                    == worker
+            })
+            .collect();
+        for path in files.iter() {
+            let file = File::open(path).expect("Error opening file");
+            let mut buf_reader = BufReader::new(file);
+            loop {
+                let res: bincode::Result<T> = bincode::deserialize_from(&mut buf_reader);
+                match res {
+                    Ok(element) => fun(element),
+                    Err(boxed_error) => panic!("{:?}", boxed_error),
+                }
+            }
+        }
+        unimplemented!()
+    }
+
+    pub fn write<T, I>(&self, num_chunks: usize, elements: I)
+    where
+        T: Serialize,
+        I: Iterator<Item = T>,
+    {
+        create_dir(&self.directory).expect("Error creating directory");
+        let mut files = Vec::with_capacity(num_chunks);
+        for chunk in 0..num_chunks {
+            let mut path = self.directory.clone();
+            path.push(format!("{}", chunk));
+            let writer = File::create(path).expect("Error creating file");
+            files.push(writer);
+        }
+
+        for (i, element) in elements.enumerate() {
+            let writer = files.get_mut(i % num_chunks).expect("Out of bounds index");
+            bincode::serialize_into(writer, &element).expect("Error while serializing");
+        }
+    }
+}
 
 pub trait ReadDataFile
 where

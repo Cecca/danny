@@ -40,7 +40,7 @@ impl VectorWithNorm {
     }
 }
 
-#[derive(Debug, Clone, Abomonation)]
+#[derive(Serialize, Debug, Clone, Abomonation)]
 pub struct UnitNormVector {
     data: Vec<f32>,
 }
@@ -76,7 +76,7 @@ impl From<VectorWithNorm> for UnitNormVector {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Serialize, Clone, Debug)]
 pub struct BagOfWords {
     universe: u32,
     words: Vec<u32>,
