@@ -18,6 +18,7 @@ where
     where
         P: Fn(usize) -> bool,
         F: FnMut(u64, Self) -> ();
+    fn num_elements(path: PathBuf) -> usize;
 }
 
 impl<T> ReadBinaryFile for T
@@ -73,6 +74,30 @@ where
                 }
             }
         }
+    }
+
+    fn num_elements(path: PathBuf) -> usize {
+        assert!(path.is_dir());
+        let files: Vec<PathBuf> = path
+            .read_dir()
+            .expect("Problems reading the directory")
+            .map(|entry| entry.expect("Problem reading entry").path())
+            .collect();
+        let mut cnt = 0;
+        for path in files.iter() {
+            let file = File::open(path).expect("Error opening file");
+            let mut buf_reader = BufReader::new(file);
+            loop {
+                let res: bincode::Result<(u32, T)> = bincode::deserialize_from(&mut buf_reader);
+                match res {
+                    Ok((i, element)) => cnt += 1,
+                    Err(_) => {
+                        break;
+                    }
+                }
+            }
+        }
+        cnt
     }
 }
 

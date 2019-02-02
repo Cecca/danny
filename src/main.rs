@@ -7,7 +7,7 @@ use danny::baseline;
 use danny::baseline::Baselines;
 use danny::config::*;
 use danny::experiment::Experiment;
-use danny::io::ReadDataFile;
+use danny::io::*;
 use danny::lsh;
 use danny::lsh::LSHFunction;
 use danny::measure::*;
@@ -31,7 +31,7 @@ fn main() {
             "cosine" => {
                 let k = args.k.expect("K is needed on the command line");
                 let repetitions = lsh::Hyperplane::repetitions_at_range(args.threshold, k);
-                let dim = UnitNormVector::peek_first(&args.left_path.clone().into()).dim();
+                let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
                 let threshold = args.threshold;
                 let hash_funs = lsh::Hyperplane::collection(k, repetitions, dim, &mut rng);
                 let sketcher_pair = args.sketch_bits.map(|bits| {

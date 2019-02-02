@@ -11,6 +11,7 @@ use crate::types::*;
 use abomonation::Abomonation;
 use rand::distributions::{Distribution, Normal, Uniform};
 use rand::Rng;
+use serde::de::Deserialize;
 use std::clone::Clone;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
@@ -848,7 +849,8 @@ pub fn fixed_param_lsh<D, F, H, O, S, V>(
     experiment: &mut Experiment,
 ) -> usize
 where
-    D: ReadDataFile + Data + Sync + Send + Clone + Abomonation + Debug,
+    for<'de> D:
+        ReadBinaryFile + Deserialize<'de> + Data + Sync + Send + Clone + Abomonation + Debug,
     F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
     H: LSHFunction<Input = D, Output = O> + Sync + Send + Clone + 'static,
     O: Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash,
@@ -911,16 +913,16 @@ where
         }
         info!("This machine is responsible for rows: {:?}", row_set);
         info!("This machine is responsible for columns: {:?}", column_set);
-        ReadDataFile::from_file_partially(
-            &left_path_main.into(),
-            |l| row_set.contains(&((l % matrix_desc.rows as u64) as u8)),
+        ReadBinaryFile::read_binary(
+            left_path_main.into(),
+            |l| row_set.contains(&((l % matrix_desc.rows as usize) as u8)),
             |c, v| {
                 global_left.insert(c, v);
             },
         );
-        ReadDataFile::from_file_partially(
-            &right_path_main.into(),
-            |l| column_set.contains(&((l % matrix_desc.columns as u64) as u8)),
+        ReadBinaryFile::read_binary(
+            right_path_main.into(),
+            |l| column_set.contains(&((l % matrix_desc.columns as usize) as u8)),
             |c, v| {
                 global_right.insert(c, v);
             },
@@ -1006,14 +1008,14 @@ where
         let start = Instant::now();
         let left_path = left_path.clone();
         let right_path = right_path.clone();
-        ReadDataFile::from_file_partially(
-            &left_path.into(),
-            |l| l % peers == index as u64,
+        ReadBinaryFile::read_binary(
+            left_path.into(),
+            |l| l % peers as usize == index,
             |c, v| left.send((c, v)),
         );
-        ReadDataFile::from_file_partially(
-            &right_path.into(),
-            |l| l % peers == index as u64,
+        ReadBinaryFile::read_binary(
+            right_path.into(),
+            |l| l % peers as usize == index,
             |c, v| right.send((c, v)),
         );
         // Explicitly state that the input will not feed times smaller than the number of
@@ -1062,7 +1064,7 @@ where
 
         let precision = count as f64 / global_summary.distinct_pairs as f64;
         let potential_pairs =
-            D::num_elements(&left_path_final.into()) * D::num_elements(&right_path_final.into());
+            D::num_elements(left_path_final.into()) * D::num_elements(right_path_final.into());
         let fraction_distinct = global_summary.distinct_pairs as f64 / potential_pairs as f64;
         global_summary.add_to_experiment("execution_summary", experiment);
         info!(
