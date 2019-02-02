@@ -9,6 +9,104 @@ use std::io::BufRead;
 use std::io::BufReader;
 use std::path::PathBuf;
 
+pub trait ReadBinaryFile
+where
+    Self: std::marker::Sized,
+{
+    fn peek_one(path: PathBuf) -> Self;
+    fn read_binary<P, F>(path: PathBuf, predicate: P, fun: F)
+    where
+        P: Fn(usize) -> bool,
+        F: FnMut(u64, Self) -> ();
+}
+
+impl<T> ReadBinaryFile for T
+where
+    for<'de> T: Deserialize<'de> + std::marker::Sized,
+{
+    fn peek_one(path: PathBuf) -> T {
+        assert!(path.is_dir());
+        let file = path
+            .read_dir()
+            .expect("Problem reading directory")
+            .next()
+            .expect("Problem reading next entry")
+            .expect("Problem reading entry")
+            .path();
+        let file = File::open(file).expect("Problem opening file");
+        let mut buf_reader = BufReader::new(file);
+        let res: bincode::Result<(u32, T)> = bincode::deserialize_from(&mut buf_reader);
+        res.expect("Error deserializing").1
+    }
+
+    fn read_binary<P, F>(path: PathBuf, predicate: P, mut fun: F)
+    where
+        P: Fn(usize) -> bool,
+        F: FnMut(u64, T) -> (),
+    {
+        assert!(path.is_dir());
+        let files: Vec<PathBuf> = path
+            .read_dir()
+            .expect("Problems reading the directory")
+            .map(|entry| entry.expect("Problem reading entry").path())
+            .filter(|path| {
+                let file_id = path
+                    .file_name()
+                    .expect("error getting the file name")
+                    .to_string_lossy()
+                    .to_string()
+                    .parse::<usize>()
+                    .expect("Error parsing the file name into an integer");
+                predicate(file_id)
+            })
+            .collect();
+        for path in files.iter() {
+            let file = File::open(path).expect("Error opening file");
+            let mut buf_reader = BufReader::new(file);
+            loop {
+                let res: bincode::Result<(u32, T)> = bincode::deserialize_from(&mut buf_reader);
+                match res {
+                    Ok((i, element)) => fun(i as u64, element),
+                    Err(_) => break,
+                }
+            }
+        }
+    }
+}
+
+pub trait WriteBinaryFile
+where
+    Self: Sized,
+{
+    fn write_binary<I>(path: PathBuf, num_chunks: usize, elements: I)
+    where
+        I: Iterator<Item = Self>;
+}
+
+impl<T> WriteBinaryFile for T
+where
+    T: std::marker::Sized + Serialize,
+{
+    fn write_binary<I>(directory: PathBuf, num_chunks: usize, elements: I)
+    where
+        I: Iterator<Item = Self>,
+    {
+        create_dir(&directory).expect("Error creating directory");
+        let mut files = Vec::with_capacity(num_chunks);
+        for chunk in 0..num_chunks {
+            let mut path = directory.clone();
+            path.push(format!("{}", chunk));
+            let writer = File::create(path).expect("Error creating file");
+            files.push(writer);
+        }
+
+        for (i, element) in elements.enumerate() {
+            let writer = files.get_mut(i % num_chunks).expect("Out of bounds index");
+            bincode::serialize_into(writer, &element).expect("Error while serializing");
+        }
+    }
+}
+
 pub struct BinaryDataset {
     directory: PathBuf,
 }

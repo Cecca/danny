@@ -14,8 +14,7 @@ where
 {
     let mut elements = Vec::new();
     T::from_file(&input, |e| elements.push(e));
-    let dataset = BinaryDataset::new(output);
-    dataset.write(chunks, elements.iter());
+    WriteBinaryFile::write_binary(output, chunks, elements.iter());
 }
 
 fn main() {
