@@ -74,7 +74,7 @@ fn main() {
             _ => unimplemented!("Unknown measure {}", args.measure),
         },
         "all-2-all" => match args.measure.as_ref() {
-            "cosine" => baseline::all_pairs_parallel::<VectorWithNorm, _>(
+            "cosine" => baseline::all_pairs_parallel::<UnitNormVector, _>(
                 args.threshold,
                 &args.left_path,
                 &args.right_path,
@@ -91,7 +91,7 @@ fn main() {
             _ => unimplemented!(),
         },
         "seq-all-2-all" => match args.measure.as_ref() {
-            "cosine" => baseline::sequential::<VectorWithNorm, _>(
+            "cosine" => baseline::sequential::<UnitNormVector, _>(
                 args.threshold,
                 &args.left_path,
                 &args.right_path,

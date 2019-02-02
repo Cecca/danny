@@ -1,7 +1,8 @@
 use crate::config::Config;
-use crate::io::ReadDataFile;
+use crate::io::*;
 use crate::operators::*;
 use abomonation::Abomonation;
+use serde::de::Deserialize;
 use std::clone::Clone;
 use std::fmt::Debug;
 use std::fs::File;
@@ -92,13 +93,13 @@ impl Baselines {
 
 pub fn sequential<T, F>(thresh: f64, left_path: &String, right_path: &String, sim_fn: F) -> usize
 where
-    T: ReadDataFile,
+    for<'de> T: ReadDataFile + Deserialize<'de>,
     F: Fn(&T, &T) -> f64,
 {
     let mut left = Vec::new();
     let mut right = Vec::new();
-    ReadDataFile::from_file(&left_path.into(), |v| left.push(v));
-    ReadDataFile::from_file(&right_path.into(), |v| right.push(v));
+    ReadBinaryFile::read_binary(left_path.into(), |_| true, |_, v| left.push(v));
+    ReadBinaryFile::read_binary(right_path.into(), |_| true, |_, v| right.push(v));
     println!(
         "Loaded data:\n  left: {}\n  right: {}",
         left.len(),
@@ -117,7 +118,6 @@ where
     sim_cnt
 }
 
-#[allow(dead_code)]
 pub fn all_pairs_parallel<T, F>(
     threshold: f64,
     left_path: &String,
@@ -126,7 +126,7 @@ pub fn all_pairs_parallel<T, F>(
     config: &Config,
 ) -> usize
 where
-    T: ReadDataFile + Data + Sync + Send + Clone + Abomonation + Debug,
+    for<'de> T: Deserialize<'de> + ReadDataFile + Data + Sync + Send + Clone + Abomonation + Debug,
     F: Fn(&T, &T) -> f64 + Send + Clone + Sync + 'static,
 {
     let timely_builder = config.get_timely_builder();
@@ -177,14 +177,14 @@ where
         let start = Instant::now();
         let left_path = left_path.clone();
         let right_path = right_path.clone();
-        ReadDataFile::from_file_partially(
-            &left_path.into(),
-            |l| l % peers == index as u64,
+        ReadBinaryFile::read_binary(
+            left_path.into(),
+            |l| l % peers as usize == index,
             |c, v| left.send((c, v)),
         );
-        ReadDataFile::from_file_partially(
-            &right_path.into(),
-            |l| l % peers == index as u64,
+        ReadBinaryFile::read_binary(
+            right_path.into(),
+            |l| l % peers as usize == index,
             |c, v| right.send((c, v)),
         );
         left.advance_to(1);

@@ -1,6 +1,6 @@
 use crate::config::Config;
 use crate::experiment::Experiment;
-use crate::io::ReadDataFile;
+use crate::io::*;
 use crate::logging::init_event_logging;
 use crate::logging::*;
 use crate::measure::InnerProduct;

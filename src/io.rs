@@ -67,7 +67,9 @@ where
                 let res: bincode::Result<(u32, T)> = bincode::deserialize_from(&mut buf_reader);
                 match res {
                     Ok((i, element)) => fun(i as u64, element),
-                    Err(_) => break,
+                    Err(_) => {
+                        break;
+                    }
                 }
             }
         }
@@ -102,7 +104,8 @@ where
 
         for (i, element) in elements.enumerate() {
             let writer = files.get_mut(i % num_chunks).expect("Out of bounds index");
-            bincode::serialize_into(writer, &element).expect("Error while serializing");
+            let pair = (i as u32, element);
+            bincode::serialize_into(writer, &pair).expect("Error while serializing");
         }
     }
 }
