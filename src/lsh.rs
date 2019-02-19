@@ -844,8 +844,8 @@ pub fn load_global_vecs<D>(
     right_path_main: String,
     config: &Config,
 ) -> (
-    Arc<RwLock<Arc<HashMap<u64, D>>>>,
-    Arc<RwLock<Arc<HashMap<u64, D>>>>,
+    Arc<RwLock<Arc<HashMap<u32, D>>>>,
+    Arc<RwLock<Arc<HashMap<u32, D>>>>,
     Arc<Mutex<Sender<(u8, u8)>>>,
     Arc<Barrier>,
     std::thread::JoinHandle<()>,
@@ -854,9 +854,9 @@ where
     for<'de> D: Deserialize<'de> + ReadBinaryFile + Sync + Send + Clone + 'static,
 {
     // These two maps hold the vectors that need to be accessed by all threads in this machine.
-    let global_left_write: Arc<RwLock<Arc<HashMap<u64, D>>>> =
+    let global_left_write: Arc<RwLock<Arc<HashMap<u32, D>>>> =
         Arc::new(RwLock::new(Arc::new(HashMap::new())));
-    let global_right_write: Arc<RwLock<Arc<HashMap<u64, D>>>> =
+    let global_right_write: Arc<RwLock<Arc<HashMap<u32, D>>>> =
         Arc::new(RwLock::new(Arc::new(HashMap::new())));
     let global_left_read = global_left_write.clone();
     let global_right_read = global_right_write.clone();
@@ -899,14 +899,14 @@ where
             left_path_main.into(),
             |l| row_set.contains(&((l % matrix_desc.rows as usize) as u8)),
             |c, v| {
-                global_left.insert(c, v);
+                global_left.insert(c as u32, v);
             },
         );
         ReadBinaryFile::read_binary(
             right_path_main.into(),
             |l| column_set.contains(&((l % matrix_desc.columns as usize) as u8)),
             |c, v| {
-                global_right.insert(c, v);
+                global_right.insert(c as u32, v);
             },
         );
         debug!("Memory after reading data {}", proc_mem!());
@@ -1000,9 +1000,11 @@ where
         let (mut left, mut right, probe) = worker.dataflow(move |scope| {
             let global_left = Arc::clone(&global_left_read.read().unwrap());
             let global_right = Arc::clone(&global_right_read.read().unwrap());
+            let global_left = global_left_read.read().unwrap().clone();
+            let global_right = global_right_read.read().unwrap().clone();
 
-            let (left_in, left_stream) = scope.new_input::<(u64, D)>();
-            let (right_in, right_stream) = scope.new_input::<(u64, D)>();
+            let (left_in, left_stream) = scope.new_input::<(u32, D)>();
+            let (right_in, right_stream) = scope.new_input::<(u32, D)>();
             let mut probe = ProbeHandle::new();
             let hash_fn = hash_fn;
             let sketcher_pair = sketcher_pair;
@@ -1042,12 +1044,12 @@ where
         ReadBinaryFile::read_binary(
             left_path.into(),
             |l| l % peers as usize == index,
-            |c, v| left.send((c, v)),
+            |c, v| left.send((c as u32, v)),
         );
         ReadBinaryFile::read_binary(
             right_path.into(),
             |l| l % peers as usize == index,
-            |c, v| right.send((c, v)),
+            |c, v| right.send((c as u32, v)),
         );
         // Explicitly state that the input will not feed times smaller than the number of
         // repetitions. This is needed to make the program terminate
