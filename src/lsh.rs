@@ -967,6 +967,8 @@ where
 
     let (global_left_read, global_right_read, send_coords, io_barrier, reader_handle) =
         load_global_vecs(left_path.clone(), right_path.clone(), config);
+    let global_left_read_1 = global_left_read.clone();
+    let global_right_read_1 = global_right_read.clone();
 
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
         let execution_summary = init_event_logging(&worker);
@@ -1036,29 +1038,40 @@ where
 
         // Push data into the dataflow graph. Each worker will read some of the lines of the input
         debug!("Reading data files:\n\t{:?}\n\t{:?}", left_path, right_path);
-        let start = Instant::now();
-        let left_path = left_path.clone();
-        let right_path = right_path.clone();
-        ReadBinaryFile::read_binary(
-            left_path.into(),
-            |l| l % peers as usize == index,
-            |c, v| left.send((c, v)),
-        );
-        ReadBinaryFile::read_binary(
-            right_path.into(),
-            |l| l % peers as usize == index,
-            |c, v| right.send((c, v)),
-        );
+        // let start = Instant::now();
+        for (lk, lv) in global_left_read_1.read().unwrap().iter() {
+            if lk % peers == index as u64 {
+                left.send((lk.clone(), lv.clone()));
+            }
+        }
+        for (rk, rv) in global_right_read_1.read().unwrap().iter() {
+            if rk % peers == index as u64 {
+                right.send((rk.clone(), rv.clone()));
+            }
+        }
+
+        // let left_path = left_path.clone();
+        // let right_path = right_path.clone();
+        // ReadBinaryFile::read_binary(
+        //     left_path.into(),
+        //     |l| l % peers as usize == index,
+        //     |c, v| left.send((c, v)),
+        // );
+        // ReadBinaryFile::read_binary(
+        //     right_path.into(),
+        //     |l| l % peers as usize == index,
+        //     |c, v| right.send((c, v)),
+        // );
         // Explicitly state that the input will not feed times smaller than the number of
         // repetitions. This is needed to make the program terminate
         left.advance_to(repetitions as u32);
         right.advance_to(repetitions as u32);
-        let end = Instant::now();
-        let elapsed = end - start;
-        info!(
-            "Time to feed the input to the dataflow graph: {:?}",
-            elapsed
-        );
+        // let end = Instant::now();
+        // let elapsed = end - start;
+        // info!(
+        //     "Time to feed the input to the dataflow graph: {:?}",
+        //     elapsed
+        // );
         worker.step_while(|| probe.less_than(&(repetitions as u32)));
 
         info!(
