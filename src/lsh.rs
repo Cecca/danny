@@ -991,34 +991,60 @@ where
 
         let hash_fn = hash_fn.clone();
         let sketcher_pair = sketcher_pair.clone();
+        let sketcher_pair_1 = sketcher_pair.clone();
         debug!(
             "Started worker {}/{} (machine memory used {})",
             index,
             peers,
             proc_mem!()
         );
-        let (mut left, mut right, probe) = worker.dataflow(move |scope| {
+        let (mut left, mut right, probe) = worker.dataflow::<u32, _, _>(move |scope| {
+            let logger = scope.danny_logger();
             let global_left = Arc::clone(&global_left_read.read().unwrap());
             let global_right = Arc::clone(&global_right_read.read().unwrap());
-            let global_left = global_left_read.read().unwrap().clone();
-            let global_right = global_right_read.read().unwrap().clone();
 
-            let (left_in, left_stream) = scope.new_input::<(u32, D)>();
-            let (right_in, right_stream) = scope.new_input::<(u32, D)>();
+            let (left_in, left_hashes) = scope.new_input::<(O, (V, u32))>();
+            let (right_in, right_hashes) = scope.new_input::<(O, (V, u32))>();
             let mut probe = ProbeHandle::new();
-            let hash_fn = hash_fn;
+            // let hash_fn = hash_fn;
             let sketcher_pair = sketcher_pair;
+            let (_sketcher, sketch_predicate) = sketcher_pair.unwrap();
 
             let matrix = MatrixDescription::for_workers(peers as usize);
-            let candidates = match sketcher_pair {
-                Some((sketcher, sketch_predicate)) => left_stream.colliding_pairs_sketch(
-                    &right_stream,
-                    &hash_fn,
-                    &sketcher,
-                    sketch_predicate,
-                ),
-                None => left_stream.colliding_pairs(&right_stream, &hash_fn),
-            };
+            // let candidates = match sketcher_pair {
+            //     Some((sketcher, sketch_predicate)) => left_stream.colliding_pairs_sketch(
+            //         &right_stream,
+            //         &hash_fn,
+            //         &sketcher,
+            //         sketch_predicate,
+            //     ),
+            //     None => left_stream.colliding_pairs(&right_stream, &hash_fn),
+            // };
+            let candidates = left_hashes.bucket_batched(&right_hashes).unary(
+                Pipeline,
+                "sketch filtering",
+                move |_, _| {
+                    move |input, output| {
+                        let mut discarded = 0;
+                        let mut cnt = 0;
+                        input.for_each(|t, data| {
+                            let t = t.retain();
+                            let mut session = output.session(&t);
+                            let mut data = data.replace(Vec::new());
+                            for (p1, p2) in data.drain(..) {
+                                if sketch_predicate.eval(&p1.0, &p2.0) {
+                                    cnt += 1;
+                                    session.give((p1.1, p2.1));
+                                } else {
+                                    discarded += 1;
+                                }
+                            }
+                        });
+                        log_event!(logger, LogEvent::SketchDiscarded(discarded));
+                        log_event!(logger, LogEvent::GeneratedPairs(cnt));
+                    }
+                },
+            );
             candidates
                 .pair_route(matrix)
                 .map(|pair| pair.1)
@@ -1038,30 +1064,40 @@ where
 
         // Push data into the dataflow graph. Each worker will read some of the lines of the input
         debug!("Reading data files:\n\t{:?}\n\t{:?}", left_path, right_path);
-        let start = Instant::now();
         let left_path = left_path.clone();
         let right_path = right_path.clone();
-        ReadBinaryFile::read_binary(
-            left_path.into(),
-            |l| l % peers as usize == index,
-            |c, v| left.send((c as u32, v)),
-        );
-        ReadBinaryFile::read_binary(
-            right_path.into(),
-            |l| l % peers as usize == index,
-            |c, v| right.send((c as u32, v)),
-        );
-        // Explicitly state that the input will not feed times smaller than the number of
-        // repetitions. This is needed to make the program terminate
-        left.advance_to(repetitions as u32);
-        right.advance_to(repetitions as u32);
-        let end = Instant::now();
-        let elapsed = end - start;
-        info!(
-            "Time to feed the input to the dataflow graph: {:?}",
-            elapsed
-        );
-        worker.step_while(|| probe.less_than(&(repetitions as u32)));
+        let sketcher = sketcher_pair_1.unwrap().0;
+        for repetition in 0..repetitions {
+            info!("Starting repetition {}", repetition);
+            let start = Instant::now();
+            ReadBinaryFile::read_binary(
+                left_path.clone().into(),
+                |l| l % peers as usize == index,
+                |c, v| {
+                    let s = sketcher.sketch(&v);
+                    let h = hash_fn.hash(&v, repetition);
+                    left.send((h, (s, c as u32)));
+                },
+            );
+            ReadBinaryFile::read_binary(
+                right_path.clone().into(),
+                |l| l % peers as usize == index,
+                |c, v| {
+                    let s = sketcher.sketch(&v);
+                    let h = hash_fn.hash(&v, repetition);
+                    right.send((h, (s, c as u32)));
+                },
+            );
+            left.advance_to(repetition as u32);
+            right.advance_to(repetition as u32);
+            let end = Instant::now();
+            let elapsed = end - start;
+            info!(
+                "Time to feed the input to the dataflow graph: {:?}",
+                elapsed
+            );
+            worker.step_while(|| probe.less_than(&(repetition as u32)));
+        }
 
         info!(
             "Execution summary for worker {}: {:?}",
