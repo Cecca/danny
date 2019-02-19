@@ -16,9 +16,8 @@ use std::clone::Clone;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::rc::Rc;
-use std::sync::mpsc::channel;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::mpsc::{channel, Sender};
+use std::sync::{Arc, Barrier, Mutex, RwLock};
 use std::thread;
 use std::time::Instant;
 use timely::dataflow::channels::pact::{Exchange as ExchangePact, Pipeline};
@@ -840,40 +839,20 @@ where
     }
 }
 
-pub fn fixed_param_lsh<D, F, H, O, S, V>(
-    left_path: &String,
-    right_path: &String,
-    hash_fn: LSHCollection<H, O>,
-    sketcher_pair: Option<(S, SketchPredicate<V>)>,
-    sim_pred: F,
+pub fn load_global_vecs<D>(
+    left_path_main: String,
+    right_path_main: String,
     config: &Config,
-    experiment: &mut Experiment,
-) -> usize
+) -> (
+    Arc<RwLock<Arc<HashMap<u64, D>>>>,
+    Arc<RwLock<Arc<HashMap<u64, D>>>>,
+    Arc<Mutex<Sender<(u8, u8)>>>,
+    Arc<Barrier>,
+    std::thread::JoinHandle<()>,
+)
 where
-    for<'de> D:
-        ReadBinaryFile + Deserialize<'de> + Data + Sync + Send + Clone + Abomonation + Debug,
-    F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
-    H: LSHFunction<Input = D, Output = O> + Sync + Send + Clone + 'static,
-    O: Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash,
-    S: Sketcher<Input = D, Output = V> + Send + Sync + Clone + 'static,
-    V: Data + Debug + Sync + Send + Clone + Abomonation + SketchEstimate + BitBasedSketch,
+    for<'de> D: Deserialize<'de> + ReadBinaryFile + Sync + Send + Clone + 'static,
 {
-    let timely_builder = config.get_timely_builder();
-    // This channel is used to get the results
-    let (output_send_ch, recv) = channel();
-    let output_send_ch = Arc::new(Mutex::new(output_send_ch));
-
-    let (send_exec_summary, recv_exec_summary) = channel();
-    let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
-
-    let left_path = left_path.clone();
-    let right_path = right_path.clone();
-    let left_path_main = left_path.clone();
-    let right_path_main = right_path.clone();
-    let left_path_final = left_path.clone();
-    let right_path_final = right_path.clone();
-    let repetitions = hash_fn.repetitions();
-
     // These two maps hold the vectors that need to be accessed by all threads in this machine.
     let global_left_write: Arc<RwLock<Arc<HashMap<u64, D>>>> =
         Arc::new(RwLock::new(Arc::new(HashMap::new())));
@@ -890,12 +869,7 @@ where
     let waiting_threads = worker_threads + 1;
     let io_barrier = Arc::new(std::sync::Barrier::new(waiting_threads));
     let io_barrier_reader = io_barrier.clone();
-    debug!(
-        "Cloned the barrier, which waits on {} threads",
-        waiting_threads
-    );
 
-    // Read the coordinates, to load in memory the relevant sections of the files
     let reader_handle = thread::spawn(move || {
         let start = Instant::now();
         let matrix_desc = MatrixDescription::for_workers(total_workers);
@@ -914,7 +888,7 @@ where
         debug!("Getting the pairs on the main thread");
         for _ in 0..worker_threads {
             // We know we will receive exactly that many messages
-            let (i, j) = recv_coords.recv().expect("Problem receiving coordinate");
+            let (i, j): (u8, u8) = recv_coords.recv().expect("Problem receiving coordinate");
             row_set.insert(i);
             column_set.insert(j);
         }
@@ -949,6 +923,50 @@ where
         io_barrier_reader.wait();
         debug!("After reader barrier!");
     });
+
+    (
+        global_left_read,
+        global_right_read,
+        send_coords,
+        io_barrier,
+        reader_handle,
+    )
+}
+
+pub fn fixed_param_lsh<D, F, H, O, S, V>(
+    left_path: &String,
+    right_path: &String,
+    hash_fn: LSHCollection<H, O>,
+    sketcher_pair: Option<(S, SketchPredicate<V>)>,
+    sim_pred: F,
+    config: &Config,
+    experiment: &mut Experiment,
+) -> usize
+where
+    for<'de> D:
+        ReadBinaryFile + Deserialize<'de> + Data + Sync + Send + Clone + Abomonation + Debug,
+    F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
+    H: LSHFunction<Input = D, Output = O> + Sync + Send + Clone + 'static,
+    O: Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash,
+    S: Sketcher<Input = D, Output = V> + Send + Sync + Clone + 'static,
+    V: Data + Debug + Sync + Send + Clone + Abomonation + SketchEstimate + BitBasedSketch,
+{
+    let timely_builder = config.get_timely_builder();
+    // This channel is used to get the results
+    let (output_send_ch, recv) = channel();
+    let output_send_ch = Arc::new(Mutex::new(output_send_ch));
+
+    let (send_exec_summary, recv_exec_summary) = channel();
+    let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
+
+    let left_path = left_path.clone();
+    let right_path = right_path.clone();
+    let left_path_final = left_path.clone();
+    let right_path_final = right_path.clone();
+    let repetitions = hash_fn.repetitions();
+
+    let (global_left_read, global_right_read, send_coords, io_barrier, reader_handle) =
+        load_global_vecs(left_path.clone(), right_path.clone(), config);
 
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
         let execution_summary = init_event_logging(&worker);
