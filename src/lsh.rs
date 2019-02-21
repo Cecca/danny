@@ -1070,6 +1070,7 @@ where
         for repetition in 0..repetitions {
             info!("Starting repetition {}", repetition);
             let start = Instant::now();
+            let rep_start = Instant::now();
             ReadBinaryFile::read_binary(
                 left_path.clone().into(),
                 |l| l % peers as usize == index,
@@ -1097,6 +1098,12 @@ where
                 elapsed
             );
             worker.step_while(|| probe.less_than(&(repetition as u32)));
+            let rep_end = Instant::now();
+            info!(
+                "Time for repetition {}: {:?}",
+                repetition,
+                (rep_end - rep_start)
+            );
         }
 
         info!(
