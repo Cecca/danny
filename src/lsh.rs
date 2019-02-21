@@ -906,10 +906,10 @@ where
         let mut row_set = HashSet::new();
         let mut column_set = HashSet::new();
         let mut global_left = global_left_write.write().unwrap();
-        let mut global_left =
+        let global_left =
             Arc::get_mut(&mut global_left).expect("This should be the only reference");
         let mut global_right = global_right_write.write().unwrap();
-        let mut global_right =
+        let global_right =
             Arc::get_mut(&mut global_right).expect("This should be the only reference");
         debug!("Getting the pairs on the main thread");
         for _ in 0..worker_threads {
@@ -918,9 +918,9 @@ where
             row_set.insert(i);
             column_set.insert(j);
         }
-        info!("This machine is responsible for rows: {:?}", row_set);
-        info!("This machine is responsible for columns: {:?}", column_set);
-        info!("Memory before reading data {}", proc_mem!());
+        debug!("This machine is responsible for rows: {:?}", row_set);
+        debug!("This machine is responsible for columns: {:?}", column_set);
+        debug!("Memory before reading data {}", proc_mem!());
         ReadBinaryFile::read_binary(
             left_path_main.into(),
             |l| row_set.contains(&((l % matrix_desc.rows as usize) as u8)),
@@ -935,7 +935,7 @@ where
                 global_right.insert(c, v);
             },
         );
-        info!("Memory after reading data {}", proc_mem!());
+        debug!("Memory after reading data {}", proc_mem!());
         let end = Instant::now();
         let elapsed = end - start;
         info!(
@@ -971,22 +971,17 @@ where
         let global_left_read = global_left_read.clone();
         let global_right_read = global_right_read.clone();
 
-        info!("Before cloning hash function {}", proc_mem!());
         let hash_fn = hash_fn.clone();
-        info!("After cloning hash function {}", proc_mem!());
         let sketcher_pair = sketcher_pair.clone();
-        info!(
+        debug!(
             "Started worker {}/{} (machine memory used {})",
             index,
             peers,
             proc_mem!()
         );
         let (mut left, mut right, probe) = worker.dataflow(move |scope| {
-            // TODO: check if these two clones are harmful
-            info!("Before cloning global vectors locks {}", proc_mem!());
             let global_left = Arc::clone(&global_left_read.read().unwrap());
             let global_right = Arc::clone(&global_right_read.read().unwrap());
-            info!("After cloning global vectors locks {}", proc_mem!());
 
             let (left_in, left_stream) = scope.new_input::<(u64, D)>();
             let (right_in, right_stream) = scope.new_input::<(u64, D)>();
@@ -1017,8 +1012,6 @@ where
                 .exchange(|_| 0)
                 .probe_with(&mut probe)
                 .capture_into(output_send_ch);
-
-            info!("Memory after dataflow graph creation {}", proc_mem!());
 
             (left_in, right_in, probe)
         });
