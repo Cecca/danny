@@ -907,7 +907,6 @@ where
             let mut done = false;
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
-                    info!("worker {} Repetition {}", worker, current_repetition);
                     let mut session = output.session(&cap);
                     for (k, v) in vecs.iter() {
                         if partitioner.belongs_to_worker(k.clone(), worker) {
@@ -949,9 +948,21 @@ where
     let worker: u64 = scope.index() as u64;
     let repetitions = hash_fns.functions.len() as u32;
     let mut current_repetition = 0u32;
+    let vecs = Arc::clone(&global_vecs.read().unwrap());
+    let mut sketches: HashMap<K, V> = HashMap::new();
+    info!("Computing sketches");
+    let start_sketch = Instant::now();
+    for (k, v) in vecs.iter() {
+        if partitioner.belongs_to_worker(k.clone(), worker) {
+            let s = sketcher.sketch(v);
+            sketches.insert(k.clone(), s);
+        }
+    }
+    let end_sketch = Instant::now();
+    info!("Sketches computed in {:?}", end_sketch - start_sketch);
+
     source(scope, "hashed source", move |capability| {
         let mut cap = Some(capability);
-        let vecs = Arc::clone(&global_vecs.read().unwrap());
         move |output| {
             let mut done = false;
             if let Some(cap) = cap.as_mut() {
@@ -964,9 +975,8 @@ where
                     for (k, v) in vecs.iter() {
                         if partitioner.belongs_to_worker(k.clone(), worker) {
                             let h = hash_fns.hash(v, current_repetition as usize);
-                            // FIXME: Don't compute this over and over again
-                            let s = sketcher.sketch(v);
-                            session.give((h, (s, k.clone())));
+                            let s = sketches.get(k).expect("Missing sketch");
+                            session.give((h, (s.clone(), k.clone())));
                         }
                     }
                     current_repetition += 1;
@@ -1203,6 +1213,8 @@ where
             probe
         });
 
+        // Do the stepping even though it's not strictly needed: we use it to wait for the dataflow
+        // to finish
         worker.step_while(|| probe.less_than(&(repetitions as u32)));
 
         info!(

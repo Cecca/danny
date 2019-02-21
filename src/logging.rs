@@ -22,7 +22,14 @@ pub fn init_logging(_conf: &Config) -> () {
     Builder::from_default_env()
         .filter_level(log::LevelFilter::Info)
         .format(move |buf, record| {
-            writeln!(buf, "[{}] {}: {}", hostname, record.level(), record.args())
+            writeln!(
+                buf,
+                "[{}, {:?}] {}: {}",
+                hostname,
+                std::thread::current().id(),
+                record.level(),
+                record.args()
+            )
         })
         .init();
     log_panics::init();
