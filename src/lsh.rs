@@ -886,6 +886,60 @@ where
     })
 }
 
+pub fn source_hashed_sketched<G, K, D, F, S, H, V>(
+    scope: &G,
+    global_vecs: Arc<RwLock<Arc<HashMap<K, D>>>>,
+    hash_fns: LSHCollection<F, H>,
+    sketcher: S,
+    partitioner: StripMatrixPartitioner,
+    throttling_probe: ProbeHandle<u32>,
+) -> Stream<G, (H, (V, K))>
+where
+    G: Scope<Timestamp = u32>,
+    D: Data + Sync + Send + Clone + Abomonation + Debug,
+    F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
+    S: Sketcher<Input = D, Output = V> + Clone + 'static,
+    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
+    K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
+    V: Data + Debug + Send + Sync + Abomonation + Clone,
+{
+    let worker: u64 = scope.index() as u64;
+    let repetitions = hash_fns.functions.len() as u32;
+    let mut current_repetition = 0u32;
+    source(scope, "hashed source", move |capability| {
+        let mut cap = Some(capability);
+        let vecs = Arc::clone(&global_vecs.read().unwrap());
+        move |output| {
+            let mut done = false;
+            if let Some(cap) = cap.as_mut() {
+                if !throttling_probe.less_than(cap.time()) {
+                    info!(
+                        "worker {} Repetition {} with sketches",
+                        worker, current_repetition
+                    );
+                    let mut session = output.session(&cap);
+                    for (k, v) in vecs.iter() {
+                        if partitioner.belongs_to_worker(k.clone(), worker) {
+                            let h = hash_fns.hash(v, current_repetition as usize);
+                            // FIXME: Don't compute this over and over again
+                            let s = sketcher.sketch(v);
+                            session.give((h, (s, k.clone())));
+                        }
+                    }
+                    current_repetition += 1;
+                    cap.downgrade(&current_repetition);
+                    done = current_repetition >= repetitions;
+                }
+            }
+
+            if done {
+                // Drop the capability to signal that we will send no more data
+                cap = None;
+            }
+        }
+    })
+}
+
 pub fn load_global_vecs<D>(
     left_path_main: String,
     right_path_main: String,
@@ -1038,55 +1092,82 @@ where
 
         let hash_fn = hash_fn.clone();
         let sketcher_pair = sketcher_pair.clone();
-        let sketcher_pair_1 = sketcher_pair.clone();
-        debug!(
-            "Started worker {}/{} (machine memory used {})",
-            index,
-            peers,
-            proc_mem!()
-        );
-        // let (mut left, mut right, probe) =
+
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
             let logger = scope.danny_logger();
             let global_left = Arc::clone(&global_left_read.read().unwrap());
             let global_right = Arc::clone(&global_right_read.read().unwrap());
 
-            // let (left_in, left_hashes) = scope.new_input::<(O, (V, u32))>();
-            // let (right_in, right_hashes) = scope.new_input::<(O, (V, u32))>();
             let mut probe = ProbeHandle::new();
-            // let hash_fn = hash_fn;
             let sketcher_pair = sketcher_pair;
-            let (_sketcher, sketch_predicate) = sketcher_pair.unwrap();
 
             let matrix = MatrixDescription::for_workers(peers as usize);
 
-            let left_hashes = source_hashed(
-                scope,
-                Arc::clone(&global_left_read),
-                hash_fn.clone(),
-                matrix.strip_partitioner(peers, MatrixDirection::Rows),
-                probe.clone(),
-            );
-            let right_hashes = source_hashed(
-                scope,
-                Arc::clone(&global_right_read),
-                hash_fn.clone(),
-                matrix.strip_partitioner(peers, MatrixDirection::Columns),
-                probe.clone(),
-            );
+            let candidates = match sketcher_pair {
+                Some((sketcher, sketch_predicate)) => {
+                    let left_hashes = source_hashed_sketched(
+                        scope,
+                        Arc::clone(&global_left_read),
+                        hash_fn.clone(),
+                        sketcher.clone(),
+                        matrix.strip_partitioner(peers, MatrixDirection::Rows),
+                        probe.clone(),
+                    );
+                    let right_hashes = source_hashed_sketched(
+                        scope,
+                        Arc::clone(&global_right_read),
+                        hash_fn.clone(),
+                        sketcher.clone(),
+                        matrix.strip_partitioner(peers, MatrixDirection::Columns),
+                        probe.clone(),
+                    );
+                    left_hashes.bucket_batched(&right_hashes).unary(
+                        Pipeline,
+                        "sketch filtering",
+                        move |_, _| {
+                            move |input, output| {
+                                let mut discarded = 0;
+                                let mut cnt = 0;
+                                input.for_each(|t, data| {
+                                    let t = t.retain();
+                                    let mut session = output.session(&t);
+                                    let mut data = data.replace(Vec::new());
+                                    for (p1, p2) in data.drain(..) {
+                                        if sketch_predicate.eval(&p1.0, &p2.0) {
+                                            cnt += 1;
+                                            session.give((p1.1, p2.1));
+                                        } else {
+                                            discarded += 1;
+                                        }
+                                    }
+                                });
+                                log_event!(logger, LogEvent::SketchDiscarded(discarded));
+                                log_event!(logger, LogEvent::GeneratedPairs(cnt));
+                            }
+                        },
+                    )
+                }
+                None => {
+                    let left_hashes = source_hashed(
+                        scope,
+                        Arc::clone(&global_left_read),
+                        hash_fn.clone(),
+                        matrix.strip_partitioner(peers, MatrixDirection::Rows),
+                        probe.clone(),
+                    );
+                    let right_hashes = source_hashed(
+                        scope,
+                        Arc::clone(&global_right_read),
+                        hash_fn.clone(),
+                        matrix.strip_partitioner(peers, MatrixDirection::Columns),
+                        probe.clone(),
+                    );
+                    left_hashes.bucket_batched(&right_hashes)
+                }
+            };
 
-            // let candidates = match sketcher_pair {
-            //     Some((sketcher, sketch_predicate)) => left_stream.colliding_pairs_sketch(
-            //         &right_stream,
-            //         &hash_fn,
-            //         &sketcher,
-            //         sketch_predicate,
-            //     ),
-            //     None => left_stream.colliding_pairs(&right_stream, &hash_fn),
-            // };
-
-            let candidates = left_hashes.bucket_batched(&right_hashes);
-            // let candidates = left_hashes.bucket_batched(&right_hashes).unary(
+            // let candidates = left_hashes.bucket_batched(&right_hashes)
+            // .unary(
             //     Pipeline,
             //     "sketch filtering",
             //     move |_, _| {
