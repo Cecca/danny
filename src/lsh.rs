@@ -731,6 +731,49 @@ where
     }
 }
 
+trait FilterSketches<G, T, K, V>
+where
+    G: Scope<Timestamp = T>,
+    T: Timestamp + Succ,
+    K: Data + Sync + Send + Clone + Abomonation + Debug,
+    V: SketchEstimate + Data + Debug + Send + Sync + Abomonation + Clone + BitBasedSketch,
+{
+    fn filter_sketches(&self, sketch_predicate: SketchPredicate<V>) -> Stream<G, (K, K)>;
+}
+
+impl<G, T, K, V> FilterSketches<G, T, K, V> for Stream<G, ((V, K), (V, K))>
+where
+    G: Scope<Timestamp = T>,
+    T: Timestamp + Succ,
+    K: Data + Sync + Send + Clone + Abomonation + Debug,
+    V: SketchEstimate + Data + Debug + Send + Sync + Abomonation + Clone + BitBasedSketch,
+{
+    fn filter_sketches(&self, sketch_predicate: SketchPredicate<V>) -> Stream<G, (K, K)> {
+        let logger = self.scope().danny_logger();
+        self.unary(Pipeline, "sketch filtering", move |_, _| {
+            move |input, output| {
+                let mut discarded = 0;
+                let mut cnt = 0;
+                input.for_each(|t, data| {
+                    let t = t.retain();
+                    let mut session = output.session(&t);
+                    let mut data = data.replace(Vec::new());
+                    for (p1, p2) in data.drain(..) {
+                        if sketch_predicate.eval(&p1.0, &p2.0) {
+                            cnt += 1;
+                            session.give((p1.1, p2.1));
+                        } else {
+                            discarded += 1;
+                        }
+                    }
+                });
+                log_event!(logger, LogEvent::SketchDiscarded(discarded));
+                log_event!(logger, LogEvent::GeneratedPairs(cnt));
+            }
+        })
+    }
+}
+
 trait CollidingPairs<G, T, K, D, F, H>
 where
     G: Scope<Timestamp = T>,
@@ -1094,10 +1137,6 @@ where
         let sketcher_pair = sketcher_pair.clone();
 
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
-            let logger = scope.danny_logger();
-            let global_left = Arc::clone(&global_left_read.read().unwrap());
-            let global_right = Arc::clone(&global_right_read.read().unwrap());
-
             let mut probe = ProbeHandle::new();
             let sketcher_pair = sketcher_pair;
 
@@ -1121,31 +1160,9 @@ where
                         matrix.strip_partitioner(peers, MatrixDirection::Columns),
                         probe.clone(),
                     );
-                    left_hashes.bucket_batched(&right_hashes).unary(
-                        Pipeline,
-                        "sketch filtering",
-                        move |_, _| {
-                            move |input, output| {
-                                let mut discarded = 0;
-                                let mut cnt = 0;
-                                input.for_each(|t, data| {
-                                    let t = t.retain();
-                                    let mut session = output.session(&t);
-                                    let mut data = data.replace(Vec::new());
-                                    for (p1, p2) in data.drain(..) {
-                                        if sketch_predicate.eval(&p1.0, &p2.0) {
-                                            cnt += 1;
-                                            session.give((p1.1, p2.1));
-                                        } else {
-                                            discarded += 1;
-                                        }
-                                    }
-                                });
-                                log_event!(logger, LogEvent::SketchDiscarded(discarded));
-                                log_event!(logger, LogEvent::GeneratedPairs(cnt));
-                            }
-                        },
-                    )
+                    left_hashes
+                        .bucket_batched(&right_hashes)
+                        .filter_sketches(sketch_predicate)
                 }
                 None => {
                     let left_hashes = source_hashed(
@@ -1166,32 +1183,9 @@ where
                 }
             };
 
-            // let candidates = left_hashes.bucket_batched(&right_hashes)
-            // .unary(
-            //     Pipeline,
-            //     "sketch filtering",
-            //     move |_, _| {
-            //         move |input, output| {
-            //             let mut discarded = 0;
-            //             let mut cnt = 0;
-            //             input.for_each(|t, data| {
-            //                 let t = t.retain();
-            //                 let mut session = output.session(&t);
-            //                 let mut data = data.replace(Vec::new());
-            //                 for (p1, p2) in data.drain(..) {
-            //                     if sketch_predicate.eval(&p1.0, &p2.0) {
-            //                         cnt += 1;
-            //                         session.give((p1.1, p2.1));
-            //                     } else {
-            //                         discarded += 1;
-            //                     }
-            //                 }
-            //             });
-            //             log_event!(logger, LogEvent::SketchDiscarded(discarded));
-            //             log_event!(logger, LogEvent::GeneratedPairs(cnt));
-            //         }
-            //     },
-            // );
+            let global_left = Arc::clone(&global_left_read.read().unwrap());
+            let global_right = Arc::clone(&global_right_read.read().unwrap());
+
             candidates
                 .pair_route(matrix)
                 .map(|pair| pair.1)
