@@ -16,6 +16,7 @@ use std::clone::Clone;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::rc::Rc;
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
@@ -874,8 +875,10 @@ where
     let repetitions = hash_fn.repetitions();
 
     // These two maps hold the vectors that need to be accessed by all threads in this machine.
-    let global_left_write: Arc<RwLock<HashMap<u64, D>>> = Arc::new(RwLock::new(HashMap::new()));
-    let global_right_write: Arc<RwLock<HashMap<u64, D>>> = Arc::new(RwLock::new(HashMap::new()));
+    let global_left_write: Arc<RwLock<Arc<HashMap<u64, D>>>> =
+        Arc::new(RwLock::new(Arc::new(HashMap::new())));
+    let global_right_write: Arc<RwLock<Arc<HashMap<u64, D>>>> =
+        Arc::new(RwLock::new(Arc::new(HashMap::new())));
     let global_left_read = global_left_write.clone();
     let global_right_read = global_right_write.clone();
 
@@ -903,7 +906,11 @@ where
         let mut row_set = HashSet::new();
         let mut column_set = HashSet::new();
         let mut global_left = global_left_write.write().unwrap();
+        let mut global_left =
+            Arc::get_mut(&mut global_left).expect("This should be the only reference");
         let mut global_right = global_right_write.write().unwrap();
+        let mut global_right =
+            Arc::get_mut(&mut global_right).expect("This should be the only reference");
         debug!("Getting the pairs on the main thread");
         for _ in 0..worker_threads {
             // We know we will receive exactly that many messages
@@ -977,8 +984,8 @@ where
         let (mut left, mut right, probe) = worker.dataflow(move |scope| {
             // TODO: check if these two clones are harmful
             info!("Before cloning global vectors locks {}", proc_mem!());
-            let global_left = global_left_read.read().unwrap().clone();
-            let global_right = global_right_read.read().unwrap().clone();
+            let global_left = Arc::clone(&global_left_read.read().unwrap());
+            let global_right = Arc::clone(&global_right_read.read().unwrap());
             info!("After cloning global vectors locks {}", proc_mem!());
 
             let (left_in, left_stream) = scope.new_input::<(u64, D)>();
