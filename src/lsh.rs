@@ -22,6 +22,7 @@ use std::thread;
 use std::time::Instant;
 use timely::dataflow::channels::pact::{Exchange as ExchangePact, Pipeline};
 use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
+use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use timely::order::Product;
@@ -837,6 +838,51 @@ where
                 candidate_pairs.leave()
             })
     }
+}
+
+pub fn source_hashed<G, K, D, F, H>(
+    scope: &G,
+    global_vecs: Arc<RwLock<Arc<HashMap<K, D>>>>,
+    hash_fns: LSHCollection<F, H>,
+    partitioner: StripMatrixPartitioner,
+    throttling_probe: ProbeHandle<u32>,
+) -> Stream<G, (H, K)>
+where
+    G: Scope<Timestamp = u32>,
+    D: Data + Sync + Send + Clone + Abomonation + Debug,
+    F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
+    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
+    K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
+{
+    let worker: u64 = scope.index() as u64;
+    let repetitions = hash_fns.functions.len() as u32;
+    let mut current_repetition = 0u32;
+    source(scope, "hashed source", move |capability| {
+        let mut cap = Some(capability);
+        let vecs = Arc::clone(&global_vecs.read().unwrap());
+        move |output| {
+            let mut done = false;
+            if let Some(cap) = cap.as_mut() {
+                if !throttling_probe.less_than(cap.time()) {
+                    let mut session = output.session(&cap);
+                    for (k, v) in vecs.iter() {
+                        if partitioner.belongs_to_worker(k.clone(), worker) {
+                            let h = hash_fns.hash(v, current_repetition as usize);
+                            session.give((h, k.clone()));
+                        }
+                    }
+                    current_repetition += 1;
+                    cap.downgrade(&current_repetition);
+                    done = current_repetition >= repetitions;
+                }
+            }
+
+            if done {
+                // Drop the capability to signal that we will send no more data
+                cap = None;
+            }
+        }
+    })
 }
 
 pub fn load_global_vecs<D>(

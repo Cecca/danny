@@ -182,6 +182,46 @@ impl MatrixDescription {
         let j = idx % self.columns as u64;
         (i as u8, j as u8)
     }
+
+    pub fn strip_partitioner(
+        &self,
+        num_workers: u64,
+        direction: MatrixDirection,
+    ) -> StripMatrixPartitioner {
+        StripMatrixPartitioner {
+            matrix: self.clone(),
+            num_workers,
+            direction,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct StripMatrixPartitioner {
+    matrix: MatrixDescription,
+    num_workers: u64,
+    direction: MatrixDirection,
+}
+
+impl StripMatrixPartitioner {
+    pub fn belongs_to_worker<K>(&self, k: K, w: u64) -> bool
+    where
+        K: Route,
+    {
+        let strip = k.route() % self.num_workers;
+        match self.direction {
+            MatrixDirection::Columns => {
+                strip
+                    == self.matrix.rows as u64 * (w % self.matrix.columns as u64)
+                        + (w / self.matrix.columns as u64)
+            }
+            MatrixDirection::Rows => {
+                strip
+                    == self.matrix.columns as u64 * (w % self.matrix.rows as u64)
+                        + (w / self.matrix.rows as u64)
+            }
+        }
+    }
 }
 
 pub trait MatrixDistribute<G, T, K, D>
