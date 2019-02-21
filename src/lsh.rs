@@ -864,6 +864,7 @@ where
             let mut done = false;
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
+                    info!("worker {} Repetition {}", worker, current_repetition);
                     let mut session = output.session(&cap);
                     for (k, v) in vecs.iter() {
                         if partitioner.belongs_to_worker(k.clone(), worker) {
@@ -1044,19 +1045,36 @@ where
             peers,
             proc_mem!()
         );
-        let (mut left, mut right, probe) = worker.dataflow::<u32, _, _>(move |scope| {
+        // let (mut left, mut right, probe) =
+        let probe = worker.dataflow::<u32, _, _>(move |scope| {
             let logger = scope.danny_logger();
             let global_left = Arc::clone(&global_left_read.read().unwrap());
             let global_right = Arc::clone(&global_right_read.read().unwrap());
 
-            let (left_in, left_hashes) = scope.new_input::<(O, (V, u32))>();
-            let (right_in, right_hashes) = scope.new_input::<(O, (V, u32))>();
+            // let (left_in, left_hashes) = scope.new_input::<(O, (V, u32))>();
+            // let (right_in, right_hashes) = scope.new_input::<(O, (V, u32))>();
             let mut probe = ProbeHandle::new();
             // let hash_fn = hash_fn;
             let sketcher_pair = sketcher_pair;
             let (_sketcher, sketch_predicate) = sketcher_pair.unwrap();
 
             let matrix = MatrixDescription::for_workers(peers as usize);
+
+            let left_hashes = source_hashed(
+                scope,
+                Arc::clone(&global_left_read),
+                hash_fn.clone(),
+                matrix.strip_partitioner(peers, MatrixDirection::Rows),
+                probe.clone(),
+            );
+            let right_hashes = source_hashed(
+                scope,
+                Arc::clone(&global_right_read),
+                hash_fn.clone(),
+                matrix.strip_partitioner(peers, MatrixDirection::Columns),
+                probe.clone(),
+            );
+
             // let candidates = match sketcher_pair {
             //     Some((sketcher, sketch_predicate)) => left_stream.colliding_pairs_sketch(
             //         &right_stream,
@@ -1066,31 +1084,33 @@ where
             //     ),
             //     None => left_stream.colliding_pairs(&right_stream, &hash_fn),
             // };
-            let candidates = left_hashes.bucket_batched(&right_hashes).unary(
-                Pipeline,
-                "sketch filtering",
-                move |_, _| {
-                    move |input, output| {
-                        let mut discarded = 0;
-                        let mut cnt = 0;
-                        input.for_each(|t, data| {
-                            let t = t.retain();
-                            let mut session = output.session(&t);
-                            let mut data = data.replace(Vec::new());
-                            for (p1, p2) in data.drain(..) {
-                                if sketch_predicate.eval(&p1.0, &p2.0) {
-                                    cnt += 1;
-                                    session.give((p1.1, p2.1));
-                                } else {
-                                    discarded += 1;
-                                }
-                            }
-                        });
-                        log_event!(logger, LogEvent::SketchDiscarded(discarded));
-                        log_event!(logger, LogEvent::GeneratedPairs(cnt));
-                    }
-                },
-            );
+
+            let candidates = left_hashes.bucket_batched(&right_hashes);
+            // let candidates = left_hashes.bucket_batched(&right_hashes).unary(
+            //     Pipeline,
+            //     "sketch filtering",
+            //     move |_, _| {
+            //         move |input, output| {
+            //             let mut discarded = 0;
+            //             let mut cnt = 0;
+            //             input.for_each(|t, data| {
+            //                 let t = t.retain();
+            //                 let mut session = output.session(&t);
+            //                 let mut data = data.replace(Vec::new());
+            //                 for (p1, p2) in data.drain(..) {
+            //                     if sketch_predicate.eval(&p1.0, &p2.0) {
+            //                         cnt += 1;
+            //                         session.give((p1.1, p2.1));
+            //                     } else {
+            //                         discarded += 1;
+            //                     }
+            //                 }
+            //             });
+            //             log_event!(logger, LogEvent::SketchDiscarded(discarded));
+            //             log_event!(logger, LogEvent::GeneratedPairs(cnt));
+            //         }
+            //     },
+            // );
             candidates
                 .pair_route(matrix)
                 .map(|pair| pair.1)
@@ -1105,52 +1125,10 @@ where
                 .probe_with(&mut probe)
                 .capture_into(output_send_ch);
 
-            (left_in, right_in, probe)
+            probe
         });
 
-        // Push data into the dataflow graph. Each worker will read some of the lines of the input
-        debug!("Reading data files:\n\t{:?}\n\t{:?}", left_path, right_path);
-        let left_path = left_path.clone();
-        let right_path = right_path.clone();
-        let sketcher = sketcher_pair_1.unwrap().0;
-        for repetition in 0..repetitions {
-            info!("Starting repetition {}", repetition);
-            let start = Instant::now();
-            let rep_start = Instant::now();
-            ReadBinaryFile::read_binary(
-                left_path.clone().into(),
-                |l| l % peers as usize == index,
-                |c, v| {
-                    let s = sketcher.sketch(&v);
-                    let h = hash_fn.hash(&v, repetition);
-                    left.send((h, (s, c as u32)));
-                },
-            );
-            ReadBinaryFile::read_binary(
-                right_path.clone().into(),
-                |l| l % peers as usize == index,
-                |c, v| {
-                    let s = sketcher.sketch(&v);
-                    let h = hash_fn.hash(&v, repetition);
-                    right.send((h, (s, c as u32)));
-                },
-            );
-            left.advance_to(repetition as u32);
-            right.advance_to(repetition as u32);
-            let end = Instant::now();
-            let elapsed = end - start;
-            info!(
-                "Time to feed the input to the dataflow graph: {:?}",
-                elapsed
-            );
-            worker.step_while(|| probe.less_than(&(repetition as u32)));
-            let rep_end = Instant::now();
-            info!(
-                "Time for repetition {}: {:?}",
-                repetition,
-                (rep_end - rep_start)
-            );
-        }
+        worker.step_while(|| probe.less_than(&(repetitions as u32)));
 
         info!(
             "Execution summary for worker {}: {:?}",
