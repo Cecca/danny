@@ -365,8 +365,13 @@ where
 {
     fn approximate_distinct(&self, expected_elements: usize, fpp: f64, seed: u64) -> Stream<G, D> {
         let mut rng = XorShiftRng::seed_from_u64(seed);
+        info!("Memory before creating bloom filter data {}", proc_mem!());
         let mut filter = BloomFilter::<D>::new(expected_elements, fpp, &mut rng);
-        info!("Initialized {:?}", filter);
+        info!(
+            "Initialized {:?} (overall memory used {})",
+            filter,
+            proc_mem!()
+        );
         let logger = self.scope().danny_logger();
         self.unary(PipelinePact, "approximate-distinct", move |_, _| {
             move |input, output| {

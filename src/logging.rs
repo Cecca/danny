@@ -3,7 +3,9 @@ use crate::experiment::Experiment;
 use env_logger::Builder;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::io::Write;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::process;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
@@ -24,6 +26,54 @@ pub fn init_logging(_conf: &Config) -> () {
         })
         .init();
     log_panics::init();
+}
+
+pub trait ToSpaceString {
+    fn to_space_string(self) -> String;
+}
+
+impl ToSpaceString for usize {
+    fn to_space_string(self) -> String {
+        let bytes = self;
+        if bytes >= 1024 * 1024 * 1024 {
+            format!("{:.2} Gb", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+        } else if bytes >= 1024 * 1024 {
+            format!("{:.2} Mb", bytes as f64 / (1024.0 * 1024.0))
+        } else if bytes >= 1024 {
+            format!("{:.2} Kb", bytes as f64 / 1024.0)
+        } else {
+            format!("{} bytes", bytes)
+        }
+    }
+}
+
+/// Gets the total process memory from /proc/<pid>/statm
+/// Returns None if there are problems parsing this file, or on platforms where this file does not
+/// exist.
+/// Assumes the usual page size of 4Kb
+pub fn get_total_process_memory() -> Option<usize> {
+    File::open(format!("/proc/{}/statm", process::id()))
+        .and_then(|mut statm| {
+            let mut buf = String::new();
+            statm.read_to_string(&mut buf)?;
+            let mem = buf
+                .split_whitespace()
+                .next()
+                .expect("Missing first token")
+                .parse::<usize>()
+                .expect("Cannot parse first token as usize");
+            Ok(mem * 4096)
+        })
+        .ok()
+}
+
+#[macro_export]
+macro_rules! proc_mem {
+    () => {
+        get_total_process_memory()
+            .map(|m| m.to_space_string())
+            .unwrap_or("--".to_owned());
+    };
 }
 
 pub fn init_event_logging<A>(worker: &Worker<A>) -> Arc<ExecutionSummary>

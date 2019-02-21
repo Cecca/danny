@@ -913,6 +913,7 @@ where
         }
         info!("This machine is responsible for rows: {:?}", row_set);
         info!("This machine is responsible for columns: {:?}", column_set);
+        info!("Memory before reading data {}", proc_mem!());
         ReadBinaryFile::read_binary(
             left_path_main.into(),
             |l| row_set.contains(&((l % matrix_desc.rows as usize) as u8)),
@@ -927,6 +928,7 @@ where
                 global_right.insert(c, v);
             },
         );
+        info!("Memory after reading data {}", proc_mem!());
         let end = Instant::now();
         let elapsed = end - start;
         info!(
@@ -962,13 +964,22 @@ where
         let global_left_read = global_left_read.clone();
         let global_right_read = global_right_read.clone();
 
+        info!("Before cloning hash function {}", proc_mem!());
         let hash_fn = hash_fn.clone();
+        info!("After cloning hash function {}", proc_mem!());
         let sketcher_pair = sketcher_pair.clone();
-        debug!("Started worker {}/{}", index, peers);
+        info!(
+            "Started worker {}/{} (machine memory used {})",
+            index,
+            peers,
+            proc_mem!()
+        );
         let (mut left, mut right, probe) = worker.dataflow(move |scope| {
             // TODO: check if these two clones are harmful
+            info!("Before cloning global vectors locks {}", proc_mem!());
             let global_left = global_left_read.read().unwrap().clone();
             let global_right = global_right_read.read().unwrap().clone();
+            info!("After cloning global vectors locks {}", proc_mem!());
 
             let (left_in, left_stream) = scope.new_input::<(u64, D)>();
             let (right_in, right_stream) = scope.new_input::<(u64, D)>();
@@ -999,6 +1010,8 @@ where
                 .exchange(|_| 0)
                 .probe_with(&mut probe)
                 .capture_into(output_send_ch);
+
+            info!("Memory after dataflow graph creation {}", proc_mem!());
 
             (left_in, right_in, probe)
         });

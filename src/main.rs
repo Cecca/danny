@@ -8,6 +8,7 @@ use danny::baseline::Baselines;
 use danny::config::*;
 use danny::experiment::Experiment;
 use danny::io::*;
+use danny::logging::*;
 use danny::lsh;
 use danny::lsh::LSHFunction;
 use danny::measure::*;
@@ -18,11 +19,12 @@ use std::collections::HashMap;
 
 fn main() {
     let config = Config::get();
-    danny::logging::init_logging(&config);
+    init_logging(&config);
     let args = CmdlineConfig::get();
     let mut experiment = Experiment::from_config(&config, &args);
 
     info!("Starting...");
+    info!("Initial memory {}", proc_mem!());
     let mut rng = config.get_random_generator(0);
 
     let start = std::time::Instant::now();
