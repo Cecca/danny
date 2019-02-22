@@ -1,5 +1,6 @@
 use crate::config::Config;
 use crate::io::*;
+use crate::logging::*;
 use crate::operators::*;
 use abomonation::Abomonation;
 use serde::de::Deserialize;
@@ -14,6 +15,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use timely::dataflow::operators::capture::Extract;
+use timely::dataflow::operators::generic::operator::source;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use timely::Data;
@@ -139,65 +141,70 @@ where
     let left_path_2 = left_path.clone();
     let right_path_2 = right_path.clone();
 
+    let (global_left_read, global_right_read, send_coords, io_barrier, reader_handle) =
+        load_global_vecs::<T>(left_path.clone(), right_path.clone(), config);
+
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |worker| {
         let index = worker.index();
         let peers = worker.peers() as u64;
         info!("Started worker {}/{}", index, peers);
         let sim_fn = sim_fn.clone();
 
-        let (mut left, mut right, probe) = worker.dataflow(|scope| {
+        // let (mut left, mut right, probe) =
+        worker.dataflow::<u32, _, _>(|scope| {
             let output_send_ch = output_send_ch.lock().unwrap().clone();
 
-            let (left_in, left_stream) = scope.new_input::<(u64, T)>();
-            let (right_in, right_stream) = scope.new_input::<(u64, T)>();
-            let mut probe = ProbeHandle::new();
-            // left_stream
-            //     .cartesian_filter(
-            //         &right_stream,
-            //         move |ref x, ref y| sim_fn(&x.1, &y.1) >= threshold,
-            //         |ref x| x.route(),
-            //         |ref x| x.route(),
-            //         peers,
-            //     )
-            left_stream
-                .two_way_predicate_join(
-                    &right_stream,
-                    move |ref x, ref y| sim_fn(x, y) >= threshold,
-                    peers,
-                )
-                .count()
-                .inspect_time(|t, d| println!("Output count at {:?} :: {:?} ", t, d))
-                .exchange(|_| 0)
-                .probe_with(&mut probe)
-                .capture_into(output_send_ch);
-            (left_in, right_in, probe)
-        });
+            let send_coords = send_coords.lock().unwrap().clone();
+            let matrix = MatrixDescription::for_workers(peers as usize);
+            let matrix_coords = matrix.row_major_to_pair(index as u64);
+            send_coords
+                .send(matrix_coords)
+                .expect("Error while pushing into coordinates channel");
+            io_barrier.wait();
 
-        // Push data into the dataflow graph
-        let start = Instant::now();
-        let left_path = left_path.clone();
-        let right_path = right_path.clone();
-        ReadBinaryFile::read_binary(
-            left_path.into(),
-            |l| l % peers as usize == index,
-            |c, v| left.send((c, v)),
-        );
-        ReadBinaryFile::read_binary(
-            right_path.into(),
-            |l| l % peers as usize == index,
-            |c, v| right.send((c, v)),
-        );
-        left.advance_to(1);
-        right.advance_to(1);
-        let end = Instant::now();
-        let elapsed = end - start;
-        println!(
-            "Time to feed the input to the dataflow graph: {:?}",
-            elapsed
-        );
-        worker.step_while(|| probe.less_than(left.time()));
+            let global_left_read = global_left_read.clone();
+            let global_right_read = global_right_read.clone();
+
+            source(scope, "Source", move |capability| {
+                let mut cap = Some(capability);
+                move |output| {
+                    if let Some(mut cap) = cap.take() {
+                        info!("Starting to count pairs (memory {})", proc_mem!());
+                        let left = Arc::clone(&global_left_read.read().unwrap());
+                        let right = Arc::clone(&global_right_read.read().unwrap());
+                        let mut count = 0usize;
+                        let mut looked = 0usize;
+                        for (lk, lv) in left.iter() {
+                            for (rk, rv) in right.iter() {
+                                if matrix.worker_for(lk.clone(), rk.clone()) == index as u64 {
+                                    if sim_fn(lv, rv) >= threshold {
+                                        count += 1;
+                                    }
+                                    looked += 1;
+                                }
+                            }
+                        }
+
+                        info!(
+                            "Worker {} outputting count {}/{} (memory {})",
+                            index,
+                            count,
+                            looked,
+                            proc_mem!()
+                        );
+                        output.session(&mut cap).give(count);
+                    }
+                }
+            })
+            .exchange(|_| 0)
+            .capture_into(output_send_ch);
+        });
     })
     .expect("Something went wrong with the timely dataflow execution");
+
+    reader_handle
+        .join()
+        .expect("Problem joining the reader thread");
 
     if config.is_master() {
         let count: usize = recv

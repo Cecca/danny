@@ -183,6 +183,12 @@ impl MatrixDescription {
         (i as u8, j as u8)
     }
 
+    pub fn worker_for<R: Route>(&self, l: R, r: R) -> u64 {
+        let row = l.route() % self.rows as u64;
+        let col = r.route() % self.columns as u64;
+        self.row_major(row as u8, col as u8)
+    }
+
     pub fn strip_partitioner(
         &self,
         num_workers: u64,

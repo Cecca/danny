@@ -21,15 +21,14 @@ extern crate siphasher;
 extern crate smallbitvec;
 extern crate timely;
 
+#[macro_use]
+pub mod experiment;
+#[macro_use]
+pub mod logging;
 pub mod baseline;
 pub mod bloom;
 pub mod config;
-#[macro_use]
-pub mod experiment;
-/// Provides facilities to read and write files
 pub mod io;
-#[macro_use]
-pub mod logging;
 pub mod lsh;
 pub mod measure;
 pub mod operators;
