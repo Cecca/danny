@@ -1,0 +1,39 @@
+---
+environment:
+  DANNY_THREADS: 8
+  DANNY_HOSTS: "sss00:2001,sss01:2001,sss02:2001,sss03:2001,sss04:2001"
+experiments:
+  - name: Wikipedia
+    tags:
+      - wikipedia
+    environment:
+      DANNY_SEED:
+        - 13124534
+        - 1240980245
+        - 214095812405
+        - 187145
+        - 1435987
+    parameters:
+      --range: [0.5, 0.7, 0.9]
+      --measure: jaccard
+      -k: 1 2 3 4 5
+    arguments:
+      - ["{{ dataset('wiki-10k') }}", "{{ dataset('wiki-10k') }}"]
+
+  - name: Glove
+    tags:
+      - glove
+    environment:
+      DANNY_SEED:
+        - 13124534
+        - 1240980245
+        - 214095812405
+        - 187145
+        - 1435987
+    parameters:
+      --range: [0.5, 0.6, 0.7]
+      --measure: cosine
+      -k: 10 12 14 16 18
+    arguments:
+      - ["{{ dataset('Glove-6B-100') }}", "{{ dataset('Glove-6B-100') }}"]
+

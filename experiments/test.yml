@@ -1,0 +1,23 @@
+---
+executable: /Users/matteoceccarello/.cargo/bin/danny
+environment:
+  DANNY_THREADS: 8
+experiments:
+  - name: Wikipedia
+    tags:
+      - test
+      - large
+    environment:
+      DANNY_SEED:
+        - 13124534
+        - 245146234
+        - 34613245
+      DANNY_THREADS: 4
+    parameters:
+      --range: 0.6
+      --measure: cosine
+      -k: 5
+      --sketch-bits:
+        - 1024
+    arguments:
+      - ["{{ dataset('wiki-10k') }}", "{{ dataset('wiki-10k') }}"]
