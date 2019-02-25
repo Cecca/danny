@@ -13,6 +13,7 @@ use std::io::BufReader;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use std::time::Instant;
 use timely::dataflow::operators::capture::Extract;
 use timely::dataflow::operators::generic::operator::source;
@@ -173,23 +174,25 @@ where
                         let left = Arc::clone(&global_left_read.read().unwrap());
                         let right = Arc::clone(&global_right_read.read().unwrap());
                         let mut count = 0usize;
-                        let mut looked = 0usize;
+                        let mut pl =
+                            ProgressLogger::new(Duration::from_secs(60), "pairs".to_owned());
                         for (lk, lv) in left.iter() {
                             for (rk, rv) in right.iter() {
+                                let mut pairs_looked = 0;
                                 if matrix.worker_for(lk.clone(), rk.clone()) == index as u64 {
                                     if sim_fn(lv, rv) >= threshold {
                                         count += 1;
                                     }
-                                    looked += 1;
+                                    pairs_looked += 1;
                                 }
+                                pl.add(pairs_looked);
                             }
                         }
 
                         info!(
-                            "Worker {} outputting count {}/{} (memory {})",
+                            "Worker {} outputting count {} (memory {})",
                             index,
                             count,
-                            looked,
                             proc_mem!()
                         );
                         output.session(&mut cap).give(count);

@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use timely::dataflow::operators::capture::event::Event as TimelyEvent;
 use timely::dataflow::operators::*;
 use timely::dataflow::ProbeHandle;
@@ -233,5 +234,39 @@ impl FrozenExecutionSummary {
                 "generated_pairs" => self.generated_pairs
             ),
         )
+    }
+}
+
+pub struct ProgressLogger {
+    start: Instant,
+    last: Instant,
+    interval: Duration,
+    count: u64,
+    items: String,
+}
+
+impl ProgressLogger {
+    pub fn new(interval: Duration, items: String) -> Self {
+        ProgressLogger {
+            start: Instant::now(),
+            last: Instant::now(),
+            interval,
+            count: 0,
+            items,
+        }
+    }
+
+    pub fn add(&mut self, cnt: u64) {
+        self.count += cnt;
+        let now = Instant::now();
+        if now - self.last > self.interval {
+            let elapsed = now - self.start;
+            let throughput = self.count as f64 / elapsed.as_secs() as f64;
+            info!(
+                "{:?} :: {} {} :: {} {}/sec",
+                elapsed, self.count, self.items, throughput, self.items
+            );
+            self.last = now;
+        }
     }
 }
