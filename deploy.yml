@@ -20,7 +20,7 @@
         version: "{{ danny_branch }}"
 
     - name: compile the code and install
-      shell: PATH=$PATH:~/.cargo/bin cargo install --path . --force
+      shell: PATH=$PATH:~/.cargo/bin cargo +nightly install --path . --force
       args:
         chdir: "{{ local_repository }}"
         executable: /bin/bash
