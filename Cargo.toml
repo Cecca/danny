@@ -27,3 +27,9 @@ bincode = "1.0"
 [build-dependencies]
 vergen = "0.1"
 
+[dev-dependencies]
+criterion = "0.2"
+
+[[bench]]
+name = "benchmarks"
+harness = false
