@@ -15,12 +15,21 @@ pub trait InnerProduct {
 
 impl InnerProduct for Vec<f32> {
     fn inner_product(a: &Vec<f32>, b: &Vec<f32>) -> f64 {
-        a.chunks_exact(4)
+        let mut ac = a.chunks_exact(4);
+        let mut bc = b.chunks_exact(4);
+        let rem = ac
+            .remainder()
+            .iter()
+            .zip(bc.remainder().iter())
+            .map(|(a, b)| a * b)
+            .sum::<f32>() as f64;
+        let part = ac
             .map(f32x4::from_slice_unaligned)
-            .zip(b.chunks_exact(4).map(f32x4::from_slice_unaligned))
+            .zip(bc.map(f32x4::from_slice_unaligned))
             .map(|(a, b)| a * b)
             .sum::<f32x4>()
-            .sum() as f64
+            .sum() as f64;
+        part + rem
     }
     fn norm_2(a: &Vec<f32>) -> f64 {
         let squared_sum: f64 = a.iter().map(|a| a * a).sum::<f32>() as f64;
@@ -83,27 +92,29 @@ mod tests {
     #[test]
     fn check_simd() {
         let mut rng = XorShiftRng::seed_from_u64(121245);
-        let dim = 300;
-        let dist = Normal::new(0.0, 1.0);
-        let a: Vec<f32> = dist
-            .sample_iter(&mut rng)
-            .take(dim)
-            .map(|x| x as f32)
-            .collect();
-        let b: Vec<f32> = dist
-            .sample_iter(&mut rng)
-            .take(dim)
-            .map(|x| x as f32)
-            .collect();
-        let expected: f64 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum::<f32>() as f64;
-        let actual = InnerProduct::inner_product(&a, &b);
-        println!(
-            "{} != {} (diff {})",
-            expected,
-            actual,
-            (expected - actual).abs()
-        );
-        assert!((expected - actual).abs() < 10e-5_f64);
+        for dim in [3, 300, 301].iter() {
+            let dim = *dim;
+            let dist = Normal::new(0.0, 1.0);
+            let a: Vec<f32> = dist
+                .sample_iter(&mut rng)
+                .take(dim)
+                .map(|x| x as f32)
+                .collect();
+            let b: Vec<f32> = dist
+                .sample_iter(&mut rng)
+                .take(dim)
+                .map(|x| x as f32)
+                .collect();
+            let expected: f64 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum::<f32>() as f64;
+            let actual = InnerProduct::inner_product(&a, &b);
+            println!(
+                "{} != {} (diff {})",
+                expected,
+                actual,
+                (expected - actual).abs()
+            );
+            assert!((expected - actual).abs() < 10e-5_f64);
+        }
     }
 
 }
