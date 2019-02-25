@@ -1,4 +1,7 @@
+extern crate packed_simd;
+
 use crate::types::*;
+use packed_simd::f32x4;
 
 pub trait InnerProduct {
     fn inner_product(a: &Self, b: &Self) -> f64;
@@ -12,7 +15,13 @@ pub trait InnerProduct {
 
 impl InnerProduct for Vec<f32> {
     fn inner_product(a: &Vec<f32>, b: &Vec<f32>) -> f64 {
-        a.iter().zip(b.iter()).map(|(x, y)| x * y).sum::<f32>() as f64
+        // a.iter().zip(b.iter()).map(|(x, y)| x * y).sum::<f32>() as f64
+        a.chunks_exact(4)
+            .map(f32x4::from_slice_unaligned)
+            .zip(b.chunks_exact(4).map(f32x4::from_slice_unaligned))
+            .map(|(a, b)| a * b)
+            .sum::<f32x4>()
+            .sum() as f64
     }
     fn norm_2(a: &Vec<f32>) -> f64 {
         let squared_sum: f64 = a.iter().map(|a| a * a).sum::<f32>() as f64;

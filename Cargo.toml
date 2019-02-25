@@ -23,6 +23,7 @@ chrono = "0.4"
 siphasher = "0.3"
 jemallocator = "0.1.8"
 bincode = "1.0"
+packed_simd = "0.3.0"
 
 [build-dependencies]
 vergen = "0.1"
