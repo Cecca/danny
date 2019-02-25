@@ -254,10 +254,10 @@ mod tests {
     fn test_hyperplane() {
         let mut rng = StdRng::seed_from_u64(123);
         let k = 20;
-        let hasher = Hyperplane::new(k, 3, &mut rng);
-        let a = UnitNormVector::new(vec![0.0, 1.0, 3.0]);
+        let hasher = Hyperplane::new(k, 4, &mut rng);
+        let a = UnitNormVector::new(vec![0.0, 1.0, 3.0, 1.0]);
         let ha = hasher.hash(&a);
-        let b = UnitNormVector::new(vec![1.0, 1.0, 3.0]);
+        let b = UnitNormVector::new(vec![1.0, 1.0, 3.0, 1.0]);
         let hb = hasher.hash(&b);
 
         println!("{:?}", ha);

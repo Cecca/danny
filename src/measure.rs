@@ -15,7 +15,6 @@ pub trait InnerProduct {
 
 impl InnerProduct for Vec<f32> {
     fn inner_product(a: &Vec<f32>, b: &Vec<f32>) -> f64 {
-        // a.iter().zip(b.iter()).map(|(x, y)| x * y).sum::<f32>() as f64
         a.chunks_exact(4)
             .map(f32x4::from_slice_unaligned)
             .zip(b.chunks_exact(4).map(f32x4::from_slice_unaligned))
@@ -60,6 +59,9 @@ pub trait Jaccard {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::distributions::{Distribution, Exp, Normal, Uniform};
+    use rand::SeedableRng;
+    use rand_xorshift::XorShiftRng;
 
     fn generic_dist<T, F>(a: &T, b: &T, dist: F) -> f64
     where
@@ -70,11 +72,38 @@ mod tests {
 
     #[test]
     fn test1() {
-        let a: Vec<f32> = vec![1f32, 2.0];
-        let b: Vec<f32> = vec![1f32, 2.0];
+        let a: Vec<f32> = vec![1f32, 2.0, 1f32, 1f32];
+        let b: Vec<f32> = vec![1f32, 2.0, 1f32, 1f32];
         let expected = 1.0;
         let actual = generic_dist(&a, &b, InnerProduct::cosine);
+        println!("Actual distance is {}", actual);
         assert!((expected - actual).abs() < 10e-10_f64)
+    }
+
+    #[test]
+    fn check_simd() {
+        let mut rng = XorShiftRng::seed_from_u64(121245);
+        let dim = 300;
+        let dist = Normal::new(0.0, 1.0);
+        let a: Vec<f32> = dist
+            .sample_iter(&mut rng)
+            .take(dim)
+            .map(|x| x as f32)
+            .collect();
+        let b: Vec<f32> = dist
+            .sample_iter(&mut rng)
+            .take(dim)
+            .map(|x| x as f32)
+            .collect();
+        let expected: f64 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum::<f32>() as f64;
+        let actual = InnerProduct::inner_product(&a, &b);
+        println!(
+            "{} != {} (diff {})",
+            expected,
+            actual,
+            (expected - actual).abs()
+        );
+        assert!((expected - actual).abs() < 10e-5_f64);
     }
 
 }
