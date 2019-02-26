@@ -177,16 +177,16 @@ where
                         let mut pl =
                             ProgressLogger::new(Duration::from_secs(60), "pairs".to_owned());
                         for (lk, lv) in left.iter() {
+                            let mut pairs_looked = 0;
                             for (rk, rv) in right.iter() {
-                                let mut pairs_looked = 0;
                                 if matrix.worker_for(lk.clone(), rk.clone()) == index as u64 {
                                     if sim_fn(lv, rv) >= threshold {
                                         count += 1;
                                     }
                                     pairs_looked += 1;
                                 }
-                                pl.add(pairs_looked);
                             }
+                            pl.add(pairs_looked);
                         }
 
                         info!(
