@@ -146,7 +146,7 @@ where
     let right_path_2 = right_path.clone();
 
     let (global_left_read, global_right_read, send_coords, io_barrier, reader_handle) =
-        load_global_vecs::<T>(left_path.clone(), right_path.clone(), config);
+        load_global_vecs_new::<T>(left_path.clone(), right_path.clone(), config);
 
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |worker| {
         let index = worker.index();
@@ -160,9 +160,9 @@ where
 
             let send_coords = send_coords.lock().unwrap().clone();
             let matrix = MatrixDescription::for_workers(peers as usize);
-            let matrix_coords = matrix.row_major_to_pair(index as u64);
+            let (row, col) = matrix.row_major_to_pair(index as u64);
             send_coords
-                .send(matrix_coords)
+                .send((row, col))
                 .expect("Error while pushing into coordinates channel");
             io_barrier.wait();
 
@@ -178,16 +178,14 @@ where
                         let right = Arc::clone(&global_right_read.read().unwrap());
                         let mut count = 0usize;
                         let mut pl =
-                            ProgressLogger::new(Duration::from_secs(1), "pairs".to_owned());
-                        for (lk, lv) in left.iter() {
+                            ProgressLogger::new(Duration::from_secs(60), "pairs".to_owned());
+                        for (lk, lv) in left.iter_chunk(row as usize) {
                             let mut pairs_looked = 0;
-                            for (rk, rv) in right.iter() {
-                                if matrix.worker_for(lk.clone(), rk.clone()) == index as u64 {
-                                    if sim_fn(lv, rv) >= threshold {
-                                        count += 1;
-                                    }
-                                    pairs_looked += 1;
+                            for (rk, rv) in right.iter_chunk(col as usize) {
+                                if sim_fn(lv, rv) >= threshold {
+                                    count += 1;
                                 }
+                                pairs_looked += 1;
                             }
                             pl.add(pairs_looked);
                         }

@@ -56,7 +56,7 @@ where
     let repetitions = hash_fn.repetitions();
 
     let (global_left_read, global_right_read, send_coords, io_barrier, reader_handle) =
-        load_global_vecs(left_path.clone(), right_path.clone(), config);
+        load_global_vecs_new(left_path.clone(), right_path.clone(), config);
 
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
         let execution_summary = init_event_logging(&worker);
@@ -115,14 +115,16 @@ where
                         scope,
                         Arc::clone(&global_left_read),
                         hash_fn.clone(),
-                        matrix.strip_partitioner(peers, MatrixDirection::Rows),
+                        matrix,
+                        MatrixDirection::Rows,
                         probe.clone(),
                     );
                     let right_hashes = source_hashed(
                         scope,
                         Arc::clone(&global_right_read),
                         hash_fn.clone(),
-                        matrix.strip_partitioner(peers, MatrixDirection::Columns),
+                        matrix,
+                        MatrixDirection::Columns,
                         probe.clone(),
                     );
                     left_hashes.bucket_batched(&right_hashes)
@@ -137,8 +139,8 @@ where
                 .map(|pair| pair.1)
                 .approximate_distinct(1 << 30, 0.05, 123123123)
                 .filter(move |(lk, rk)| {
-                    let lv = global_left.get(lk).unwrap();
-                    let rv = global_right.get(rk).unwrap();
+                    let lv = &global_left[lk];
+                    let rv = &global_right[rk];
                     sim_pred(lv, rv)
                 })
                 .count()

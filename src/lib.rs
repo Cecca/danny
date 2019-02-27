@@ -28,6 +28,7 @@ pub mod logging;
 pub mod baseline;
 pub mod bloom;
 pub mod config;
+pub mod dataset;
 pub mod io;
 pub mod lsh;
 pub mod measure;

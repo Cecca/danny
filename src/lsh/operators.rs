@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::dataset::*;
 use crate::experiment::Experiment;
 use crate::io::*;
 use crate::logging::init_event_logging;
@@ -329,9 +330,10 @@ where
 
 pub fn source_hashed<G, K, D, F, H>(
     scope: &G,
-    global_vecs: Arc<RwLock<Arc<HashMap<K, D>>>>,
+    global_vecs: Arc<RwLock<Arc<ChunkedDataset<K, D>>>>,
     hash_fns: LSHCollection<F, H>,
-    partitioner: StripMatrixPartitioner,
+    matrix: MatrixDescription,
+    direction: MatrixDirection,
     throttling_probe: ProbeHandle<u32>,
 ) -> Stream<G, (H, K)>
 where
@@ -352,12 +354,13 @@ where
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
                     let mut session = output.session(&cap);
-                    for (k, v) in vecs.iter() {
-                        if partitioner.belongs_to_worker(k.clone(), worker) {
-                            let h = hash_fns.hash(v, current_repetition as usize);
-                            session.give((h, k.clone()));
-                        }
+                    // let mut pl = ProgressLogger::new(std::time::Duration::from_secs(10), "hashes".to_owned());
+                    for (k, v) in vecs.iter_stripe(&matrix, direction, worker) {
+                        let h = hash_fns.hash(v, current_repetition as usize);
+                        session.give((h, k.clone()));
+                        // pl.add(1);
                     }
+                    // pl.done();
                     current_repetition += 1;
                     cap.downgrade(&current_repetition);
                     done = current_repetition >= repetitions;
@@ -374,7 +377,7 @@ where
 
 pub fn source_hashed_sketched<G, K, D, F, S, H, V>(
     scope: &G,
-    global_vecs: Arc<RwLock<Arc<HashMap<K, D>>>>,
+    global_vecs: Arc<RwLock<Arc<ChunkedDataset<K, D>>>>,
     hash_fns: LSHCollection<F, H>,
     sketcher: S,
     partitioner: StripMatrixPartitioner,
