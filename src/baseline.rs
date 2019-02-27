@@ -108,6 +108,7 @@ where
         left.len(),
         right.len(),
     );
+    let mut pl = ProgressLogger::new(Duration::from_secs(1), "pairs".to_owned());
 
     let mut sim_cnt = 0;
     for l in left.iter() {
@@ -117,7 +118,9 @@ where
                 sim_cnt += 1;
             }
         }
+        pl.add(right.len() as u64);
     }
+    pl.done();
     sim_cnt
 }
 
@@ -175,7 +178,7 @@ where
                         let right = Arc::clone(&global_right_read.read().unwrap());
                         let mut count = 0usize;
                         let mut pl =
-                            ProgressLogger::new(Duration::from_secs(60), "pairs".to_owned());
+                            ProgressLogger::new(Duration::from_secs(1), "pairs".to_owned());
                         for (lk, lv) in left.iter() {
                             let mut pairs_looked = 0;
                             for (rk, rv) in right.iter() {
@@ -188,6 +191,7 @@ where
                             }
                             pl.add(pairs_looked);
                         }
+                        pl.done();
 
                         info!(
                             "Worker {} outputting count {} (memory {})",

@@ -261,12 +261,24 @@ impl ProgressLogger {
         let now = Instant::now();
         if now - self.last > self.interval {
             let elapsed = now - self.start;
-            let throughput = self.count as f64 / elapsed.as_secs() as f64;
+            let elapsed = elapsed.as_secs() as f64 + elapsed.subsec_millis() as f64 / 1000.0;
+            let throughput = self.count as f64 / elapsed;
             info!(
                 "{:?} :: {} {} :: {} {}/sec",
                 elapsed, self.count, self.items, throughput, self.items
             );
             self.last = now;
         }
+    }
+
+    pub fn done(self) {
+        let now = Instant::now();
+        let elapsed = now - self.start;
+        let elapsed = elapsed.as_secs() as f64 + elapsed.subsec_millis() as f64 / 1000.0;
+        let throughput = self.count as f64 / elapsed;
+        info!(
+            "Completed {:?} :: {} {} :: {} {}/sec",
+            elapsed, self.count, self.items, throughput, self.items
+        );
     }
 }
