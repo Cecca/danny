@@ -1,7 +1,7 @@
 extern crate packed_simd;
 
 use crate::types::*;
-use packed_simd::f32x4;
+use packed_simd::f32x8;
 
 pub trait InnerProduct {
     fn inner_product(a: &Self, b: &Self) -> f64;
@@ -15,8 +15,8 @@ pub trait InnerProduct {
 
 impl InnerProduct for Vec<f32> {
     fn inner_product(a: &Vec<f32>, b: &Vec<f32>) -> f64 {
-        let mut ac = a.chunks_exact(4);
-        let mut bc = b.chunks_exact(4);
+        let mut ac = a.chunks_exact(8);
+        let mut bc = b.chunks_exact(8);
         let rem = ac
             .remainder()
             .iter()
@@ -24,10 +24,10 @@ impl InnerProduct for Vec<f32> {
             .map(|(a, b)| a * b)
             .sum::<f32>() as f64;
         let part = ac
-            .map(f32x4::from_slice_unaligned)
-            .zip(bc.map(f32x4::from_slice_unaligned))
+            .map(f32x8::from_slice_unaligned)
+            .zip(bc.map(f32x8::from_slice_unaligned))
             .map(|(a, b)| a * b)
-            .sum::<f32x4>()
+            .sum::<f32x8>()
             .sum() as f64;
         part + rem
     }
