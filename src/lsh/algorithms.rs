@@ -95,7 +95,8 @@ where
                         Arc::clone(&global_left_read),
                         hash_fn.clone(),
                         sketcher.clone(),
-                        matrix.strip_partitioner(peers, MatrixDirection::Rows),
+                        matrix,
+                        MatrixDirection::Rows,
                         probe.clone(),
                     );
                     let right_hashes = source_hashed_sketched(
@@ -103,7 +104,8 @@ where
                         Arc::clone(&global_right_read),
                         hash_fn.clone(),
                         sketcher.clone(),
-                        matrix.strip_partitioner(peers, MatrixDirection::Columns),
+                        matrix,
+                        MatrixDirection::Rows,
                         probe.clone(),
                     );
                     left_hashes

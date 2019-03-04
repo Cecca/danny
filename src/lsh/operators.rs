@@ -380,7 +380,8 @@ pub fn source_hashed_sketched<G, K, D, F, S, H, V>(
     global_vecs: Arc<RwLock<Arc<ChunkedDataset<K, D>>>>,
     hash_fns: LSHCollection<F, H>,
     sketcher: S,
-    partitioner: StripMatrixPartitioner,
+    matrix: MatrixDescription,
+    direction: MatrixDirection,
     throttling_probe: ProbeHandle<u32>,
 ) -> Stream<G, (H, (V, K))>
 where
@@ -399,11 +400,9 @@ where
     let mut sketches: HashMap<K, V> = HashMap::new();
     info!("Computing sketches");
     let start_sketch = Instant::now();
-    for (k, v) in vecs.iter() {
-        if partitioner.belongs_to_worker(k.clone(), worker) {
-            let s = sketcher.sketch(v);
-            sketches.insert(k.clone(), s);
-        }
+    for (k, v) in vecs.iter_stripe(&matrix, direction, worker) {
+        let s = sketcher.sketch(v);
+        sketches.insert(k.clone(), s);
     }
     let end_sketch = Instant::now();
     info!("Sketches computed in {:?}", end_sketch - start_sketch);
@@ -419,12 +418,10 @@ where
                         worker, current_repetition
                     );
                     let mut session = output.session(&cap);
-                    for (k, v) in vecs.iter() {
-                        if partitioner.belongs_to_worker(k.clone(), worker) {
-                            let h = hash_fns.hash(v, current_repetition as usize);
-                            let s = sketches.get(k).expect("Missing sketch");
-                            session.give((h, (s.clone(), k.clone())));
-                        }
+                    for (k, v) in vecs.iter_stripe(&matrix, direction, worker) {
+                        let h = hash_fns.hash(v, current_repetition as usize);
+                        let s = sketches.get(k).expect("Missing sketch");
+                        session.give((h, (s.clone(), k.clone())));
                     }
                     current_repetition += 1;
                     cap.downgrade(&current_repetition);
