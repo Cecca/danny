@@ -413,7 +413,7 @@ where
             let mut done = false;
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
-                    info!(
+                    debug!(
                         "worker {} Repetition {} with sketches",
                         worker, current_repetition
                     );
