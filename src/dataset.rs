@@ -30,6 +30,10 @@ where
         self.chunks.iter().map(|c| c.len()).sum()
     }
 
+    pub fn chunk_len(&self, chunk_idx: usize) -> usize {
+        self.chunks[chunk_idx].len()
+    }
+
     pub fn iter_chunk(&self, chunk_idx: usize) -> impl Iterator<Item = &(K, V)> {
         self.chunks[chunk_idx].iter()
     }

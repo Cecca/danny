@@ -106,6 +106,42 @@ impl BagOfWords {
     pub fn words(&self) -> &Vec<u32> {
         &self.words
     }
+
+    pub fn len(&self) -> usize {
+        self.words.len()
+    }
+
+    pub fn jaccard_predicate(r: &Self, s: &Self, sim: f64) -> bool {
+        let t_unrounded = sim * (r.len() + s.len()) as f64 / (1.0 + sim);
+        let t_rounded = t_unrounded.round();
+        // The rounding below with the comparison with EPS is needed to counter the
+        // floating point errors introduced by the division
+        let t = if (t_rounded - t_unrounded).abs() < 0.00000000000001 {
+            t_rounded
+        } else {
+            t_unrounded
+        };
+        let mut olap = 0;
+        let mut pr = 0;
+        let mut ps = 0;
+        let mut maxr = r.len();
+        let mut maxs = s.len();
+
+        while maxr as f64 >= t && maxs as f64 >= t && (olap as f64) < t {
+            if r.words[pr] == s.words[ps] {
+                pr += 1;
+                ps += 1;
+                olap += 1;
+            } else if r.words[pr] < s.words[ps] {
+                pr += 1;
+                maxr -= 1;
+            } else {
+                ps += 1;
+                maxs -= 1;
+            }
+        }
+        olap as f64 >= t
+    }
 }
 
 impl Jaccard for BagOfWords {

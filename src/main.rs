@@ -27,6 +27,7 @@ fn main() {
     info!("Initial memory {}", proc_mem!());
     let mut rng = config.get_random_generator(0);
 
+    let threshold = args.threshold;
     let start = std::time::Instant::now();
     let count = match args.algorithm.as_ref() {
         "fixed-lsh" => match args.measure.as_ref() {
@@ -68,7 +69,7 @@ fn main() {
                     &args.right_path,
                     hash_funs,
                     sketcher_pair,
-                    move |a, b| Jaccard::jaccard(a, b) >= threshold,
+                    move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
                     &config,
                     &mut experiment,
                 )
@@ -80,14 +81,14 @@ fn main() {
                 args.threshold,
                 &args.left_path,
                 &args.right_path,
-                InnerProduct::cosine,
+                move |a, b| InnerProduct::cosine(a, b) >= threshold,
                 &config,
             ),
             "jaccard" => baseline::all_pairs_parallel::<BagOfWords, _>(
                 args.threshold,
                 &args.left_path,
                 &args.right_path,
-                Jaccard::jaccard,
+                move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
                 &config,
             ),
             _ => unimplemented!(),

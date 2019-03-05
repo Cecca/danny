@@ -108,7 +108,11 @@ where
         left.len(),
         right.len(),
     );
-    let mut pl = ProgressLogger::new(Duration::from_secs(1), "pairs".to_owned());
+    let mut pl = ProgressLogger::new(
+        Duration::from_secs(1),
+        "pairs".to_owned(),
+        Some((left.len() * right.len()) as u64),
+    );
 
     let mut sim_cnt = 0;
     for l in left.iter() {
@@ -128,12 +132,12 @@ pub fn all_pairs_parallel<T, F>(
     threshold: f64,
     left_path: &String,
     right_path: &String,
-    sim_fn: F,
+    sim_pred: F,
     config: &Config,
 ) -> usize
 where
     for<'de> T: Deserialize<'de> + ReadDataFile + Data + Sync + Send + Clone + Abomonation + Debug,
-    F: Fn(&T, &T) -> f64 + Send + Clone + Sync + 'static,
+    F: Fn(&T, &T) -> bool + Send + Clone + Sync + 'static,
 {
     let timely_builder = config.get_timely_builder();
     // This channel is used to get the results
@@ -152,7 +156,7 @@ where
         let index = worker.index();
         let peers = worker.peers() as u64;
         info!("Started worker {}/{}", index, peers);
-        let sim_fn = sim_fn.clone();
+        let sim_pred = sim_pred.clone();
 
         // let (mut left, mut right, probe) =
         worker.dataflow::<u32, _, _>(|scope| {
@@ -177,12 +181,18 @@ where
                         let left = Arc::clone(&global_left_read.read().unwrap());
                         let right = Arc::clone(&global_right_read.read().unwrap());
                         let mut count = 0usize;
-                        let mut pl =
-                            ProgressLogger::new(Duration::from_secs(60), "pairs".to_owned());
+                        let mut pl = ProgressLogger::new(
+                            Duration::from_secs(60),
+                            "pairs".to_owned(),
+                            Some(
+                                (left.chunk_len(row as usize) * right.chunk_len(col as usize))
+                                    as u64,
+                            ),
+                        );
                         for (lk, lv) in left.iter_chunk(row as usize) {
                             let mut pairs_looked = 0;
                             for (rk, rv) in right.iter_chunk(col as usize) {
-                                if sim_fn(lv, rv) >= threshold {
+                                if sim_pred(lv, rv) {
                                     count += 1;
                                 }
                                 pairs_looked += 1;
