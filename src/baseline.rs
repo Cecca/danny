@@ -18,13 +18,12 @@ use std::time::Instant;
 use timely::dataflow::operators::capture::Extract;
 use timely::dataflow::operators::generic::operator::source;
 use timely::dataflow::operators::*;
-use timely::dataflow::*;
 use timely::Data;
 
 #[derive(Serialize, Deserialize)]
 pub struct Baselines {
     path: PathBuf,
-    baselines: Vec<(String, String, f64, usize)>,
+    baselines: Vec<(String, String, f64, usize, u64, String)>,
 }
 
 impl Baselines {
@@ -56,7 +55,16 @@ impl Baselines {
                         .expect("There should be the count")
                         .parse()
                         .expect("Problem parsing the count");
-                    baselines.push((left, right, range, count));
+                    let seconds: u64 = tokens
+                        .next()
+                        .expect("There should be the number of seconds")
+                        .parse()
+                        .expect("Problem parsing the seconds");
+                    let version: String = tokens
+                        .next()
+                        .expect("There should be the git version")
+                        .to_owned();
+                    baselines.push((left, right, range, count, seconds, version));
                 }
             }
             Err(_) => (),
@@ -67,11 +75,11 @@ impl Baselines {
     pub fn get(&self, left: &String, right: &String, range: f64) -> Option<usize> {
         self.baselines
             .iter()
-            .find(|(l, r, t, _)| l == left && r == right && t == &range)
+            .find(|(l, r, t, _, _, _)| l == left && r == right && t == &range)
             .map(|tup| tup.3)
     }
 
-    pub fn add(self, left: &String, right: &String, range: f64, count: usize) -> () {
+    pub fn add(self, left: &String, right: &String, range: f64, count: usize, seconds: u64) -> () {
         if self.get(left, right, range).is_none() {
             info!("Writing baseline to {:?}", self.path);
             let mut file = OpenOptions::new()
@@ -79,7 +87,17 @@ impl Baselines {
                 .create(true)
                 .open(self.path)
                 .expect("problem opening file for writing");
-            writeln!(file, "{},{},{},{}", left, right, range, count).expect("Error appending line");
+            writeln!(
+                file,
+                "{},{},{},{},{},{}",
+                left,
+                right,
+                range,
+                count,
+                seconds,
+                crate::version::short_sha()
+            )
+            .expect("Error appending line");
         } else {
             info!(
                 "Baseline entry already present in {:?}, skipping",
@@ -139,6 +157,7 @@ where
     for<'de> T: Deserialize<'de> + ReadDataFile + Data + Sync + Send + Clone + Abomonation + Debug,
     F: Fn(&T, &T) -> bool + Send + Clone + Sync + 'static,
 {
+    let start_time = Instant::now();
     let timely_builder = config.get_timely_builder();
     // This channel is used to get the results
     let (output_send_ch, recv) = ::std::sync::mpsc::channel();
@@ -228,7 +247,9 @@ where
             .map(|pair| pair.1.clone().iter().sum::<usize>())
             .next() // The iterator has one item for each timestamp. We have just one timestamp, 0
             .expect("Failed to get the result out of the channel");
-        Baselines::new(config).add(&left_path_2, &right_path_2, threshold, count);
+        let end_time = Instant::now();
+        let elapsed = (end_time - start_time).as_secs();
+        Baselines::new(config).add(&left_path_2, &right_path_2, threshold, count, elapsed);
         count
     } else {
         0
