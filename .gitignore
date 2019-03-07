@@ -7,3 +7,4 @@ results/
 **/*.rs.bk
 **/*.swp
 *.svg
+.Rproj.user
