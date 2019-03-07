@@ -146,6 +146,7 @@ where
                     sim_pred(lv, rv)
                 })
                 .count()
+                .inspect(|c| info!("Partial count {}", c))
                 .exchange(|_| 0)
                 .probe_with(&mut probe)
                 .capture_into(output_send_ch);

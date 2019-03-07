@@ -191,12 +191,20 @@ where
                         }
                         None => (),
                     }
-                    // Emit some output pairs
-                    for (time, mut generator) in generators.iter_mut() {
+                    for (time, generator) in generators.iter_mut() {
+                        // Emit some output pairs
+                        let mut pl = ProgressLogger::new(
+                            std::time::Duration::from_secs(60),
+                            "pairs".to_owned(),
+                            None,
+                        );
                         let mut session = output.session(time);
                         for pair in generator.take(10000) {
                             session.give(pair);
                         }
+                        pl.add(10000);
+                        pl.done();
+                        info!("Memory after batch candidate generation {}", proc_mem!());
                     }
 
                     // Cleanup exhausted generators
@@ -353,14 +361,24 @@ where
             let mut done = false;
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
+                    info!(
+                        "Worker {} repetition {} (memory {})",
+                        worker,
+                        current_repetition,
+                        proc_mem!()
+                    );
                     let mut session = output.session(&cap);
-                    // let mut pl = ProgressLogger::new(std::time::Duration::from_secs(10), "hashes".to_owned());
+                    let mut pl = ProgressLogger::new(
+                        std::time::Duration::from_secs(60),
+                        "hashes".to_owned(),
+                        Some(vecs.stripe_len(&matrix, direction, worker) as u64),
+                    );
                     for (k, v) in vecs.iter_stripe(&matrix, direction, worker) {
                         let h = hash_fns.hash(v, current_repetition as usize);
                         session.give((h, k.clone()));
-                        // pl.add(1);
+                        pl.add(1);
                     }
-                    // pl.done();
+                    pl.done();
                     current_repetition += 1;
                     cap.downgrade(&current_repetition);
                     done = current_repetition >= repetitions;
@@ -413,9 +431,11 @@ where
             let mut done = false;
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
-                    debug!(
-                        "worker {} Repetition {} with sketches",
-                        worker, current_repetition
+                    info!(
+                        "worker {} Repetition {} with sketches (memory {})",
+                        worker,
+                        current_repetition,
+                        proc_mem!()
                     );
                     let mut session = output.session(&cap);
                     for (k, v) in vecs.iter_stripe(&matrix, direction, worker) {

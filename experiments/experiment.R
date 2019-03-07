@@ -9,10 +9,9 @@ load.table <- function(glob, table, drop_hosts=TRUE) {
     raw_data <- rjson::fromJSON(line)
     date <- raw_data$date
     tags <- raw_data$tags
-    if (length(tags$hosts) == 0) {
-      tags$hosts <- NULL
-    }
-    tags <- dplyr::bind_rows(tags)
+    # The host list causes problems for now, and we don't really use it  
+    tags$hosts <- NULL
+    tags <- bind_rows(tags)
     tab <- raw_data$tables[table]
     tab <- unname(tab)
     df <- data.frame(tab)

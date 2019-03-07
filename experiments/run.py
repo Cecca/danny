@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+
+import shlex
 import argparse
 from sklearn.feature_extraction.text import CountVectorizer
 from itertools import product
@@ -230,6 +233,10 @@ def run_file(path, only_tags=None):
         if should_run(tags, only_tags):
             print('=== Running {} {}'.format(experiment['name'], tags))
             run_experiment(executable, environment, experiment)
+    if 'post' in config:
+        cmd = shlex.split(config['post'])
+        print('running post processing command', cmd)
+        subprocess.run(cmd)
 
 
 

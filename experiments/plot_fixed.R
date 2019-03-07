@@ -1,13 +1,12 @@
 library(tidyverse)
 source("experiment.R")
 
-data <- load.table("../results.json","result") %>%
+data <- load.table("results.json","result") %>%
   filter(algorithm == 'fixed-lsh') %>%
   mutate(sketch_bits = ifelse(is.na(sketch_bits), "no-sketch", sketch_bits)) %>%
   mutate(input = basename(left_path)) %>%
   mutate(pairs_per_second = output_size / (total_time_ms / 1000))
 
-  
 # Plot recall against k
 data %>%
   ggplot(aes(x=factor(k), y=recall, color=factor(sketch_bits))) +

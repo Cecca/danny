@@ -420,6 +420,11 @@ where
         );
         let logger = self.scope().danny_logger();
         self.unary(PipelinePact, "approximate-distinct", move |_, _| {
+            let mut pl = ProgressLogger::new(
+                std::time::Duration::from_secs(60),
+                "filtering pairs".to_owned(),
+                None,
+            );
             move |input, output| {
                 input.for_each(|t, d| {
                     let mut data = d.replace(Vec::new());
@@ -434,6 +439,7 @@ where
                             cnt += 1;
                         }
                     }
+                    pl.add(received as u64);
                     log_event!(logger, LogEvent::DistinctPairs(cnt));
                     log_event!(logger, LogEvent::DuplicatesDiscarded(received - cnt));
                     debug!(

@@ -30,6 +30,33 @@ where
         self.chunks.iter().map(|c| c.len()).sum()
     }
 
+    pub fn stripe_len(
+        &self,
+        matrix: &MatrixDescription,
+        direction: MatrixDirection,
+        worker: u64,
+    ) -> usize {
+        let (chunk_idx, stripe_idx, n_stripes) = match direction {
+            MatrixDirection::Rows => {
+                let (chunk_idx, stripe_idx) = matrix.row_major_to_pair(worker);
+                let n_stripes = matrix.columns as usize;
+                (chunk_idx, stripe_idx, n_stripes)
+            }
+            MatrixDirection::Columns => {
+                let (stripe_idx, chunk_idx) = matrix.row_major_to_pair(worker);
+                let n_stripes = matrix.rows as usize;
+                (chunk_idx, stripe_idx, n_stripes)
+            }
+        };
+        let stripe_elems = self.chunks[chunk_idx as usize].len() / n_stripes + 1;
+        let start = stripe_idx as usize * stripe_elems;
+        let end = std::cmp::min(
+            self.chunks[chunk_idx as usize].len(),
+            (stripe_idx + 1) as usize * stripe_elems,
+        );
+        self.chunks[chunk_idx as usize][start..end].len()
+    }
+
     pub fn chunk_len(&self, chunk_idx: usize) -> usize {
         self.chunks[chunk_idx].len()
     }
