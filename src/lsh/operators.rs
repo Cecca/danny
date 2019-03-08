@@ -193,18 +193,10 @@ where
                     }
                     for (time, generator) in generators.iter_mut() {
                         // Emit some output pairs
-                        let mut pl = ProgressLogger::new(
-                            std::time::Duration::from_secs(60),
-                            "pairs".to_owned(),
-                            None,
-                        );
                         let mut session = output.session(time);
-                        for pair in generator.take(10000) {
+                        for pair in generator.take(100) {
                             session.give(pair);
                         }
-                        pl.add(10000);
-                        pl.done();
-                        info!("Memory after batch candidate generation {}", proc_mem!());
                     }
 
                     // Cleanup exhausted generators

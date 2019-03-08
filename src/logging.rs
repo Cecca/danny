@@ -279,18 +279,24 @@ impl ProgressLogger {
                 Some(expected) => {
                     let estimated = (expected - self.count) as f64 / throughput;
                     info!(
-                        "{:?} :: {} {} :: {} {}/sec :: estimated {}",
+                        "{:?} :: {} {} :: {} {}/sec :: estimated {} ({})",
                         elapsed,
                         self.count,
                         self.items,
                         throughput,
                         self.items,
-                        f64_to_strtime(estimated)
+                        f64_to_strtime(estimated),
+                        proc_mem!()
                     )
                 }
                 None => info!(
-                    "{:?} :: {} {} :: {} {}/sec",
-                    elapsed, self.count, self.items, throughput, self.items
+                    "{:?} :: {} {} :: {} {}/sec ({})",
+                    elapsed,
+                    self.count,
+                    self.items,
+                    throughput,
+                    self.items,
+                    proc_mem!()
                 ),
             }
             self.last = now;
