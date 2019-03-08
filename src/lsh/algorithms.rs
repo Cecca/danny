@@ -21,6 +21,7 @@ use std::time::Instant;
 use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
+use timely::order::Product;
 use timely::Data;
 
 pub fn fixed_param_lsh<D, F, H, O, S, V>(
@@ -82,81 +83,93 @@ where
         let hash_fn = hash_fn.clone();
         let sketcher_pair = sketcher_pair.clone();
 
+        // worker
+        //     .log_register()
+        //     .insert::<timely::logging::TimelyEvent, _>("timely", |time, data| {
+        //         data.iter().for_each(|x| match x {
+        //             (_, _, timely::logging::TimelyEvent::Schedule(_)) => (),
+        //             e => info!("{:?}", e),
+        //         })
+        //     });
+
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
-            let mut probe = ProbeHandle::new();
-            let sketcher_pair = sketcher_pair;
+            scope.scoped::<Product<u32, u32>, _, _>("fixed-lsh", move |scope| {
+                let mut probe = ProbeHandle::new();
+                let mut batching_probe = ProbeHandle::new();
+                let sketcher_pair = sketcher_pair;
 
-            let matrix = MatrixDescription::for_workers(peers as usize);
+                let matrix = MatrixDescription::for_workers(peers as usize);
 
-            let candidates = match sketcher_pair {
-                Some((sketcher, sketch_predicate)) => {
-                    let left_hashes = source_hashed_sketched(
-                        scope,
-                        Arc::clone(&global_left_read),
-                        hash_fn.clone(),
-                        sketcher.clone(),
-                        matrix,
-                        MatrixDirection::Rows,
-                        probe.clone(),
-                    );
-                    let right_hashes = source_hashed_sketched(
-                        scope,
-                        Arc::clone(&global_right_read),
-                        hash_fn.clone(),
-                        sketcher.clone(),
-                        matrix,
-                        MatrixDirection::Rows,
-                        probe.clone(),
-                    );
-                    left_hashes
-                        .bucket_batched(&right_hashes)
-                        .filter_sketches(sketch_predicate)
-                }
-                None => {
-                    let left_hashes = source_hashed(
-                        scope,
-                        Arc::clone(&global_left_read),
-                        hash_fn.clone(),
-                        matrix,
-                        MatrixDirection::Rows,
-                        probe.clone(),
-                    );
-                    let right_hashes = source_hashed(
-                        scope,
-                        Arc::clone(&global_right_read),
-                        hash_fn.clone(),
-                        matrix,
-                        MatrixDirection::Columns,
-                        probe.clone(),
-                    );
-                    left_hashes.bucket_batched(&right_hashes)
-                }
-            };
+                let candidates = match sketcher_pair {
+                    Some((sketcher, sketch_predicate)) => {
+                        let left_hashes = source_hashed_sketched(
+                            scope,
+                            Arc::clone(&global_left_read),
+                            hash_fn.clone(),
+                            sketcher.clone(),
+                            matrix,
+                            MatrixDirection::Rows,
+                            probe.clone(),
+                        );
+                        let right_hashes = source_hashed_sketched(
+                            scope,
+                            Arc::clone(&global_right_read),
+                            hash_fn.clone(),
+                            sketcher.clone(),
+                            matrix,
+                            MatrixDirection::Rows,
+                            probe.clone(),
+                        );
+                        left_hashes
+                            .bucket_batched(&right_hashes, batching_probe.clone())
+                            .filter_sketches(sketch_predicate)
+                    }
+                    None => {
+                        let left_hashes = source_hashed(
+                            scope,
+                            Arc::clone(&global_left_read),
+                            hash_fn.clone(),
+                            matrix,
+                            MatrixDirection::Rows,
+                            probe.clone(),
+                        );
+                        let right_hashes = source_hashed(
+                            scope,
+                            Arc::clone(&global_right_read),
+                            hash_fn.clone(),
+                            matrix,
+                            MatrixDirection::Columns,
+                            probe.clone(),
+                        );
+                        left_hashes.bucket_batched(&right_hashes, batching_probe.clone())
+                    }
+                };
 
-            let global_left = Arc::clone(&global_left_read.read().unwrap());
-            let global_right = Arc::clone(&global_right_read.read().unwrap());
+                let global_left = Arc::clone(&global_left_read.read().unwrap());
+                let global_right = Arc::clone(&global_right_read.read().unwrap());
 
-            candidates
-                .pair_route(matrix)
-                .map(|pair| pair.1)
-                .approximate_distinct(1 << 30, 0.05, 123123123)
-                .filter(move |(lk, rk)| {
-                    let lv = &global_left[lk];
-                    let rv = &global_right[rk];
-                    sim_pred(lv, rv)
-                })
-                .stream_count()
-                .exchange(|_| 0)
-                .inspect(|c| info!("Partial count {}", c))
-                .probe_with(&mut probe)
-                .capture_into(output_send_ch);
+                candidates
+                    .pair_route(matrix)
+                    .map(|pair| pair.1)
+                    .approximate_distinct(1 << 30, 0.05, 123123123)
+                    .filter(move |(lk, rk)| {
+                        let lv = &global_left[lk];
+                        let rv = &global_right[rk];
+                        sim_pred(lv, rv)
+                    })
+                    .stream_count()
+                    .probe_with(&mut batching_probe)
+                    .exchange(|_| 0)
+                    .probe_with(&mut probe)
+                    .capture_into(output_send_ch);
 
-            probe
+                probe
+            })
         });
 
         // Do the stepping even though it's not strictly needed: we use it to wait for the dataflow
         // to finish
-        worker.step_while(|| probe.less_than(&(repetitions as u32)));
+        worker.step_while(|| probe.less_than(&Product::new(repetitions as u32, 0)));
 
         info!(
             "Execution summary for worker {}: {:?}",

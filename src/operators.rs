@@ -420,11 +420,11 @@ where
         );
         let logger = self.scope().danny_logger();
         self.unary(PipelinePact, "approximate-distinct", move |_, _| {
-            let mut pl = ProgressLogger::new(
-                std::time::Duration::from_secs(60),
-                "filtering pairs".to_owned(),
-                None,
-            );
+            // let mut pl = ProgressLogger::new(
+            //     std::time::Duration::from_secs(10),
+            //     "filtering pairs".to_owned(),
+            //     None,
+            // );
             move |input, output| {
                 input.for_each(|t, d| {
                     let mut data = d.replace(Vec::new());
@@ -439,7 +439,7 @@ where
                             cnt += 1;
                         }
                     }
-                    pl.add(received as u64);
+                    // pl.add(received as u64);
                     log_event!(logger, LogEvent::DistinctPairs(cnt));
                     log_event!(logger, LogEvent::DuplicatesDiscarded(received - cnt));
                     debug!(
@@ -468,6 +468,11 @@ where
 {
     fn stream_count(&self) -> Stream<G, u64> {
         let mut counts: HashMap<Capability<G::Timestamp>, Option<u64>> = HashMap::new();
+        let mut pl = ProgressLogger::new(
+            std::time::Duration::from_secs(10),
+            "counting pairs".to_owned(),
+            None,
+        );
         self.unary_frontier(PipelinePact, "stream-count", move |_, _| {
             move |input, output| {
                 input.for_each(|t, d| {
@@ -475,6 +480,7 @@ where
                         .entry(t.retain())
                         .and_modify(|e| *e = e.map(|c| c + d.len() as u64))
                         .or_insert(Some(d.len() as u64));
+                    pl.add(d.len() as u64);
                 });
 
                 for (time, cnt) in counts.iter_mut() {

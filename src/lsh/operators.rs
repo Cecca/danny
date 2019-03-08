@@ -27,6 +27,7 @@ use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
+use timely::order::Product;
 use timely::progress::Timestamp;
 use timely::Data;
 
@@ -119,26 +120,36 @@ impl<H: Hash + Eq + Clone, K: Clone> Iterator for PairGenerator<H, K> {
     }
 }
 
-pub trait BucketStream<G, H, K>
+pub trait BucketStream<G, T, H, K>
 where
-    G: Scope,
+    G: Scope<Timestamp = T>,
+    T: Timestamp + Succ,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)>;
-    fn bucket_batched(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)>;
+    fn bucket_batched(
+        &self,
+        right: &Stream<G, (H, K)>,
+        throttling_probe: ProbeHandle<T>,
+    ) -> Stream<G, (K, K)>;
 }
 
-impl<G, H, K> BucketStream<G, H, K> for Stream<G, (H, K)>
+impl<G, T, H, K> BucketStream<G, T, H, K> for Stream<G, (H, K)>
 where
-    G: Scope,
+    G: Scope<Timestamp = T>,
+    T: Timestamp + Succ,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
-    fn bucket_batched(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)> {
+    fn bucket_batched(
+        &self,
+        right: &Stream<G, (H, K)>,
+        throttling_probe: ProbeHandle<T>,
+    ) -> Stream<G, (K, K)> {
         let mut left_buckets = HashMap::new();
         let mut right_buckets = HashMap::new();
-        let mut generators = HashMap::new();
+        let mut generators = Vec::new();
 
         self.binary_frontier(
             &right,
@@ -187,20 +198,23 @@ where
                             let left_buckets = left_buckets.remove(&time).unwrap();
                             let right_buckets = right_buckets.remove(&time).unwrap();
                             let generator = PairGenerator::new(left_buckets, right_buckets);
-                            generators.insert(time.clone(), generator);
+                            generators.push((time.clone(), generator));
                         }
                         None => (),
                     }
                     for (time, generator) in generators.iter_mut() {
-                        // Emit some output pairs
-                        let mut session = output.session(time);
-                        for pair in generator.take(100) {
-                            session.give(pair);
+                        if !throttling_probe.less_than(time) {
+                            // Emit some output pairs
+                            let mut session = output.session(time);
+                            for pair in generator.take(100000) {
+                                session.give(pair);
+                            }
+                            time.downgrade(&time.time().succ());
                         }
                     }
 
                     // Cleanup exhausted generators
-                    generators.retain(|_, gen| !gen.done());
+                    generators.retain(|(_, gen)| !gen.done());
                 }
             },
         )
@@ -334,10 +348,10 @@ pub fn source_hashed<G, K, D, F, H>(
     hash_fns: LSHCollection<F, H>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-    throttling_probe: ProbeHandle<u32>,
+    throttling_probe: ProbeHandle<G::Timestamp>,
 ) -> Stream<G, (H, K)>
 where
-    G: Scope<Timestamp = u32>,
+    G: Scope<Timestamp = Product<u32, u32>>,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
@@ -372,7 +386,7 @@ where
                     }
                     pl.done();
                     current_repetition += 1;
-                    cap.downgrade(&current_repetition);
+                    cap.downgrade(&Product::new(current_repetition, 0));
                     done = current_repetition >= repetitions;
                 }
             }
@@ -380,6 +394,7 @@ where
             if done {
                 // Drop the capability to signal that we will send no more data
                 cap = None;
+                info!("Generated all repetitions");
             }
         }
     })
@@ -392,10 +407,10 @@ pub fn source_hashed_sketched<G, K, D, F, S, H, V>(
     sketcher: S,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-    throttling_probe: ProbeHandle<u32>,
+    throttling_probe: ProbeHandle<G::Timestamp>,
 ) -> Stream<G, (H, (V, K))>
 where
-    G: Scope<Timestamp = u32>,
+    G: Scope<Timestamp = Product<u32, u32>>,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
     S: Sketcher<Input = D, Output = V> + Clone + 'static,
@@ -436,7 +451,7 @@ where
                         session.give((h, (s.clone(), k.clone())));
                     }
                     current_repetition += 1;
-                    cap.downgrade(&current_repetition);
+                    cap.downgrade(&Product::new(current_repetition, 0));
                     done = current_repetition >= repetitions;
                 }
             }
