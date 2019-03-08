@@ -145,9 +145,9 @@ where
                     let rv = &global_right[rk];
                     sim_pred(lv, rv)
                 })
-                .count()
-                .inspect(|c| info!("Partial count {}", c))
+                .stream_count()
                 .exchange(|_| 0)
+                .inspect(|c| info!("Partial count {}", c))
                 .probe_with(&mut probe)
                 .capture_into(output_send_ch);
 
@@ -184,10 +184,10 @@ where
         // From `recv` we get an entry for each timestamp, containing a one-element vector with the
         // count of output pairs for a given timestamp. We sum across all the timestamps, so we need to
         // remove the duplicates
-        let count: usize = recv
+        let count: u64 = recv
             .extract()
             .iter()
-            .map(|pair| pair.1.clone().iter().sum::<usize>())
+            .map(|pair| pair.1.clone().iter().sum::<u64>())
             .sum();
 
         let precision = count as f64 / global_summary.distinct_pairs as f64;
@@ -202,7 +202,7 @@ where
         info!("Precision: {}", precision);
         info!("Global summary {:?}", global_summary);
 
-        count
+        count as usize
     } else {
         0
     }

@@ -453,6 +453,42 @@ where
     }
 }
 
+pub trait StreamCount<G, D>
+where
+    G: Scope,
+    D: Data,
+{
+    fn stream_count(&self) -> Stream<G, u64>;
+}
+
+impl<G, D> StreamCount<G, D> for Stream<G, D>
+where
+    G: Scope,
+    D: Data,
+{
+    fn stream_count(&self) -> Stream<G, u64> {
+        let mut counts: HashMap<Capability<G::Timestamp>, Option<u64>> = HashMap::new();
+        self.unary_frontier(PipelinePact, "stream-count", move |_, _| {
+            move |input, output| {
+                input.for_each(|t, d| {
+                    counts
+                        .entry(t.retain())
+                        .and_modify(|e| *e = e.map(|c| c + d.len() as u64))
+                        .or_insert(Some(d.len() as u64));
+                });
+
+                for (time, cnt) in counts.iter_mut() {
+                    if !input.frontier().less_equal(time) {
+                        output.session(time).give(cnt.take().unwrap());
+                    }
+                }
+
+                counts.retain(|_, c| c.is_some());
+            }
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
