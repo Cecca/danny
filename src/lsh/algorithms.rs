@@ -92,9 +92,11 @@ where
         //         })
         //     });
 
-        let probe = worker.dataflow::<u32, _, _>(move |scope| {
-            scope.scoped::<Product<u32, u32>, _, _>("fixed-lsh", move |scope| {
-                let mut probe = ProbeHandle::new();
+        let probe = worker.dataflow::<u32, _, _>(move |outer_scope| {
+            let mut probe = ProbeHandle::new();
+            let mut outer_scope_2 = outer_scope.clone();
+            outer_scope_2.scoped::<Product<u32, u32>, _, _>("fixed-lsh", move |inner_scope| {
+                let mut batching_probe = ProbeHandle::new();
                 // let mut batching_probe = ProbeHandle::new();
                 let sketcher_pair = sketcher_pair;
 
@@ -103,45 +105,49 @@ where
                 let candidates = match sketcher_pair {
                     Some((sketcher, sketch_predicate)) => {
                         let left_hashes = source_hashed_sketched(
-                            scope,
+                            outer_scope,
                             Arc::clone(&global_left_read),
                             hash_fn.clone(),
                             sketcher.clone(),
                             matrix,
                             MatrixDirection::Rows,
                             probe.clone(),
-                        );
+                        )
+                        .enter(inner_scope);
                         let right_hashes = source_hashed_sketched(
-                            scope,
+                            outer_scope,
                             Arc::clone(&global_right_read),
                             hash_fn.clone(),
                             sketcher.clone(),
                             matrix,
                             MatrixDirection::Rows,
                             probe.clone(),
-                        );
+                        )
+                        .enter(inner_scope);
                         left_hashes
-                            .bucket_batched(&right_hashes, probe.clone())
+                            .bucket_batched(&right_hashes, batching_probe.clone())
                             .filter_sketches(sketch_predicate)
                     }
                     None => {
                         let left_hashes = source_hashed(
-                            scope,
+                            outer_scope,
                             Arc::clone(&global_left_read),
                             hash_fn.clone(),
                             matrix,
                             MatrixDirection::Rows,
                             probe.clone(),
-                        );
+                        )
+                        .enter(inner_scope);
                         let right_hashes = source_hashed(
-                            scope,
+                            outer_scope,
                             Arc::clone(&global_right_read),
                             hash_fn.clone(),
                             matrix,
                             MatrixDirection::Columns,
                             probe.clone(),
-                        );
-                        left_hashes.bucket_batched(&right_hashes, probe.clone())
+                        )
+                        .enter(inner_scope);
+                        left_hashes.bucket_batched(&right_hashes, batching_probe.clone())
                     }
                 };
 
@@ -158,8 +164,9 @@ where
                         sim_pred(lv, rv)
                     })
                     .stream_count()
-                    // .probe_with(&mut batching_probe)
+                    .probe_with(&mut batching_probe)
                     .exchange(|_| 0)
+                    .leave()
                     .probe_with(&mut probe)
                     .capture_into(output_send_ch);
 
@@ -169,7 +176,7 @@ where
 
         // Do the stepping even though it's not strictly needed: we use it to wait for the dataflow
         // to finish
-        worker.step_while(|| probe.less_than(&Product::new(repetitions as u32, 0)));
+        worker.step_while(|| probe.less_than(&(repetitions as u32)));
 
         info!(
             "Execution summary for worker {}: {:?}",

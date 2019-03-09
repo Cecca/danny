@@ -479,19 +479,11 @@ where
 
                 for (time, cnt) in counts.iter_mut() {
                     if !input.frontier().less_equal(time) {
-                        info!("Outputting count for time {:?}", time.time());
                         output.session(time).give(cnt.take().unwrap());
                     }
                 }
 
-                counts.retain(|t, c| {
-                    if c.is_some() {
-                        true
-                    } else {
-                        info!("Dropping capability for time {:?}", t.time());
-                        false
-                    }
-                });
+                counts.retain(|_, c| c.is_some());
             }
         })
     }

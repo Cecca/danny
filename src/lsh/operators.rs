@@ -206,7 +206,7 @@ where
                         if !throttling_probe.less_than(time) {
                             // Emit some output pairs
                             let mut session = output.session(time);
-                            for pair in generator.take(100000) {
+                            for pair in generator.take(10000) {
                                 session.give(pair);
                             }
                             time.downgrade(&time.time().succ());
@@ -351,7 +351,8 @@ pub fn source_hashed<G, K, D, F, H>(
     throttling_probe: ProbeHandle<G::Timestamp>,
 ) -> Stream<G, (H, K)>
 where
-    G: Scope<Timestamp = Product<u32, u32>>,
+    G: Scope<Timestamp = u32>,
+    // G: Scope<Timestamp = Product<u32, u32>>,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
@@ -386,7 +387,7 @@ where
                     }
                     pl.done();
                     current_repetition += 1;
-                    cap.downgrade(&Product::new(current_repetition, 0));
+                    cap.downgrade(&current_repetition);
                     done = current_repetition >= repetitions;
                 }
             }
@@ -410,7 +411,8 @@ pub fn source_hashed_sketched<G, K, D, F, S, H, V>(
     throttling_probe: ProbeHandle<G::Timestamp>,
 ) -> Stream<G, (H, (V, K))>
 where
-    G: Scope<Timestamp = Product<u32, u32>>,
+    // G: Scope<Timestamp = Product<u32, u32>>,
+    G: Scope<Timestamp = u32>,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
     S: Sketcher<Input = D, Output = V> + Clone + 'static,
@@ -451,7 +453,7 @@ where
                         session.give((h, (s.clone(), k.clone())));
                     }
                     current_repetition += 1;
-                    cap.downgrade(&Product::new(current_repetition, 0));
+                    cap.downgrade(&current_repetition);
                     done = current_repetition >= repetitions;
                 }
             }
