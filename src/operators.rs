@@ -468,11 +468,6 @@ where
 {
     fn stream_count(&self) -> Stream<G, u64> {
         let mut counts: HashMap<Capability<G::Timestamp>, Option<u64>> = HashMap::new();
-        let mut pl = ProgressLogger::new(
-            std::time::Duration::from_secs(10),
-            "counting pairs".to_owned(),
-            None,
-        );
         self.unary_frontier(PipelinePact, "stream-count", move |_, _| {
             move |input, output| {
                 input.for_each(|t, d| {
@@ -480,16 +475,23 @@ where
                         .entry(t.retain())
                         .and_modify(|e| *e = e.map(|c| c + d.len() as u64))
                         .or_insert(Some(d.len() as u64));
-                    pl.add(d.len() as u64);
                 });
 
                 for (time, cnt) in counts.iter_mut() {
                     if !input.frontier().less_equal(time) {
+                        info!("Outputting count for time {:?}", time.time());
                         output.session(time).give(cnt.take().unwrap());
                     }
                 }
 
-                counts.retain(|_, c| c.is_some());
+                counts.retain(|t, c| {
+                    if c.is_some() {
+                        true
+                    } else {
+                        info!("Dropping capability for time {:?}", t.time());
+                        false
+                    }
+                });
             }
         })
     }

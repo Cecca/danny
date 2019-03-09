@@ -95,7 +95,7 @@ where
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
             scope.scoped::<Product<u32, u32>, _, _>("fixed-lsh", move |scope| {
                 let mut probe = ProbeHandle::new();
-                let mut batching_probe = ProbeHandle::new();
+                // let mut batching_probe = ProbeHandle::new();
                 let sketcher_pair = sketcher_pair;
 
                 let matrix = MatrixDescription::for_workers(peers as usize);
@@ -121,7 +121,7 @@ where
                             probe.clone(),
                         );
                         left_hashes
-                            .bucket_batched(&right_hashes, batching_probe.clone())
+                            .bucket_batched(&right_hashes, probe.clone())
                             .filter_sketches(sketch_predicate)
                     }
                     None => {
@@ -141,7 +141,7 @@ where
                             MatrixDirection::Columns,
                             probe.clone(),
                         );
-                        left_hashes.bucket_batched(&right_hashes, batching_probe.clone())
+                        left_hashes.bucket_batched(&right_hashes, probe.clone())
                     }
                 };
 
@@ -158,7 +158,7 @@ where
                         sim_pred(lv, rv)
                     })
                     .stream_count()
-                    .probe_with(&mut batching_probe)
+                    // .probe_with(&mut batching_probe)
                     .exchange(|_| 0)
                     .probe_with(&mut probe)
                     .capture_into(output_send_ch);
