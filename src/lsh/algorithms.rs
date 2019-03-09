@@ -154,6 +154,11 @@ where
                 let global_left = Arc::clone(&global_left_read.read().unwrap());
                 let global_right = Arc::clone(&global_right_read.read().unwrap());
 
+                let mut pl = ProgressLogger::new(
+                    std::time::Duration::from_secs(60),
+                    "comparisons".to_owned(),
+                    None,
+                );
                 candidates
                     .pair_route(matrix)
                     .map(|pair| pair.1)
@@ -163,10 +168,11 @@ where
                         let rv = &global_right[rk];
                         sim_pred(lv, rv)
                     })
-                    .stream_count()
+                    .inspect_batch(move |_, d| pl.add(d.len() as u64))
                     .probe_with(&mut batching_probe)
-                    .exchange(|_| 0)
                     .leave()
+                    .stream_count()
+                    .exchange(|_| 0)
                     .probe_with(&mut probe)
                     .capture_into(output_send_ch);
 
