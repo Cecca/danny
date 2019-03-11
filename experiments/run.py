@@ -53,14 +53,9 @@ def download(src, dst):
 
 def sync():
     for host in MINIONS:
-        subprocess.run([
-          'rsync',
-          '--progress',
-          '--ignore-existing',
-          '-avzr',
-          '{}/*.bin'.format(DATA_DIRECTORY),
-          '{}:{}/'.format(host, DATA_DIRECTORY)
-        ])
+        subprocess.run('rsync --progress --ignore-existing -avzr {}/*.bin {}:{}/'.format(
+            DATA_DIRECTORY, host, DATA_DIRECTORY
+        ), shell=True)
 
 
 class Dataset(object):
@@ -163,6 +158,64 @@ def _preprocess_wiki(vocab_size, download_file, final_output):
 def preprocess_wiki_builder(vocab_size):
     return lambda download_file, final_output: _preprocess_wiki(vocab_size, download_file, final_output)
 
+AOL_DATA = os.path.abspath('scripts/aol-data.sh')
+CREATE_RAW = os.path.abspath('scripts/createraw.py')
+SHUF_LENGTH = os.path.abspath('scripts/shuflength.py')
+ORKUT_PY = os.path.abspath('scripts/orkut.py')
+
+def preprocess_aol(download_file, final_output):
+    """As provided by Mann et al."""
+    directory = os.path.dirname(download_file)
+    print("Unpacking")
+    subprocess.run(['tar', 'xzvf', download_file], cwd=directory)
+    print("Extracting raw data")
+    subprocess.run('{} {}/AOL-user-ct-collection/user-ct-test-collection-*.txt.gz > aol-data.txt'.format(AOL_DATA, directory), 
+                   shell=True, cwd=directory)
+    print("Creating data")
+    subprocess.run('{} --bywhitespace --dedup aol-data.txt aol-data-white-dedup-raw.txt '.format(CREATE_RAW), 
+                   shell=True, cwd=directory)
+    print("Shuffling")
+    subprocess.run('{} aol-data-white-dedup-raw.txt > tmp.txt'.format(SHUF_LENGTH), 
+                   shell=True, cwd=directory)
+    print("Converting to binary")
+    subprocess.run(['danny_convert',
+                    '-i', 'tmp.txt',
+                    '-o', final_output,
+                    '-t', 'bag-of-words',
+                    '-n', '40'], cwd=directory)
+
+def preprocess_orkut(download_file, final_output):
+    directory = os.path.dirname(download_file)
+    subprocess.run('cat {} | gunzip > tt.txt'.format(download_file), 
+                   cwd=directory, shell=True)
+    subprocess.run('{} users tt.txt > orkut.out'.format(ORKUT_PY), cwd=directory, shell=True)
+    subprocess.run('{} --bywhitespace orkut.out orkut-userswithgroups-raw.txt'.format(CREATE_RAW), 
+                   cwd=directory, shell=True)
+    subprocess.run('uniq orkut-userswithgroups-raw.txt > orkut.tmp',
+                   cwd=directory, shell=True)
+    subprocess.run(['danny_convert',
+                    '-i', 'orkut.tmp',
+                    '-o', final_output,
+                    '-t', 'bag-of-words',
+                    '-n', '40'], cwd=directory)
+
+
+def preprocess_livejournal(download_file, final_output):
+    directory = os.path.dirname(download_file)
+    subprocess.run('cat {} | gunzip > lj.txt'.format(download_file), 
+                   cwd=directory, shell=True)
+    subprocess.run('{} users lj.txt > livejournal.out'.format(ORKUT_PY), cwd=directory, shell=True)
+    subprocess.run('{} --bywhitespace livejournal.out livejournal-userswithgroups-raw.txt'.format(CREATE_RAW), 
+                   cwd=directory, shell=True)
+    subprocess.run('uniq livejournal-userswithgroups-raw.txt > livejournal.tmp',
+                   cwd=directory, shell=True)
+    subprocess.run(['danny_convert',
+                    '-i', 'livejournal.tmp',
+                    '-o', final_output,
+                    '-t', 'bag-of-words',
+                    '-n', '40'], cwd=directory)
+    
+
 
 DATASETS = {
     'Glove-6B-100': Dataset(
@@ -174,7 +227,25 @@ DATASETS = {
         'wiki-10k', 
         'https://dumps.wikimedia.org/enwiki/20190220/enwiki-20190220-pages-articles-multistream.xml.bz2', 
         'wiki-10k.bin', 
-        preprocess_wiki_builder(10000))
+        preprocess_wiki_builder(10000)),
+    'AOL': Dataset(
+        'AOL',
+        'http://www.cim.mcgill.ca/~dudek/206/Logs/AOL-user-ct-collection/aol-data.tar.gz',
+        'AOL.bin',
+        preprocess_aol
+    ),
+    'Orkut': Dataset(
+        'Orkut',
+        'http://socialnetworks.mpi-sws.mpg.de/data/orkut-groupmemberships.txt.gz',
+        'Orkut.bin',
+        preprocess_orkut
+    ),
+    'Livejournal': Dataset(
+        'Livejournal',
+        'http://socialnetworks.mpi-sws.mpg.de/data/livejournal-groupmemberships.txt.gz',
+        'Livejournal.bin',
+        preprocess_orkut
+    )
 }
 
 
@@ -245,6 +316,9 @@ if __name__ == '__main__':
     parser.add_argument('--list-datasets', 
                         action='store_true',
                         help='list the available datasets')
+    parser.add_argument('--sync',
+                        action='store_true',
+                        help='sync the datasets')
     parser.add_argument('--tags',
                         help='run only experiments with these tags')
     parser.add_argument('exp_file', nargs='?',
@@ -255,7 +329,11 @@ if __name__ == '__main__':
     if args['list_datasets']:
         print('Available datasets are:')
         for k in DATASETS.keys():
-            print('  - {}'.format(k))
+            print('  - {} ({})'.format(k, DATASETS[k].get_path()))
+        sys.exit(0)
+
+    if args['sync']:
+        sync()
         sys.exit(0)
 
     if args['tags'] is not None:
