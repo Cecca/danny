@@ -6,6 +6,7 @@ use rand_xorshift::XorShiftRng;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::ops::Add;
 use timely::dataflow::channels::pact::Pipeline as PipelinePact;
 use timely::dataflow::operators::*;
 use timely::dataflow::Scope;
@@ -484,6 +485,43 @@ where
                 }
 
                 counts.retain(|_, c| c.is_some());
+            }
+        })
+    }
+}
+
+pub trait StreamSum<G, D>
+where
+    G: Scope,
+    D: Add<Output = D> + std::iter::Sum + Data,
+{
+    fn stream_sum(&self) -> Stream<G, D>;
+}
+
+impl<G, D> StreamSum<G, D> for Stream<G, D>
+where
+    G: Scope,
+    D: Add<Output = D> + std::iter::Sum + Data + Copy,
+{
+    fn stream_sum(&self) -> Stream<G, D> {
+        let mut sums: HashMap<Capability<G::Timestamp>, Option<D>> = HashMap::new();
+        self.unary_frontier(PipelinePact, "stream-count", move |_, _| {
+            move |input, output| {
+                input.for_each(|t, d| {
+                    let mut data = d.replace(Vec::new());
+                    let local_sum: D = data.drain(..).sum();
+                    sums.entry(t.retain())
+                        .and_modify(|e| *e = e.map(|c| c + local_sum))
+                        .or_insert_with(|| Some(local_sum));
+                });
+
+                for (time, cnt) in sums.iter_mut() {
+                    if !input.frontier().less_equal(time) {
+                        output.session(time).give(cnt.take().unwrap());
+                    }
+                }
+
+                sums.retain(|_, c| c.is_some());
             }
         })
     }

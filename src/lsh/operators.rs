@@ -128,11 +128,6 @@ where
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)>;
-    fn bucket_batched(
-        &self,
-        right: &Stream<G, (H, K)>,
-        throttling_probe: ProbeHandle<T>,
-    ) -> Stream<G, (K, K)>;
 }
 
 impl<G, T, H, K> BucketStream<G, T, H, K> for Stream<G, (H, K)>
@@ -142,11 +137,7 @@ where
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
-    fn bucket_batched(
-        &self,
-        right: &Stream<G, (H, K)>,
-        throttling_probe: ProbeHandle<T>,
-    ) -> Stream<G, (K, K)> {
+    fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)> {
         let mut left_buckets = HashMap::new();
         let mut right_buckets = HashMap::new();
         let mut generators = Vec::new();
@@ -164,10 +155,10 @@ where
                             t.time(),
                             d.iter()
                         );
-                        let rep_entry = left_buckets.entry(t.retain()).or_insert(HashMap::new());
+                        let rep_entry = left_buckets.entry(t.retain()).or_insert_with(HashMap::new);
                         let mut data = d.replace(Vec::new());
                         for (h, k) in data.drain(..) {
-                            rep_entry.entry(h).or_insert(Vec::new()).push(k);
+                            rep_entry.entry(h).or_insert_with(Vec::new).push(k);
                         }
                     });
                     right_in.for_each(|t, d| {
@@ -176,123 +167,36 @@ where
                             t.time(),
                             d.iter()
                         );
-                        let rep_entry = right_buckets.entry(t.retain()).or_insert(HashMap::new());
+                        let rep_entry =
+                            right_buckets.entry(t.retain()).or_insert_with(HashMap::new);
                         let mut data = d.replace(Vec::new());
                         for (h, k) in data.drain(..) {
-                            rep_entry.entry(h).or_insert(Vec::new()).push(k);
+                            rep_entry.entry(h).or_insert_with(Vec::new).push(k);
                         }
                     });
                     let frontiers = &[left_in.frontier(), right_in.frontier()];
-                    let time = left_buckets
-                        .keys()
-                        .cloned()
-                        .filter(|t| {
-                            right_buckets.contains_key(t)
-                                && frontiers.iter().all(|f| !f.less_equal(t))
-                        })
-                        .next();
-                    match time {
-                        Some(time) => {
-                            // We got all data for the repetition at `time`
-                            // Enqueue the pairs generator
-                            let left_buckets = left_buckets.remove(&time).unwrap();
-                            let right_buckets = right_buckets.remove(&time).unwrap();
-                            let generator = PairGenerator::new(left_buckets, right_buckets);
-                            generators.push((time.clone(), generator));
-                        }
-                        None => (),
+                    let time = left_buckets.keys().cloned().find(|t| {
+                        right_buckets.contains_key(t) && frontiers.iter().all(|f| !f.less_equal(t))
+                    });
+                    if let Some(time) = time {
+                        // We got all data for the repetition at `time`
+                        // Enqueue the pairs generator
+                        let left_buckets = left_buckets
+                            .remove(&time)
+                            .expect("Cannot find the required time in left buckets");
+                        let right_buckets = right_buckets
+                            .remove(&time)
+                            .expect("Cannot find the required time in the right buckets");
+                        let generator = PairGenerator::new(left_buckets, right_buckets);
+                        generators.push((time.clone(), generator));
                     }
                     for (time, generator) in generators.iter_mut() {
-                        if !throttling_probe.less_than(time) {
-                            // Emit some output pairs
-                            let mut session = output.session(time);
-                            for pair in generator.take(10000) {
-                                session.give(pair);
-                            }
-                            time.downgrade(&time.time().succ());
-                        }
+                        // Emit some output pairs
+                        output.session(time).give_iterator(generator);
                     }
 
                     // Cleanup exhausted generators
                     generators.retain(|(_, gen)| !gen.done());
-                }
-            },
-        )
-    }
-
-    fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)> {
-        let mut left_buckets = HashMap::new();
-        let mut right_buckets = HashMap::new();
-        let logger = self.scope().danny_logger();
-
-        self.binary_frontier(
-            &right,
-            ExchangePact::new(|pair: &(H, K)| pair.0.route()),
-            ExchangePact::new(|pair: &(H, K)| pair.0.route()),
-            "bucket",
-            move |_, _| {
-                move |left_in, right_in, output| {
-                    left_in.for_each(|t, d| {
-                        debug!(
-                            "Received batch of left messages for time {:?}:\n\t{:?}",
-                            t.time(),
-                            d.iter()
-                        );
-                        let rep_entry = left_buckets.entry(t.retain()).or_insert(HashMap::new());
-                        let mut data = d.replace(Vec::new());
-                        for (h, k) in data.drain(..) {
-                            rep_entry.entry(h).or_insert(Vec::new()).push(k);
-                        }
-                    });
-                    right_in.for_each(|t, d| {
-                        debug!(
-                            "Received batch of right messages for time {:?}:\n\t{:?}",
-                            t.time(),
-                            d.iter()
-                        );
-                        let rep_entry = right_buckets.entry(t.retain()).or_insert(HashMap::new());
-                        let mut data = d.replace(Vec::new());
-                        for (h, k) in data.drain(..) {
-                            rep_entry.entry(h).or_insert(Vec::new()).push(k);
-                        }
-                    });
-                    let frontiers = &[left_in.frontier(), right_in.frontier()];
-                    for (time, left_buckets) in left_buckets.iter_mut() {
-                        if frontiers.iter().all(|f| !f.less_equal(time)) {
-                            let mut session = output.session(&time);
-                            // We got all data for the repetition at `time`
-                            if let Some(right_buckets) = right_buckets.get_mut(time) {
-                                let mut cnt = 0;
-                                for (h, left_keys) in left_buckets.drain() {
-                                    if let Some(right_keys) = right_buckets.get(&h) {
-                                        for kl in left_keys.iter() {
-                                            for kr in right_keys.iter() {
-                                                //  do output
-                                                let out_pair = (kl.clone(), kr.clone());
-                                                session.give(out_pair);
-                                                cnt += 1;
-                                            }
-                                        }
-                                    }
-                                }
-                                log_event!(logger, LogEvent::GeneratedPairs(cnt));
-                            }
-                            // Remove the repetition from the right buckets
-                            right_buckets.remove(time);
-                        }
-                    }
-                    // Clean up the entries with empty buckets from the left (from the right we
-                    // already did it)
-                    left_buckets.retain(|_t, buckets| {
-                        let to_keep = buckets.len() > 0;
-                        to_keep
-                    });
-                    right_buckets.retain(|_t, buckets| {
-                        let to_keep = buckets.len() > 0;
-                        to_keep
-                    });
-                    // TODO: cleanup the duplicates filter when we are done with bucketing. We need
-                    // this to free memory.
                 }
             },
         )
@@ -363,7 +267,7 @@ where
     let mut current_repetition = 0u32;
     source(scope, "hashed source", move |capability| {
         let mut cap = Some(capability);
-        let vecs = Arc::clone(&global_vecs.read().unwrap());
+        let vecs = Arc::clone(&global_vecs.read().expect("Could not get global vectors"));
         move |output| {
             let mut done = false;
             if let Some(cap) = cap.as_mut() {
@@ -375,17 +279,10 @@ where
                         proc_mem!()
                     );
                     let mut session = output.session(&cap);
-                    let mut pl = ProgressLogger::new(
-                        std::time::Duration::from_secs(60),
-                        "hashes".to_owned(),
-                        Some(vecs.stripe_len(&matrix, direction, worker) as u64),
-                    );
                     for (k, v) in vecs.iter_stripe(&matrix, direction, worker) {
                         let h = hash_fns.hash(v, current_repetition as usize);
                         session.give((h, k.clone()));
-                        pl.add(1);
                     }
-                    pl.done();
                     current_repetition += 1;
                     cap.downgrade(&current_repetition);
                     done = current_repetition >= repetitions;

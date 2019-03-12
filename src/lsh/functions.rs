@@ -232,7 +232,13 @@ impl LSHFunction for MinHash {
     fn hash(&self, v: &BagOfWords) -> u32 {
         let mut h = 0u64;
         for (hasher, coeff) in self.hashers.iter().zip(self.coeffs.iter()) {
-            let min_w = v.words().iter().map(|w| hasher.hash(*w)).min().unwrap();
+            assert!(!v.words().is_empty(), "The collection of words is empty");
+            let min_w = v
+                .words()
+                .iter()
+                .map(|w| hasher.hash(*w))
+                .min()
+                .expect("No minimum");
             h = h.wrapping_add(coeff.wrapping_mul(min_w));
         }
         (h >> 32) as u32
