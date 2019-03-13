@@ -240,8 +240,9 @@ where
         for line in buf_reader.lines() {
             line.and_then(|l| {
                 if pred(cnt) {
-                    let elem = Self::from_line(&l);
-                    fun(cnt, elem);
+                    if let Some(elem) = Self::from_line(&l) {
+                        fun(cnt, elem);
+                    }
                 }
                 cnt += 1;
                 Ok(())
@@ -258,7 +259,7 @@ where
             .next()
             .expect("Problem reading the first line")
             .expect("Error getting the line");
-        Self::from_line(&first_line)
+        Self::from_line(&first_line).expect("Cannot decode the first line")
     }
 
     fn num_elements(path: &PathBuf) -> usize {
@@ -267,11 +268,11 @@ where
         buf_reader.lines().count()
     }
 
-    fn from_line(line: &str) -> Self;
+    fn from_line(line: &str) -> Option<Self>;
 }
 
 impl ReadDataFile for VectorWithNorm {
-    fn from_line(line: &str) -> Self {
+    fn from_line(line: &str) -> Option<Self> {
         let data: Vec<f32> = line
             .split_whitespace()
             .skip(1)
@@ -280,18 +281,18 @@ impl ReadDataFile for VectorWithNorm {
                     .expect(&format!("Error parsing floating point number `{}`", s))
             })
             .collect();
-        VectorWithNorm::new(data)
+        Some(VectorWithNorm::new(data))
     }
 }
 
 impl ReadDataFile for UnitNormVector {
-    fn from_line(line: &str) -> Self {
-        VectorWithNorm::from_line(line).into()
+    fn from_line(line: &str) -> Option<Self> {
+        VectorWithNorm::from_line(line).map(|v| v.into())
     }
 }
 
 impl ReadDataFile for BagOfWords {
-    fn from_line(line: &str) -> Self {
+    fn from_line(line: &str) -> Option<Self> {
         let mut tokens = line.split_whitespace().skip(1);
         let universe = tokens
             .next()
@@ -304,7 +305,11 @@ impl ReadDataFile for BagOfWords {
                     .expect(&format!("Error parsing floating point number `{}`", s))
             })
             .collect();
-        BagOfWords::new(universe, data)
+        if data.is_empty() {
+            None
+        } else {
+            Some(BagOfWords::new(universe, data))
+        }
     }
 }
 

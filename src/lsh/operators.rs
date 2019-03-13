@@ -272,12 +272,9 @@ where
             let mut done = false;
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
-                    info!(
-                        "Worker {} repetition {} (memory {})",
-                        worker,
-                        current_repetition,
-                        proc_mem!()
-                    );
+                    if worker == 0 {
+                        info!("Repetition {}", current_repetition);
+                    }
                     let mut session = output.session(&cap);
                     for (k, v) in vecs.iter_stripe(&matrix, direction, worker) {
                         let h = hash_fns.hash(v, current_repetition as usize);
@@ -337,12 +334,9 @@ where
             let mut done = false;
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
-                    info!(
-                        "worker {} Repetition {} with sketches (memory {})",
-                        worker,
-                        current_repetition,
-                        proc_mem!()
-                    );
+                    if worker == 0 {
+                        info!("Repetition {} with sketches", current_repetition,);
+                    }
                     let mut session = output.session(&cap);
                     for (k, v) in vecs.iter_stripe(&matrix, direction, worker) {
                         let h = hash_fns.hash(v, current_repetition as usize);
