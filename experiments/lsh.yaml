@@ -1,0 +1,39 @@
+---
+environment:
+  DANNY_THREADS: 4
+  DANNY_HOSTS: "sss00:2001,sss01:2001,sss02:2001,sss03:2001,sss04:2001"
+  DANNY_BASELINES_PATH: "/mnt/fast_storage/users/mcec/baselines.csv"
+post: Rscript plot_fixed.R
+experiments:
+
+  - name: Glove no sketch
+    tags:
+      - glove
+      - cosine
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --algorithm: fixed-lsh
+      --range: [0.6]
+      --measure: cosine
+      -k: [10, 12, 14, 16, 18]
+    arguments:
+      - ["{{ dataset('Glove-6B-100') }}", "{{ dataset('Glove-6B-100') }}"]
+
+  - name: Bag of Words
+    tags:
+      - bag-of-words
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --algorithm: fixed-lsh
+      --range: [0.5]
+      --measure: jaccard
+      -k: [1,2,3,4,5]
+    arguments:
+      - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
+      - ["{{ dataset('Livejournal') }}", "{{ dataset('Livejournal') }}"]
+
+  
