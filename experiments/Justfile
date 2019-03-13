@@ -1,6 +1,6 @@
 # Configure Sumatra 
 smt-configure:
-  smt configure --archive ./archive -d results
+  smt configure --archive ./archive -d results -e ./run.py
 
 fixed-lsh:
   smt run -e ./fixed_lsh.sh
