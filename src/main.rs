@@ -111,19 +111,28 @@ fn main() {
         _ => unimplemented!("Unknown algorithm {}", args.algorithm),
     };
     let end = std::time::Instant::now();
-    let total_time = end - start;
-    let total_time = total_time.as_secs() * 1000 + total_time.subsec_millis() as u64;
+    let total_time_d = end - start;
+    let total_time = total_time_d.as_secs() * 1000 + total_time_d.subsec_millis() as u64;
     if config.is_master() {
-        let recall = Baselines::new(&config)
+        let baselines = Baselines::new(&config);
+        let recall = baselines
             .recall(&args.left_path, &args.right_path, args.threshold, count)
             .expect("Could not compute the recall! Missing entry in the baseline file?");
+        let speedup = baselines
+            .speedup(
+                &args.left_path,
+                &args.right_path,
+                args.threshold,
+                total_time as f64 / 1000.0,
+            )
+            .expect("Could not compute the speedup! Missing entry in the baseline file?");
         println!(
-            "Pairs above similarity {} are {} (recall {})",
-            args.threshold, count, recall
+            "Pairs above similarity {} are {} (time {:?}, recall {}, speedup {})",
+            args.threshold, count, total_time_d, recall, speedup
         );
         experiment.append(
             "result",
-            row!("output_size" => count, "total_time_ms" => total_time, "recall" => recall),
+            row!("output_size" => count, "total_time_ms" => total_time, "recall" => recall, "speedup" => speedup),
         );
         experiment.save();
     }

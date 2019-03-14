@@ -72,15 +72,29 @@ impl Baselines {
         Baselines { path, baselines }
     }
 
-    pub fn get(&self, left: &String, right: &String, range: f64) -> Option<usize> {
+    pub fn get_count(&self, left: &String, right: &String, range: f64) -> Option<usize> {
         self.baselines
             .iter()
             .find(|(l, r, t, _, _, _)| l == left && r == right && t == &range)
             .map(|tup| tup.3)
     }
 
+    pub fn get_times_secs(&self, left: &String, right: &String, range: f64) -> Option<Vec<u64>> {
+        let times: Vec<u64> = self
+            .baselines
+            .iter()
+            .filter(|(l, r, t, _, _, _)| l == left && r == right && t == &range)
+            .map(|tup| tup.4)
+            .collect();
+        if times.is_empty() {
+            None
+        } else {
+            Some(times)
+        }
+    }
+
     pub fn add(self, left: &String, right: &String, range: f64, count: usize, seconds: u64) -> () {
-        if self.get(left, right, range).is_none() {
+        if self.get_count(left, right, range).is_none() {
             info!("Writing baseline to {:?}", self.path);
             let mut file = OpenOptions::new()
                 .append(true)
@@ -107,8 +121,15 @@ impl Baselines {
     }
 
     pub fn recall(&self, left: &String, right: &String, range: f64, count: usize) -> Option<f64> {
-        self.get(left, right, range)
+        self.get_count(left, right, range)
             .map(|base_count| count as f64 / base_count as f64)
+    }
+
+    pub fn speedup(&self, left: &String, right: &String, range: f64, seconds: f64) -> Option<f64> {
+        self.get_times_secs(left, right, range).map(|times| {
+            let avg_base_time = times.iter().sum::<u64>() as f64 / times.len() as f64;
+            avg_base_time / seconds
+        })
     }
 }
 
