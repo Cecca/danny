@@ -13,6 +13,12 @@ experiments:
     environment:
       DANNY_SEED:
         - 13124534
+        - 3894712397
+        - 98137401
+        - 12047
+        - 13254177
+        - 12358709
+        - 987125
     parameters:
       --algorithm: fixed-lsh
       --range: [0.6]
@@ -27,6 +33,12 @@ experiments:
     environment:
       DANNY_SEED:
         - 13124534
+        - 3894712397
+        - 98137401
+        - 12047
+        - 13254177
+        - 12358709
+        - 987125
     parameters:
       --algorithm: fixed-lsh
       --range: [0.5]
