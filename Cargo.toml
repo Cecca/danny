@@ -24,6 +24,8 @@ siphasher = "0.3"
 jemallocator = "0.1.8"
 bincode = "1.0"
 packed_simd = "0.3.0"
+rayon = "1.0"
+crossbeam-channel = "0.3"
 
 [build-dependencies]
 vergen = "0.1"
