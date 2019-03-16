@@ -182,18 +182,21 @@ foreignrecords.sort(cmp=sort_len_lex)
 lastrecord = []
 
 with open(args.indexedoutput, "w") as indout:
+	cnt = 0
 	for record in indexedrecords:
 		if args.dedup and lastrecord == record:
 			continue
-		print >> indout, str(ntokens) + " " + " ".join([ str(nmb) for nmb in record ])
+		print >> indout, str(cnt) + "  " + str(ntokens) + " " + " ".join([ str(nmb) for nmb in record ])
 		lastrecord = record
+		cnt += 1
 
 lastrecord = []
 
 if args.foreign:
 	with open(args.foreign_output, "w") as forout:
+		cnt = 0
 		for record in foreignrecords:
 			if args.dedup and lastrecord == record:
 				continue
-			print >> forout, str(ntokens) + " " + " ".join([ str(nmb) for nmb in record ])
+			print >> forout, str(cnt) + " " + str(ntokens) + " " + " ".join([ str(nmb) for nmb in record ])
 			lastrecord = record

@@ -244,7 +244,7 @@ DATASETS = {
         'Livejournal',
         'http://socialnetworks.mpi-sws.mpg.de/data/livejournal-groupmemberships.txt.gz',
         'Livejournal.bin',
-        preprocess_orkut
+        preprocess_livejournal
     )
 }
 
