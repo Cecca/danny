@@ -1,9 +1,8 @@
 ---
 environment:
-  DANNY_THREADS: 4
+  DANNY_THREADS: 8
   DANNY_HOSTS: "sss00:2001,sss01:2001,sss02:2001,sss03:2001,sss04:2001"
   DANNY_BASELINES_PATH: "/mnt/fast_storage/users/mcec/baselines.csv"
-post: Rscript plot_fixed.R
 experiments:
 
   - name: Glove no sketch
