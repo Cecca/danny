@@ -173,3 +173,29 @@ impl Jaccard for BagOfWords {
         intersection as f64 / (a.words.len() + b.words.len() - intersection) as f64
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use rand::SeedableRng;
+    use rand_xorshift::XorShiftRng;
+    use std::collections::BTreeSet;
+
+    fn simple_jaccard(a: &BagOfWords, b: &BagOfWords) -> f64 {
+        let mut a_set: BTreeSet<u32> = BTreeSet::new();
+        a_set.extend(a.words().iter());
+        let mut b_set: BTreeSet<u32> = BTreeSet::new();
+        b_set.extend(b.words().iter());
+        a_set.intersection(&b_set).count() as f64 / a_set.union(&b_set).count() as f64
+    }
+
+    #[test]
+    fn test_jaccard() {
+        let mut rng = XorShiftRng::seed_from_u64(1412);
+        let a = BagOfWords::random(3000, 1.5, &mut rng);
+        let b = BagOfWords::random(3000, 1.5, &mut rng);
+        let actual = Jaccard::jaccard(&a, &b);
+        let expected = simple_jaccard(&a, &b);
+        assert_eq!(actual, expected);
+    }
+}
