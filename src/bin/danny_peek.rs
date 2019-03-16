@@ -62,7 +62,7 @@ where
             };
             println!("{} {} {}", src, dst, sim);
             let d = 1.0 - sim;
-            if sim >= range && d >= 0.0 {
+            if sim >= range && d > 0.0 {
                 info!("Vector above similarity {:?}", u);
                 lid += (d / denom).ln();
                 count += 1;

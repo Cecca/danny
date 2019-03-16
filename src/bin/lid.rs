@@ -49,10 +49,10 @@ where
     let mut output = BufWriter::new(output_file);
     let mut pl = ProgressLogger::new(Duration::from_secs(30), "points".to_owned(), Some((data.len()*ranges.len()) as u64));
 
-    thread::spawn(move || {
+    let th = thread::spawn(move || {
         for (c, range, lid) in recv.iter() {
             pl.add(1);
-            writeln!(output, "{} {} {}", c, range, lid);
+            writeln!(output, "{} {} {}", c, range, lid).expect("Write failed");
         }
         pl.done();
     });
@@ -70,9 +70,9 @@ where
                 };
                 let d = 1.0 - s;
                 for (i, range) in ranges.iter().enumerate() {
-                    if s >= *range && d >= 0.0 {
+                    if s >= *range && d > 0.0 {
                         let denom = 1.0 - *range;
-                        lids[i] += (d / denom).ln();
+                        lids[i] +=(d / denom).ln();
                         counts[i] += 1;
                     }
                 }
@@ -85,6 +85,9 @@ where
                 } 
             }
         });
+        drop(send);
+
+        th.join();
 }
 
 fn main() {
