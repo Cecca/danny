@@ -31,6 +31,8 @@ pub struct Config {
     baselines_path: PathBuf,
     #[serde(default = "Config::default_sketch_epsilon")]
     sketch_epsilon: f64,
+    #[serde(default = "Config::default_estimator_samples")]
+    estimator_samples: usize,
 }
 
 #[allow(dead_code)]
@@ -46,6 +48,8 @@ impl Config {
             DANNY_SEED        The seed for the random number generator
             DANNY_SKETCH_EPSILON  The value of epsilon for the sketcher (if used)
             DANNY_BASELINES_PATH  The path to the baselines file
+            DANNY_ESTIMATOR_SAMPLES  The number of vectors to sample _in each worker_ to
+                                     estimate the best k value
         "
     }
 
@@ -54,6 +58,10 @@ impl Config {
             Ok(config) => config,
             Err(error) => panic!("{:#?}", error),
         }
+    }
+
+    fn default_estimator_samples() -> usize {
+        100
     }
 
     fn default_baselines_path() -> PathBuf {
@@ -98,6 +106,10 @@ impl Config {
 
     pub fn get_baselines_path(&self) -> PathBuf {
         self.baselines_path.clone()
+    }
+
+    pub fn get_estimator_samples(&self) -> usize {
+        self.estimator_samples
     }
 
     pub fn get_timely_builder(&self) -> (Vec<GenericBuilder>, Box<dyn Any + 'static>) {
@@ -165,13 +177,28 @@ impl Config {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum ParamK {
+    Max(usize),
+    Exact(usize),
+}
+
+impl ParamK {
+    pub fn to_string(&self) -> String {
+        match self {
+            ParamK::Max(k) => "Max(k)".to_owned(),
+            ParamK::Exact(k) => "Exact(k)".to_owned(),
+        }
+    }
+}
+
 pub struct CmdlineConfig {
     pub measure: String,
     pub threshold: f64,
     pub left_path: String,
     pub right_path: String,
     pub algorithm: String,
-    pub k: Option<usize>,
+    pub k: Option<ParamK>,
     pub sketch_bits: Option<usize>,
 }
 
@@ -184,6 +211,7 @@ impl CmdlineConfig {
             (@arg ALGORITHM: -a --algorithm +takes_value "The algorithm to be used: (fixed-lsh, all-2-all)")
             (@arg MEASURE: -m --measure +required +takes_value "The similarity measure to be used")
             (@arg K: -k +takes_value "The number of concatenations of the hash function")
+            (@arg MAX_K: --("max-k") +takes_value "The max number of concatenations of the hash function: auto sets it. Overridden by -k")
             (@arg THRESHOLD: -r --range +required +takes_value "The similarity threshold")
             (@arg BITS: --("sketch-bits") +takes_value "The number of bits to use for sketching")
             (@arg LEFT: +required "Path to the left hand side of the join")
@@ -212,11 +240,22 @@ impl CmdlineConfig {
             .value_of("ALGORITHM")
             .unwrap_or("all-2-all")
             .to_owned();
-        let k = matches.value_of("K").map(|k_str| {
-            k_str
-                .parse::<usize>()
-                .expect("k should be an unsigned integer")
-        });
+        let k = matches
+            .value_of("K")
+            .map(|k_str| {
+                let _k = k_str
+                    .parse::<usize>()
+                    .expect("k should be an unsigned integer");
+                ParamK::Exact(_k)
+            })
+            .or_else(|| {
+                matches.value_of("MAX_K").map(|max_k_str| {
+                    let _k = max_k_str
+                        .parse::<usize>()
+                        .expect("k should be an unsigned integer");
+                    ParamK::Max(_k)
+                })
+            });
         let sketch_bits = matches.value_of("BITS").map(|bits_str| {
             bits_str
                 .parse::<usize>()

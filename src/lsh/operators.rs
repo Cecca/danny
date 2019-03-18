@@ -12,7 +12,7 @@ use crate::sketch::*;
 use crate::types::*;
 use abomonation::Abomonation;
 use rand::distributions::{Distribution, Normal, Uniform};
-use rand::Rng;
+use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
 use std::clone::Clone;
 use std::collections::{HashMap, HashSet};
@@ -397,4 +397,55 @@ mod tests {
         assert_eq!(expected, actual);
         assert!(iterator.done());
     }
+}
+
+pub fn collect_sample<G, K, D, F, H, R>(
+    scope: &G,
+    global_vecs: Arc<RwLock<Arc<ChunkedDataset<K, D>>>>,
+    n: usize,
+    matrix: MatrixDescription,
+    direction: MatrixDirection,
+    rng: R,
+) -> Stream<G, (K, D)>
+where
+    G: Scope<Timestamp = u32>,
+    // G: Scope<Timestamp = Product<u32, u32>>,
+    D: Data + Sync + Send + Clone + Abomonation + Debug,
+    F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
+    H: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
+    K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
+    R: Rng + SeedableRng + Clone + ?Sized + 'static,
+{
+    let worker: u64 = scope.index() as u64;
+    let mut seeder = rng.clone();
+    for _ in 0..worker {
+        seeder.gen::<f64>();
+    }
+
+    let mut rng = R::from_rng(seeder).expect("Error initializing random number generator");
+
+    source(scope, "hashed source", move |capability| {
+        let mut rng = rng;
+        let mut cap = Some(capability);
+        let vecs = Arc::clone(&global_vecs.read().expect("Could not get global vectors"));
+        move |output| {
+            let mut done = false;
+            if let Some(cap) = cap.as_mut() {
+                let mut session = output.session(&cap);
+                let p = n as f64 / vecs.stripe_len(&matrix, direction, worker) as f64;
+                info!("Sampling with probability {}", p);
+                for (k, v) in vecs.iter_stripe(&matrix, direction, worker) {
+                    if rng.gen_bool(p) {
+                        session.give((k.clone(), v.clone()));
+                    }
+                }
+                done = true;
+            }
+
+            if done {
+                // Drop the capability to signal that we will send no more data
+                cap = None;
+            }
+        }
+    })
 }

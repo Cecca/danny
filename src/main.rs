@@ -33,43 +33,45 @@ fn main() {
         "fixed-lsh" => match args.measure.as_ref() {
             "cosine" => {
                 let k = args.k.expect("K is needed on the command line");
-                let repetitions = lsh::Hyperplane::repetitions_at_range(args.threshold, k);
                 let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
                 let threshold = args.threshold;
-                let hash_funs = lsh::Hyperplane::collection(k, repetitions, dim, &mut rng);
+                let hash_funs_builder = lsh::Hyperplane::collection_builder(threshold, dim);
                 let sketcher_pair = args.sketch_bits.map(|bits| {
                     (
                         LongSimHash::new(bits, dim, &mut rng),
                         SketchPredicate::cosine(bits, threshold, config.get_sketch_epsilon()),
                     )
                 });
-                lsh::fixed_param_lsh::<UnitNormVector, _, _, _, _, _>(
+                lsh::fixed_param_lsh::<UnitNormVector, _, _, _, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,
-                    hash_funs,
+                    k,
+                    hash_funs_builder,
                     sketcher_pair,
                     move |a, b| InnerProduct::cosine(a, b) >= threshold,
+                    &mut rng,
                     &config,
                     &mut experiment,
                 )
             }
             "jaccard" => {
                 let k = args.k.expect("K is needed on the command line");
-                let repetitions = lsh::MinHash::repetitions_at_range(args.threshold, k);
                 let threshold = args.threshold;
-                let hash_funs = lsh::MinHash::collection(k, repetitions, &mut rng);
+                let hash_funs_builder = lsh::MinHash::collection_builder(threshold);
                 let sketcher_pair = args.sketch_bits.map(|bits| {
                     (
                         OneBitMinHash::new(bits, &mut rng),
                         SketchPredicate::jaccard(bits, threshold, config.get_sketch_epsilon()),
                     )
                 });
-                lsh::fixed_param_lsh::<BagOfWords, _, _, _, _, _>(
+                lsh::fixed_param_lsh::<BagOfWords, _, _, _, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,
-                    hash_funs,
+                    k,
+                    hash_funs_builder,
                     sketcher_pair,
                     move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
+                    &mut rng,
                     &config,
                     &mut experiment,
                 )

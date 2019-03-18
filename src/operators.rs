@@ -3,11 +3,16 @@ use crate::logging::*;
 use abomonation::Abomonation;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
+use std::cell::Ref;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Add;
+use std::ops::Deref;
+use std::rc::Rc;
 use timely::dataflow::channels::pact::Pipeline as PipelinePact;
+use timely::dataflow::operators::capture::event::{Event, EventPusher};
 use timely::dataflow::operators::*;
 use timely::dataflow::Scope;
 use timely::dataflow::Stream;
@@ -524,6 +529,40 @@ where
                 sums.retain(|_, c| c.is_some());
             }
         })
+    }
+}
+
+pub struct LocalData<D> {
+    local_data: Rc<RefCell<Vec<D>>>,
+}
+
+impl<D> Clone for LocalData<D> {
+    fn clone(&self) -> Self {
+        Self {
+            local_data: Rc::clone(&self.local_data),
+        }
+    }
+}
+
+impl<D> LocalData<D> {
+    pub fn new() -> Self {
+        Self {
+            local_data: Rc::new(RefCell::new(Vec::new())),
+        }
+    }
+
+    pub fn data(&self) -> Ref<Vec<D>> {
+        self.local_data.borrow()
+    }
+}
+
+impl<T, D> EventPusher<T, D> for LocalData<D> {
+    fn push(&mut self, event: Event<T, D>) {
+        if let Event::Messages(_, mut data) = event {
+            for d in data.drain(..) {
+                self.local_data.borrow_mut().push(d);
+            }
+        }
     }
 }
 

@@ -37,7 +37,8 @@ impl Experiment {
             .tag("git_revision", version::short_sha())
             .tag("git_commit_date", version::commit_date());
         let experiment = if cmdline.k.is_some() {
-            experiment.tag("k", cmdline.k.unwrap())
+            let k_str = cmdline.k.clone().unwrap().to_string().clone();
+            experiment.tag("k", k_str)
         } else {
             experiment
         };
@@ -56,6 +57,13 @@ impl Experiment {
     {
         self.tags.insert(name.to_owned(), value.into());
         self
+    }
+
+    pub fn add_tag<T>(&mut self, name: &str, value: T)
+    where
+        T: Into<Value>,
+    {
+        self.tags.insert(name.to_owned(), value.into());
     }
 
     pub fn append(&mut self, table: &str, row: HashMap<String, Value>) {

@@ -120,6 +120,21 @@ impl Hyperplane {
         }
         LSHCollection { functions }
     }
+
+    pub fn collection_builder<R>(
+        threshold: f64,
+        dim: usize,
+    ) -> impl Fn(usize, &mut R) -> LSHCollection<Hyperplane, u32> + Clone
+    where
+        R: Rng + ?Sized,
+    {
+        let threshold = threshold;
+        let dim = dim;
+        move |k: usize, rng: &mut R| {
+            let repetitions = Hyperplane::repetitions_at_range(threshold, k);
+            Self::collection(k, repetitions, dim, rng)
+        }
+    }
 }
 
 impl LSHFunction for Hyperplane {
@@ -223,6 +238,19 @@ impl MinHash {
         }
         LSHCollection { functions }
     }
+
+    pub fn collection_builder<R>(
+        threshold: f64,
+    ) -> impl Fn(usize, &mut R) -> LSHCollection<MinHash, u32> + Clone
+    where
+        R: Rng + ?Sized,
+    {
+        let threshold = threshold;
+        move |k: usize, rng: &mut R| {
+            let repetitions = MinHash::repetitions_at_range(threshold, k);
+            Self::collection(k, repetitions, rng)
+        }
+    }
 }
 
 impl LSHFunction for MinHash {
@@ -247,6 +275,74 @@ impl LSHFunction for MinHash {
     fn probability_at_range(range: f64) -> f64 {
         range
     }
+}
+
+pub fn estimate_best_k<K, D, H, F, B, R>(
+    left: Vec<(K, D)>,
+    right: Vec<(K, D)>,
+    max_k: usize,
+    builder: B,
+    rng: &mut R,
+) -> usize
+where
+    K: Send + Sync + 'static,
+    D: Clone + Send + Sync + 'static,
+    H: Clone + Hash + Eq + Send + Sync + 'static,
+    F: LSHFunction<Input = D, Output = H> + Clone + Send + Sync + 'static,
+    B: Fn(usize, &mut R) -> LSHCollection<F, H>,
+    R: Rng + ?Sized,
+{
+    let left = Arc::new(left);
+    let right = Arc::new(right);
+    let mut best_k = 0;
+    let mut min_cost = std::usize::MAX;
+    for k in 1..=max_k {
+        info!("Estimating collisions for k={}", k);
+        let hasher = builder(k, rng);
+        let hasher = Arc::new(hasher);
+        let mut comparisons_count = 0usize;
+        for rep in 0..hasher.repetitions() {
+            let hasher_1 = Arc::clone(&hasher);
+            let hasher_2 = Arc::clone(&hasher);
+            let left = Arc::clone(&left);
+            let right = Arc::clone(&right);
+            let left_buckets = Arc::new(Mutex::new(HashMap::new()));
+            let right_buckets = Arc::new(Mutex::new(HashMap::new()));
+            let left_buckets_2 = Arc::clone(&left_buckets);
+            let right_buckets_2 = Arc::clone(&right_buckets);
+            let h1 = thread::spawn(move || {
+                let mut left_buckets = left_buckets.lock().unwrap();
+                for (_, v) in left.iter() {
+                    let h = hasher_1.hash(v, rep);
+                    *left_buckets.entry(h).or_insert(0usize) += 1;
+                }
+            });
+            let h2 = thread::spawn(move || {
+                let mut right_buckets = right_buckets.lock().unwrap();
+                for (_, v) in right.iter() {
+                    let h = hasher_2.hash(v, rep);
+                    *right_buckets.entry(h).or_insert(0usize) += 1;
+                }
+            });
+            h1.join().unwrap();
+            h2.join().unwrap();
+            for (k, l_cnt) in left_buckets_2.lock().unwrap().drain() {
+                if let Some(r_cnt) = right_buckets_2.lock().unwrap().get(&k) {
+                    comparisons_count += r_cnt * l_cnt;
+                }
+            }
+        }
+        let cost = comparisons_count + hasher.repetitions() * (left.len() + right.len());
+        info!("Cost for k={} -> {}", k, cost);
+        if cost < min_cost {
+            min_cost = cost;
+            best_k = k;
+        } else {
+            info!("Cost is now raising, breaking the loop");
+            break;
+        }
+    }
+    best_k
 }
 
 #[cfg(test)]
