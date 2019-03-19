@@ -33,6 +33,8 @@ pub struct Config {
     sketch_epsilon: f64,
     #[serde(default = "Config::default_estimator_samples")]
     estimator_samples: usize,
+    #[serde(default = "Config::default_batch_size")]
+    batch_size: usize,
 }
 
 #[allow(dead_code)]
@@ -50,6 +52,7 @@ impl Config {
             DANNY_BASELINES_PATH  The path to the baselines file
             DANNY_ESTIMATOR_SAMPLES  The number of vectors to sample _in each worker_ to
                                      estimate the best k value
+            DANNY_BATCH_SIZE   The number of candidate pairs generated at a time
         "
     }
 
@@ -62,6 +65,10 @@ impl Config {
 
     fn default_estimator_samples() -> usize {
         100
+    }
+
+    fn default_batch_size() -> usize {
+        1_000_000
     }
 
     fn default_baselines_path() -> PathBuf {
@@ -110,6 +117,10 @@ impl Config {
 
     pub fn get_estimator_samples(&self) -> usize {
         self.estimator_samples
+    }
+
+    pub fn get_batch_size(&self) -> usize {
+        self.batch_size
     }
 
     pub fn get_timely_builder(&self) -> (Vec<GenericBuilder>, Box<dyn Any + 'static>) {

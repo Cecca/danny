@@ -166,6 +166,8 @@ where
     let (send_k, recv_k) = channel();
     let send_k = Arc::new(Mutex::new(send_k));
 
+    let batch_size = config.get_batch_size();
+
     let left_path = left_path.clone();
     let right_path = right_path.clone();
     let left_path_final = left_path.clone();
@@ -236,100 +238,108 @@ where
         let sketcher_pair = sketcher_pair.clone();
 
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
-            let mut probe = ProbeHandle::new();
-            let sketcher_pair = sketcher_pair;
+            let mut outer = scope.clone();
+            outer.scoped::<Product<u32, u32>, _, _>("inner-dataflow", |inner| {
+                let mut probe = ProbeHandle::new();
+                let sketcher_pair = sketcher_pair;
 
-            let matrix = MatrixDescription::for_workers(peers as usize);
+                let matrix = MatrixDescription::for_workers(peers as usize);
 
-            let candidates = match sketcher_pair {
-                Some((sketcher, sketch_predicate)) => {
-                    let left_hashes = source_hashed_sketched(
-                        scope,
-                        Arc::clone(&global_left_read),
-                        hash_fn.clone(),
-                        sketcher.clone(),
-                        matrix,
-                        MatrixDirection::Rows,
-                        probe.clone(),
-                    );
-                    let right_hashes = source_hashed_sketched(
-                        scope,
-                        Arc::clone(&global_right_read),
-                        hash_fn.clone(),
-                        sketcher.clone(),
-                        matrix,
-                        MatrixDirection::Rows,
-                        probe.clone(),
-                    );
-                    left_hashes
-                        .bucket(&right_hashes)
-                        .filter_sketches(sketch_predicate)
-                }
-                None => {
-                    let left_hashes = source_hashed(
-                        scope,
-                        Arc::clone(&global_left_read),
-                        hash_fn.clone(),
-                        matrix,
-                        MatrixDirection::Rows,
-                        probe.clone(),
-                    );
-                    let right_hashes = source_hashed(
-                        scope,
-                        Arc::clone(&global_right_read),
-                        hash_fn.clone(),
-                        matrix,
-                        MatrixDirection::Columns,
-                        probe.clone(),
-                    );
-                    left_hashes.bucket(&right_hashes)
-                }
-            };
-
-            let global_left = Arc::clone(
-                &global_left_read
-                    .read()
-                    .expect("Cannot get the lock on the global left dataset"),
-            );
-            let global_right = Arc::clone(
-                &global_right_read
-                    .read()
-                    .expect("Cannot get the lock on the global right dataset"),
-            );
-
-            candidates
-                .pair_route(matrix)
-                .map(|pair| pair.1)
-                .approximate_distinct(1 << 30, 0.05, 123123123)
-                .unary(PipelinePact, "count-matching", move |_, _| {
-                    let mut pl = ProgressLogger::new(
-                        Duration::from_secs(60),
-                        "comparisons".to_owned(),
-                        None,
-                    );
-                    move |input, output| {
-                        input.for_each(|t, d| {
-                            let mut data = d.replace(Vec::new());
-                            let count = data
-                                .drain(..)
-                                .filter(|(lk, rk)| {
-                                    let lv = &global_left[lk];
-                                    let rv = &global_right[rk];
-                                    sim_pred(lv, rv)
-                                })
-                                .count() as u64;
-                            pl.add(count);
-                            let mut session = output.session(&t);
-                            session.give(count);
-                        });
+                let candidates = match sketcher_pair {
+                    Some((sketcher, sketch_predicate)) => {
+                        let left_hashes = source_hashed_sketched(
+                            scope,
+                            Arc::clone(&global_left_read),
+                            hash_fn.clone(),
+                            sketcher.clone(),
+                            matrix,
+                            MatrixDirection::Rows,
+                            probe.clone(),
+                        )
+                        .enter(inner);
+                        let right_hashes = source_hashed_sketched(
+                            scope,
+                            Arc::clone(&global_right_read),
+                            hash_fn.clone(),
+                            sketcher.clone(),
+                            matrix,
+                            MatrixDirection::Rows,
+                            probe.clone(),
+                        )
+                        .enter(inner);
+                        left_hashes
+                            .bucket(&right_hashes, batch_size)
+                            .filter_sketches(sketch_predicate)
                     }
-                })
-                .stream_sum()
-                .exchange(|_| 0)
-                .probe_with(&mut probe)
-                .capture_into(output_send_ch);
+                    None => {
+                        let left_hashes = source_hashed(
+                            scope,
+                            Arc::clone(&global_left_read),
+                            hash_fn.clone(),
+                            matrix,
+                            MatrixDirection::Rows,
+                            probe.clone(),
+                        )
+                        .enter(inner);
+                        let right_hashes = source_hashed(
+                            scope,
+                            Arc::clone(&global_right_read),
+                            hash_fn.clone(),
+                            matrix,
+                            MatrixDirection::Columns,
+                            probe.clone(),
+                        )
+                        .enter(inner);
+                        left_hashes.bucket(&right_hashes, batch_size)
+                    }
+                };
 
-            probe
+                let global_left = Arc::clone(
+                    &global_left_read
+                        .read()
+                        .expect("Cannot get the lock on the global left dataset"),
+                );
+                let global_right = Arc::clone(
+                    &global_right_read
+                        .read()
+                        .expect("Cannot get the lock on the global right dataset"),
+                );
+
+                candidates
+                    .pair_route(matrix)
+                    .map(|pair| pair.1)
+                    .approximate_distinct(1 << 30, 0.05, 123123123)
+                    .unary(PipelinePact, "count-matching", move |_, _| {
+                        let mut pl = ProgressLogger::new(
+                            Duration::from_secs(60),
+                            "comparisons".to_owned(),
+                            None,
+                        );
+                        move |input, output| {
+                            input.for_each(|t, d| {
+                                let mut data = d.replace(Vec::new());
+                                let count = data
+                                    .drain(..)
+                                    .filter(|(lk, rk)| {
+                                        let lv = &global_left[lk];
+                                        let rv = &global_right[rk];
+                                        sim_pred(lv, rv)
+                                    })
+                                    .count() as u64;
+                                pl.add(count);
+                                let mut session = output.session(&t);
+                                session.give(count);
+                            });
+                        }
+                    })
+                    .stream_sum()
+                    .exchange(|_| 0)
+                    .leave()
+                    .probe_with(&mut probe)
+                    .capture_into(output_send_ch);
+
+                probe
+            })
         });
 
         // Do the stepping even though it's not strictly needed: we use it to wait for the dataflow

@@ -127,7 +127,7 @@ where
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
-    fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)>;
+    fn bucket(&self, right: &Stream<G, (H, K)>, batch_size: usize) -> Stream<G, (K, K)>;
 }
 
 impl<G, T, H, K> BucketStream<G, T, H, K> for Stream<G, (H, K)>
@@ -137,10 +137,11 @@ where
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
-    fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)> {
+    fn bucket(&self, right: &Stream<G, (H, K)>, batch_size: usize) -> Stream<G, (K, K)> {
         let mut left_buckets = HashMap::new();
         let mut right_buckets = HashMap::new();
         let mut generators = Vec::new();
+        let logger = self.scope().danny_logger();
 
         self.binary_frontier(
             &right,
@@ -192,7 +193,14 @@ where
                     }
                     for (time, generator) in generators.iter_mut() {
                         // Emit some output pairs
-                        output.session(time).give_iterator(generator);
+                        let mut session = output.session(time);
+                        let mut cnt = 0;
+                        for pair in generator.take(batch_size) {
+                            session.give(pair);
+                            cnt += 1;
+                        }
+                        log_event!(logger, LogEvent::GeneratedPairs(cnt));
+                        time.downgrade(&time.time().succ());
                     }
 
                     // Cleanup exhausted generators
@@ -240,7 +248,6 @@ where
                     }
                 });
                 log_event!(logger, LogEvent::SketchDiscarded(discarded));
-                log_event!(logger, LogEvent::GeneratedPairs(cnt));
             }
         })
     }

@@ -29,6 +29,8 @@ impl Experiment {
             .tag("total_threads", config.get_total_workers())
             .tag("seed", config.get_seed())
             .tag("sketch_epsilon", config.get_sketch_epsilon())
+            .tag("estimator_samples", config.get_estimator_samples())
+            .tag("batch_size", config.get_batch_size())
             .tag("measure", cmdline.measure.clone())
             .tag("threshold", cmdline.threshold)
             .tag("left_path", cmdline.left_path.clone())
