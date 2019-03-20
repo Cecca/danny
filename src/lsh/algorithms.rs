@@ -1,3 +1,4 @@
+use crate::bloom::*;
 use crate::config::*;
 use crate::dataset::ChunkedDataset;
 use crate::experiment::Experiment;
@@ -183,7 +184,14 @@ where
     let bloom_fpp = config.get_bloom_fpp();
     let bloom_elements = config.get_bloom_elements();
 
+    let bloom_filter = Arc::new(AtomicBloomFilter::<(u32, u32)>::new(
+        4usize.gb_to_bits(),
+        5,
+        rng.clone(),
+    ));
+
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
+        let bloom_filter = Arc::clone(&bloom_filter);
         let hash_collection_builder = hash_collection_builder.clone();
         let mut rng = rng.clone();
         let execution_summary = init_event_logging(&worker);
@@ -240,6 +248,7 @@ where
         let sketcher_pair = sketcher_pair.clone();
 
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
+            let bloom_filter = Arc::clone(&bloom_filter);
             let mut outer = scope.clone();
             outer.scoped::<Product<u32, u32>, _, _>("inner-dataflow", |inner| {
                 let mut probe = ProbeHandle::new();
@@ -310,7 +319,8 @@ where
                 candidates
                     .pair_route(matrix)
                     .map(|pair| pair.1)
-                    .approximate_distinct(1 << bloom_elements, bloom_fpp, 123123123)
+                    // .approximate_distinct(1 << bloom_elements, bloom_fpp, 123123123)
+                    .approximate_distinct_atomic(Arc::clone(&bloom_filter))
                     .unary(PipelinePact, "count-matching", move |_, _| {
                         let mut pl = ProgressLogger::new(
                             Duration::from_secs(60),

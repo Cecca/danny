@@ -1,4 +1,4 @@
-use crate::bloom::BloomFilter;
+use crate::bloom::*;
 use crate::logging::*;
 use abomonation::Abomonation;
 use rand::SeedableRng;
@@ -11,6 +11,7 @@ use std::hash::Hash;
 use std::ops::Add;
 use std::ops::Deref;
 use std::rc::Rc;
+use std::sync::Arc;
 use timely::dataflow::channels::pact::Pipeline as PipelinePact;
 use timely::dataflow::operators::capture::event::{Event, EventPusher};
 use timely::dataflow::operators::*;
@@ -405,9 +406,10 @@ where
 pub trait ApproximateDistinct<G, D>
 where
     G: Scope,
-    D: Data,
+    D: Data + Hash,
 {
     fn approximate_distinct(&self, expected_elements: usize, fpp: f64, seed: u64) -> Stream<G, D>;
+    fn approximate_distinct_atomic(&self, filter: Arc<AtomicBloomFilter<D>>) -> Stream<G, D>;
 }
 
 impl<G, D> ApproximateDistinct<G, D> for Stream<G, D>
@@ -415,6 +417,33 @@ where
     G: Scope,
     D: Data + Hash,
 {
+    fn approximate_distinct_atomic(&self, filter: Arc<AtomicBloomFilter<D>>) -> Stream<G, D> {
+        let logger = self.scope().danny_logger();
+        self.unary(PipelinePact, "approximate-distinct-atomic", move |_, _| {
+            move |input, output| {
+                input.for_each(|t, d| {
+                    let mut data = d.replace(Vec::new());
+                    let mut cnt = 0;
+                    let mut received = 0;
+                    for v in data.drain(..) {
+                        received += 1;
+                        if !filter.test_and_insert(&v) {
+                            output.session(&t).give(v);
+                            cnt += 1;
+                        }
+                    }
+                    // pl.add(received as u64);
+                    log_event!(logger, LogEvent::DistinctPairs(cnt));
+                    log_event!(logger, LogEvent::DuplicatesDiscarded(received - cnt));
+                    debug!(
+                        "Filtered {} elements out of {} received",
+                        received - cnt,
+                        received
+                    );
+                });
+            }
+        })
+    }
     fn approximate_distinct(&self, expected_elements: usize, fpp: f64, seed: u64) -> Stream<G, D> {
         let mut rng = XorShiftRng::seed_from_u64(seed);
         info!("Memory before creating bloom filter data {}", proc_mem!());
@@ -426,11 +455,6 @@ where
         );
         let logger = self.scope().danny_logger();
         self.unary(PipelinePact, "approximate-distinct", move |_, _| {
-            // let mut pl = ProgressLogger::new(
-            //     std::time::Duration::from_secs(10),
-            //     "filtering pairs".to_owned(),
-            //     None,
-            // );
             move |input, output| {
                 input.for_each(|t, d| {
                     let mut data = d.replace(Vec::new());
@@ -440,12 +464,10 @@ where
                         received += 1;
                         if !filter.contains(&v) {
                             filter.insert(&v);
-                            // TODO: check that the filter is not full
                             output.session(&t).give(v);
                             cnt += 1;
                         }
                     }
-                    // pl.add(received as u64);
                     log_event!(logger, LogEvent::DistinctPairs(cnt));
                     log_event!(logger, LogEvent::DuplicatesDiscarded(received - cnt));
                     debug!(
