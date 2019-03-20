@@ -41,7 +41,7 @@ impl<T: Hash> BloomFilter<T> {
             let h = SipHasher::new_with_keys(rng.next_u64(), rng.next_u64());
             hashers.push(h);
         }
-        let estimated_elements = HyperLogLog::new(0.1);
+        let estimated_elements = HyperLogLog::new(0.01);
 
         BloomFilter {
             num_bits,
