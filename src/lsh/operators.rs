@@ -158,6 +158,7 @@ where
                         );
                         let rep_entry = left_buckets.entry(t.retain()).or_insert_with(HashMap::new);
                         let mut data = d.replace(Vec::new());
+                        log_event!(logger, LogEvent::ReceivedHashes(data.len()));
                         for (h, k) in data.drain(..) {
                             rep_entry.entry(h).or_insert_with(Vec::new).push(k);
                         }
@@ -171,6 +172,7 @@ where
                         let rep_entry =
                             right_buckets.entry(t.retain()).or_insert_with(HashMap::new);
                         let mut data = d.replace(Vec::new());
+                        log_event!(logger, LogEvent::ReceivedHashes(data.len()));
                         for (h, k) in data.drain(..) {
                             rep_entry.entry(h).or_insert_with(Vec::new).push(k);
                         }

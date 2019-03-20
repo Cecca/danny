@@ -137,6 +137,7 @@ pub enum LogEvent {
     DistinctPairs(usize),
     DuplicatesDiscarded(usize),
     GeneratedPairs(usize),
+    ReceivedHashes(usize),
 }
 
 pub trait AsDannyLogger {
@@ -158,6 +159,7 @@ pub struct ExecutionSummary {
     distinct_pairs: AtomicUsize,
     duplicates_discarded: AtomicUsize,
     generated_pairs: AtomicUsize,
+    received_hashes: AtomicUsize,
 }
 
 impl ExecutionSummary {
@@ -167,32 +169,36 @@ impl ExecutionSummary {
             distinct_pairs: 0.into(),
             duplicates_discarded: 0.into(),
             generated_pairs: 0.into(),
+            received_hashes: 0.into(),
         }
     }
 
     pub fn freeze(&self) -> FrozenExecutionSummary {
         FrozenExecutionSummary {
-            sketch_discarded: self.sketch_discarded.load(Ordering::Acquire),
-            distinct_pairs: self.distinct_pairs.load(Ordering::Acquire),
-            duplicates_discarded: self.duplicates_discarded.load(Ordering::Acquire),
-            generated_pairs: self.generated_pairs.load(Ordering::Acquire),
+            sketch_discarded: self.sketch_discarded.load(Ordering::SeqCst),
+            distinct_pairs: self.distinct_pairs.load(Ordering::SeqCst),
+            duplicates_discarded: self.duplicates_discarded.load(Ordering::SeqCst),
+            generated_pairs: self.generated_pairs.load(Ordering::SeqCst),
+            received_hashes: self.received_hashes.load(Ordering::SeqCst),
         }
     }
 
     pub fn add(&self, event: LogEvent) {
         match event {
             LogEvent::SketchDiscarded(count) => {
-                self.sketch_discarded.fetch_add(count, Ordering::Relaxed);
+                self.sketch_discarded.fetch_add(count, Ordering::SeqCst);
             }
             LogEvent::DistinctPairs(count) => {
-                self.distinct_pairs.fetch_add(count, Ordering::Relaxed);
+                self.distinct_pairs.fetch_add(count, Ordering::SeqCst);
             }
             LogEvent::DuplicatesDiscarded(count) => {
-                self.duplicates_discarded
-                    .fetch_add(count, Ordering::Relaxed);
+                self.duplicates_discarded.fetch_add(count, Ordering::SeqCst);
             }
             LogEvent::GeneratedPairs(count) => {
-                self.generated_pairs.fetch_add(count, Ordering::Relaxed);
+                self.generated_pairs.fetch_add(count, Ordering::SeqCst);
+            }
+            LogEvent::ReceivedHashes(count) => {
+                self.received_hashes.fetch_add(count, Ordering::SeqCst);
             }
         }
     }
@@ -204,6 +210,7 @@ pub struct FrozenExecutionSummary {
     pub distinct_pairs: usize,
     pub duplicates_discarded: usize,
     pub generated_pairs: usize,
+    pub received_hashes: usize,
 }
 
 impl FrozenExecutionSummary {
@@ -213,6 +220,7 @@ impl FrozenExecutionSummary {
             distinct_pairs: 0,
             duplicates_discarded: 0,
             generated_pairs: 0,
+            received_hashes: 0,
         }
     }
     pub fn sum(&self, other: &Self) -> Self {
@@ -221,6 +229,7 @@ impl FrozenExecutionSummary {
             distinct_pairs: self.distinct_pairs + other.distinct_pairs,
             duplicates_discarded: self.duplicates_discarded + other.duplicates_discarded,
             generated_pairs: self.generated_pairs + other.generated_pairs,
+            received_hashes: self.received_hashes + other.received_hashes,
         }
     }
 
@@ -231,7 +240,8 @@ impl FrozenExecutionSummary {
                 "sketch_discarded" => self.sketch_discarded,
                 "distinct_pairs" => self.distinct_pairs,
                 "duplicates_discarded" => self.duplicates_discarded,
-                "generated_pairs" => self.generated_pairs
+                "generated_pairs" => self.generated_pairs,
+                "received_hashes" => self.received_hashes
             ),
         )
     }
