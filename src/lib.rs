@@ -14,6 +14,7 @@ extern crate abomonation;
 extern crate abomonation_derive;
 extern crate chrono;
 extern crate core;
+extern crate probabilistic_collections;
 extern crate rand;
 extern crate rand_xorshift;
 extern crate serde_json;

@@ -1,3 +1,4 @@
+use probabilistic_collections::hyperloglog::HyperLogLog;
 use rand::Rng;
 use siphasher::sip::SipHasher;
 use std::fmt::{Debug, Formatter};
@@ -10,6 +11,7 @@ pub struct BloomFilter<T> {
     k: usize,
     bits: Vec<usize>,
     hashers: Vec<SipHasher>,
+    estimated_elements: HyperLogLog<T>,
     _marker: std::marker::PhantomData<T>,
 }
 
@@ -39,6 +41,7 @@ impl<T: Hash> BloomFilter<T> {
             let h = SipHasher::new_with_keys(rng.next_u64(), rng.next_u64());
             hashers.push(h);
         }
+        let estimated_elements = HyperLogLog::new(0.1);
 
         BloomFilter {
             num_bits,
@@ -46,6 +49,7 @@ impl<T: Hash> BloomFilter<T> {
             k,
             bits,
             hashers,
+            estimated_elements,
             _marker: std::marker::PhantomData,
         }
     }
@@ -86,6 +90,16 @@ impl<T: Hash> BloomFilter<T> {
             let mask = 1 << (bit % word_length);
             self.bits[word_idx] |= mask;
         }
+        self.estimated_elements.insert(x);
+    }
+
+    pub fn assert_size(&self) {
+        assert!(
+            (self.estimated_elements.len().ceil() as usize) < self.expected_elements,
+            "Estimated elements {} > {} expected",
+            self.estimated_elements.len(),
+            self.expected_elements
+        );
     }
 
     fn fpp(&self) -> f64 {

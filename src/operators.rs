@@ -453,6 +453,7 @@ where
                         received - cnt,
                         received
                     );
+                    filter.assert_size();
                 });
             }
         })

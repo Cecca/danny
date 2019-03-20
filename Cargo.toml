@@ -26,6 +26,7 @@ bincode = "1.0"
 packed_simd = "0.3.0"
 rayon = "1.0"
 crossbeam-channel = "0.3"
+probabilistic-collections = "0.5"
 
 [build-dependencies]
 vergen = "0.1"
