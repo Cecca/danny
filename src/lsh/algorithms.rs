@@ -150,7 +150,7 @@ where
         ReadBinaryFile + Deserialize<'de> + Data + Sync + Send + Clone + Abomonation + Debug,
     F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
     H: LSHFunction<Input = D, Output = O> + Sync + Send + Clone + 'static,
-    O: Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash,
+    O: Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash + Ord,
     S: Sketcher<Input = D, Output = V> + Send + Sync + Clone + 'static,
     V: Data + Debug + Sync + Send + Clone + Abomonation + SketchEstimate + BitBasedSketch,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,

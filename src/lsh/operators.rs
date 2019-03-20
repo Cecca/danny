@@ -15,7 +15,8 @@ use rand::distributions::{Distribution, Normal, Uniform};
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
 use std::clone::Clone;
-use std::collections::{HashMap, HashSet};
+use std::collections::hash_map::Drain;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::mpsc::{channel, Sender};
@@ -33,21 +34,19 @@ use timely::Data;
 
 pub struct PairGenerator<H, K>
 where
-    H: Hash + Eq,
+    H: Hash + Eq + Ord,
 {
-    left: HashMap<H, Vec<K>>,
-    right: HashMap<H, Vec<K>>,
+    buckets: HashMap<H, (Vec<K>, Vec<K>)>,
     cur_left: Vec<K>,
     cur_right: Vec<K>,
     cur_left_idx: usize,
     cur_right_idx: usize,
 }
 
-impl<H: Hash + Eq + Clone, K: Clone> PairGenerator<H, K> {
-    pub fn new(left: HashMap<H, Vec<K>>, right: HashMap<H, Vec<K>>) -> Self {
+impl<H: Hash + Eq + Clone + Ord, K: Clone> PairGenerator<H, K> {
+    pub fn new(buckets: HashMap<H, (Vec<K>, Vec<K>)>) -> Self {
         PairGenerator {
-            left,
-            right,
+            buckets,
             cur_left: Vec::new(),
             cur_right: Vec::new(),
             cur_left_idx: 0,
@@ -56,49 +55,42 @@ impl<H: Hash + Eq + Clone, K: Clone> PairGenerator<H, K> {
     }
 
     pub fn done(&self) -> bool {
-        self.left.is_empty()
-            && self.right.is_empty()
-            && self.cur_left.is_empty()
-            && self.cur_right.is_empty()
+        self.buckets.is_empty() && self.cur_left.is_empty() && self.cur_right.is_empty()
     }
 }
 
-impl<H: Hash + Eq + Clone, K: Clone> Iterator for PairGenerator<H, K> {
+impl<H: Hash + Eq + Clone + Ord, K: Clone> Iterator for PairGenerator<H, K> {
     type Item = (K, K);
 
     fn next(&mut self) -> Option<(K, K)> {
         if self.done() {
             return None;
         }
+        // info!("Iter");
+        // dbg!(&self.cur_left);
+        // dbg!(&self.cur_right);
         if self.cur_left.is_empty() {
             assert!(
                 self.cur_right.is_empty(),
                 "left vector is empty, but right one is not"
             );
-            let k = self
-                .left
-                .keys()
-                .cloned()
-                .filter(|k| self.right.contains_key(k))
-                .next();
-            if k.is_none() {
-                // No more common keys between left and right, cleanup and return
-                self.left.clear();
-                self.right.clear();
-                return None;
+            loop {
+                // Early return if there is no key, i.e. if the map is empty
+                let key = self.buckets.keys().next().cloned()?;
+                let buckets = self.buckets.remove(&key).unwrap();
+                // Consider only non empty buckets
+                if !buckets.0.is_empty() && !buckets.1.is_empty() {
+                    self.cur_left = buckets.0;
+                    self.cur_right = buckets.1;
+                    self.cur_left_idx = 0;
+                    self.cur_right_idx = 0;
+                    // info!("Using key {:?}", key);
+                    break;
+                }
             }
-            let key = k.unwrap();
-            self.cur_left = self
-                .left
-                .remove(&key)
-                .expect("This left key should be present");
-            self.cur_right = self
-                .right
-                .remove(&key)
-                .expect("This right key should be present");
-            self.cur_left_idx = 0;
-            self.cur_right_idx = 0;
         }
+        // dbg!(self.cur_left.len());
+        // dbg!(self.cur_right.len());
         let left_elem = self.cur_left[self.cur_left_idx].clone();
         let right_elem = self.cur_right[self.cur_right_idx].clone();
         let pair = (left_elem, right_elem);
@@ -107,6 +99,7 @@ impl<H: Hash + Eq + Clone, K: Clone> Iterator for PairGenerator<H, K> {
             self.cur_right_idx = 0;
             if self.cur_left_idx + 1 >= self.cur_left.len() {
                 // We are done for this key
+                // info!("Clearing both vectors");
                 self.cur_left.clear();
                 self.cur_right.clear();
             } else {
@@ -124,7 +117,7 @@ pub trait BucketStream<G, T, H, K>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ,
-    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
+    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     fn bucket(&self, right: &Stream<G, (H, K)>, batch_size: usize) -> Stream<G, (K, K)>;
@@ -134,12 +127,11 @@ impl<G, T, H, K> BucketStream<G, T, H, K> for Stream<G, (H, K)>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ,
-    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
+    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     fn bucket(&self, right: &Stream<G, (H, K)>, batch_size: usize) -> Stream<G, (K, K)> {
-        let mut left_buckets = HashMap::new();
-        let mut right_buckets = HashMap::new();
+        let mut buckets = HashMap::new();
         let mut generators = Vec::new();
         let logger = self.scope().danny_logger();
 
@@ -156,11 +148,14 @@ where
                             t.time(),
                             d.iter()
                         );
-                        let rep_entry = left_buckets.entry(t.retain()).or_insert_with(HashMap::new);
+                        let rep_entry = buckets.entry(t.retain()).or_insert_with(HashMap::new);
                         let mut data = d.replace(Vec::new());
                         log_event!(logger, LogEvent::ReceivedHashes(data.len()));
                         for (h, k) in data.drain(..) {
-                            rep_entry.entry(h).or_insert_with(Vec::new).push(k);
+                            let bucket = rep_entry
+                                .entry(h)
+                                .or_insert_with(|| (Vec::new(), Vec::new()));
+                            bucket.0.push(k);
                         }
                     });
                     right_in.for_each(|t, d| {
@@ -169,28 +164,28 @@ where
                             t.time(),
                             d.iter()
                         );
-                        let rep_entry =
-                            right_buckets.entry(t.retain()).or_insert_with(HashMap::new);
+                        let rep_entry = buckets.entry(t.retain()).or_insert_with(HashMap::new);
                         let mut data = d.replace(Vec::new());
                         log_event!(logger, LogEvent::ReceivedHashes(data.len()));
                         for (h, k) in data.drain(..) {
-                            rep_entry.entry(h).or_insert_with(Vec::new).push(k);
+                            let bucket = rep_entry
+                                .entry(h)
+                                .or_insert_with(|| (Vec::new(), Vec::new()));
+                            bucket.1.push(k);
                         }
                     });
                     let frontiers = &[left_in.frontier(), right_in.frontier()];
-                    let time = left_buckets.keys().cloned().find(|t| {
-                        right_buckets.contains_key(t) && frontiers.iter().all(|f| !f.less_equal(t))
-                    });
+                    let time = buckets
+                        .keys()
+                        .cloned()
+                        .find(|t| frontiers.iter().all(|f| !f.less_equal(t)));
                     if let Some(time) = time {
                         // We got all data for the repetition at `time`
                         // Enqueue the pairs generator
-                        let left_buckets = left_buckets
-                            .remove(&time)
-                            .expect("Cannot find the required time in left buckets");
-                        let right_buckets = right_buckets
+                        let buckets = buckets
                             .remove(&time)
                             .expect("Cannot find the required time in the right buckets");
-                        let generator = PairGenerator::new(left_buckets, right_buckets);
+                        let generator = PairGenerator::new(buckets);
                         generators.push((time.clone(), generator));
                     }
                     for (time, generator) in generators.iter_mut() {
@@ -375,28 +370,21 @@ mod tests {
 
     #[test]
     fn test_pair_iterator() {
-        let mut left = HashMap::new();
-        left.insert(0, vec![1, 2, 3]);
-        left.insert(2, vec![1, 2, 3, 4]);
-        left.insert(3, vec![3, 4]);
-        let mut right = HashMap::new();
-        right.insert(0, vec![10, 11, 12]);
-        right.insert(1, vec![19]);
-        right.insert(3, vec![30]);
+        let mut buckets = HashMap::new();
+        buckets.insert(0, (vec![1, 2, 3], vec![10, 11, 12]));
+        buckets.insert(1, (vec![], vec![19]));
+        buckets.insert(2, (vec![1, 2, 3, 4], vec![]));
+        buckets.insert(3, (vec![3, 4], vec![30]));
 
         let mut expected = HashSet::new();
-        for l in left.get(&0).unwrap() {
-            for r in right.get(&0).unwrap() {
-                expected.insert((l.clone(), r.clone()));
+        for (k, (lks, rks)) in buckets.iter() {
+            for lk in lks.iter() {
+                for rk in rks.iter() {
+                    expected.insert((lk.clone(), rk.clone()));
+                }
             }
         }
-        for l in left.get(&3).unwrap() {
-            for r in right.get(&3).unwrap() {
-                expected.insert((l.clone(), r.clone()));
-            }
-        }
-
-        let mut iterator = PairGenerator::new(left, right);
+        let mut iterator = PairGenerator::new(buckets);
         let mut actual = HashSet::new();
         assert!(!iterator.done());
         while let Some(pair) = iterator.next() {
