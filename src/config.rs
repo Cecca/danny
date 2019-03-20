@@ -35,6 +35,10 @@ pub struct Config {
     estimator_samples: usize,
     #[serde(default = "Config::default_batch_size")]
     batch_size: usize,
+    #[serde(default = "Config::default_bloom_elements")]
+    bloom_elements: usize,
+    #[serde(default = "Config::default_bloom_fpp")]
+    bloom_fpp: f64,
 }
 
 #[allow(dead_code)]
@@ -53,6 +57,8 @@ impl Config {
             DANNY_ESTIMATOR_SAMPLES  The number of vectors to sample _in each worker_ to
                                      estimate the best k value
             DANNY_BATCH_SIZE   The number of candidate pairs generated at a time
+            DANNY_BLOOM_ELEMENTS   Number of elements expected in the bloom filters (power of two)
+            DANNY_BLOOM_FPP    False positive rate of the bloom filter
         "
     }
 
@@ -69,6 +75,22 @@ impl Config {
 
     fn default_batch_size() -> usize {
         1_000_000
+    }
+
+    fn default_bloom_elements() -> usize {
+        30
+    }
+
+    pub fn get_bloom_elements(&self) -> usize {
+        self.bloom_elements
+    }
+
+    fn default_bloom_fpp() -> f64 {
+        0.05
+    }
+
+    pub fn get_bloom_fpp(&self) -> f64 {
+        self.bloom_fpp
     }
 
     fn default_baselines_path() -> PathBuf {

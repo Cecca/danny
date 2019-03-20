@@ -180,6 +180,8 @@ where
         load_global_vecs_new(left_path.clone(), right_path.clone(), config);
 
     let estimator_samples = config.get_estimator_samples();
+    let bloom_fpp = config.get_bloom_fpp();
+    let bloom_elements = config.get_bloom_elements();
 
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
         let hash_collection_builder = hash_collection_builder.clone();
@@ -308,7 +310,7 @@ where
                 candidates
                     .pair_route(matrix)
                     .map(|pair| pair.1)
-                    .approximate_distinct(1 << 30, 0.05, 123123123)
+                    .approximate_distinct(1 << bloom_elements, bloom_fpp, 123123123)
                     .unary(PipelinePact, "count-matching", move |_, _| {
                         let mut pl = ProgressLogger::new(
                             Duration::from_secs(60),
