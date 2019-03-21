@@ -345,6 +345,77 @@ where
     best_k
 }
 
+/// Structure that tells to each vector its best k.
+/// It also allows to hash a vector at the desired level k. In this respect,
+/// it is somehow the multi-level counterpart of LSHCollection
+pub struct MultilevelHasher<D, H, F>
+where
+    D: Clone + Data + Debug + Abomonation + Send + Sync,
+    H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,
+    F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
+{
+    hashers: Vec<LSHCollection<F, H>>,
+    /// One hashmap for each level of k, the values are a vector with a position
+    /// for each repetition, and each repetition is a map between hash value
+    /// and count of things hashing to it
+    buckets: Vec<Vec<HashMap<H, usize>>>,
+}
+
+impl<D, H, F> MultilevelHasher<D, H, F>
+where
+    D: Clone + Data + Debug + Abomonation + Send + Sync,
+    H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,
+    F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
+{
+    pub fn new<I, B, R>(max_k: usize, sample: &[D], builder: B, rng: &mut R) -> Self
+    where
+        B: Fn(usize, &mut R) -> LSHCollection<F, H>,
+        R: Rng + SeedableRng + Send + Clone + ?Sized + 'static,
+    {
+        let mut hashers = Vec::new();
+        for k in 0..=max_k {
+            hashers.push(builder(k, rng));
+        }
+        let mut buckets = Vec::new();
+        for hasher in hashers.iter() {
+            let mut repetitions_maps = Vec::new();
+            for rep in 0..hasher.repetitions() {
+                let mut rep_map = HashMap::new();
+                for v in sample {
+                    let h = hasher.hash(v, rep);
+                    *rep_map.entry(h).or_insert(0usize) += 1usize;
+                }
+                repetitions_maps.push(rep_map);
+            }
+            buckets.push(repetitions_maps);
+        }
+        Self { hashers, buckets }
+    }
+
+    pub fn get_best_k(&self, v: &D) -> usize {
+        let mut min_work = std::usize::MAX;
+        let mut best_k = 0;
+        for (idx, hasher) in self.hashers.iter().enumerate() {
+            let mut work = hasher.repetitions();
+            for rep in 0..hasher.repetitions() {
+                let h = hasher.hash(v, rep);
+                work += self.buckets[idx][rep].get(&h).unwrap_or(&0usize);
+            }
+            if work < min_work {
+                min_work = work;
+                best_k = idx + 1;
+            } else {
+                return best_k;
+            }
+        }
+        best_k
+    }
+
+    pub fn hash(&self, v: &D, k: usize, repetition: usize) -> H {
+        self.hashers[k - 1].hash(v, repetition)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
