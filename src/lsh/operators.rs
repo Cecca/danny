@@ -450,7 +450,7 @@ where
 pub fn source_hashed_adaptive<G, K, D, F, H>(
     scope: &G,
     global_vecs: Arc<RwLock<Arc<ChunkedDataset<K, D>>>>,
-    hash_fns: LSHCollection<F, H>,
+    multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
     throttling_probe: ProbeHandle<G::Timestamp>,
@@ -463,7 +463,6 @@ where
     K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
 {
     // let worker: u64 = scope.index() as u64;
-    // let repetitions = hash_fns.repetitions() as u32;
     // let mut current_repetition = 0u32;
     // source(scope, "sampler", move |capability| {
     //     let mut cap = Some(capability);

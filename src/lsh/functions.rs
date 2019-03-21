@@ -10,7 +10,7 @@ use crate::sketch::*;
 use crate::types::*;
 use abomonation::Abomonation;
 use rand::distributions::{Distribution, Normal, Uniform};
-use rand::Rng;
+use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
 use std::clone::Clone;
 use std::collections::{HashMap, HashSet};

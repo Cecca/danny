@@ -356,7 +356,8 @@ where
 
         // Do the stepping even though it's not strictly needed: we use it to wait for the dataflow
         // to finish
-        worker.step_while(|| probe.less_than(&(repetitions as u32)));
+        // worker.step_while(|| probe.less_than(&(repetitions as u32)));
+        worker.step_while(|| probe.with_frontier(|f| !f.is_empty()));
 
         info!(
             "Execution summary for worker {}: {:?}",
