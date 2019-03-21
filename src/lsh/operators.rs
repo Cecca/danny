@@ -446,3 +446,114 @@ where
         }
     })
 }
+
+/// Structure that tells to each vector its best k.
+pub struct MultilevelOracle<D, H, F>
+where
+    D: Clone + Data + Debug + Abomonation + Send + Sync,
+    H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,
+    F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
+{
+    hashers: Vec<LSHCollection<F, H>>,
+    /// One hashmap for each level of k, the values are a vector with a position
+    /// for each repetition, and each repetition is a map between hash value
+    /// and count of things hashing to it
+    buckets: Vec<Vec<HashMap<H, usize>>>,
+}
+
+impl<D, H, F> MultilevelOracle<D, H, F>
+where
+    D: Clone + Data + Debug + Abomonation + Send + Sync,
+    H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,
+    F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
+{
+    pub fn new<I, B, R>(max_k: usize, sample: &[D], builder: B, rng: &mut R) -> Self
+    where
+        B: Fn(usize, &mut R) -> LSHCollection<F, H>,
+        R: Rng + SeedableRng + Send + Clone + ?Sized + 'static,
+    {
+        let mut hashers = Vec::new();
+        for k in 0..=max_k {
+            hashers.push(builder(k, rng));
+        }
+        let mut buckets = Vec::new();
+        for hasher in hashers.iter() {
+            let mut repetitions_maps = Vec::new();
+            for rep in 0..hasher.repetitions() {
+                let mut rep_map = HashMap::new();
+                for v in sample {
+                    let h = hasher.hash(v, rep);
+                    *rep_map.entry(h).or_insert(0usize) += 1usize;
+                }
+                repetitions_maps.push(rep_map);
+            }
+            buckets.push(repetitions_maps);
+        }
+        Self { hashers, buckets }
+    }
+
+    pub fn get_best_k(&self, v: &D) -> usize {
+        let mut min_work = std::usize::MAX;
+        let mut best_k = 0;
+        for (idx, hasher) in self.hashers.iter().enumerate() {
+            let mut work = hasher.repetitions();
+            for rep in 0..hasher.repetitions() {
+                let h = hasher.hash(v, rep);
+                work += self.buckets[idx][rep].get(&h).unwrap_or(&0usize);
+            }
+            if work < min_work {
+                min_work = work;
+                best_k = idx + 1;
+            } else {
+                return best_k;
+            }
+        }
+        best_k
+    }
+}
+
+pub fn source_hashed_adaptive<G, K, D, F, H>(
+    scope: &G,
+    global_vecs: Arc<RwLock<Arc<ChunkedDataset<K, D>>>>,
+    hash_fns: LSHCollection<F, H>,
+    matrix: MatrixDescription,
+    direction: MatrixDirection,
+    throttling_probe: ProbeHandle<G::Timestamp>,
+) -> Stream<G, (H, K)>
+where
+    G: Scope<Timestamp = u32>,
+    D: Data + Sync + Send + Clone + Abomonation + Debug,
+    F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
+    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
+    K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
+{
+    // let worker: u64 = scope.index() as u64;
+    // let repetitions = hash_fns.repetitions() as u32;
+    // let mut current_repetition = 0u32;
+    // source(scope, "sampler", move |capability| {
+    //     let mut cap = Some(capability);
+    //     let vecs = Arc::clone(&global_vecs.read().expect("Could not get global vectors"));
+    //     move |output| {
+    //         let mut done = false;
+    //         if let Some(cap) = cap.as_mut() {
+    //             if !throttling_probe.less_than(cap.time()) {
+    //                 let mut session = output.session(&cap);
+    //                 for (k, v) in vecs.iter_stripe(&matrix, direction, worker) {
+    //                     let h = hash_fns.hash(v, current_repetition as usize);
+    //                     session.give((h, k.clone()));
+    //                 }
+    //                 current_repetition += 1;
+    //                 cap.downgrade(&current_repetition);
+    //                 done = current_repetition >= repetitions;
+    //             }
+    //         }
+
+    //         if done {
+    //             // Drop the capability to signal that we will send no more data
+    //             cap = None;
+    //             info!("Generated all repetitions");
+    //         }
+    //     }
+    // });
+    unimplemented!()
+}
