@@ -250,7 +250,7 @@ where
     }
 }
 
-pub fn source_hashed<G, K, D, F, H>(
+pub fn source_hashed<G, T, K, D, F, H>(
     scope: &G,
     global_vecs: Arc<ChunkedDataset<K, D>>,
     hash_fns: LSHCollection<F, H>,
@@ -259,7 +259,8 @@ pub fn source_hashed<G, K, D, F, H>(
     throttling_probe: ProbeHandle<G::Timestamp>,
 ) -> Stream<G, (H, K)>
 where
-    G: Scope<Timestamp = u32>,
+    G: Scope<Timestamp = T>,
+    T: Timestamp + Succ,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
@@ -284,7 +285,7 @@ where
                         session.give((h, k.clone()));
                     }
                     current_repetition += 1;
-                    cap.downgrade(&current_repetition);
+                    cap.downgrade(&cap.time().succ());
                     done = current_repetition >= repetitions;
                 }
             }
@@ -298,9 +299,9 @@ where
     })
 }
 
-pub fn source_hashed_sketched<G, K, D, F, S, H, V>(
+pub fn source_hashed_sketched<G, T, K, D, F, S, H, V>(
     scope: &G,
-    global_vecs: Arc<RwLock<Arc<ChunkedDataset<K, D>>>>,
+    global_vecs: Arc<ChunkedDataset<K, D>>,
     hash_fns: LSHCollection<F, H>,
     sketcher: S,
     matrix: MatrixDescription,
@@ -309,7 +310,8 @@ pub fn source_hashed_sketched<G, K, D, F, S, H, V>(
 ) -> Stream<G, (H, (V, K))>
 where
     // G: Scope<Timestamp = Product<u32, u32>>,
-    G: Scope<Timestamp = u32>,
+    G: Scope<Timestamp = T>,
+    T: Timestamp + Succ,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
     S: Sketcher<Input = D, Output = V> + Clone + 'static,
@@ -320,7 +322,7 @@ where
     let worker: u64 = scope.index() as u64;
     let repetitions = hash_fns.repetitions() as u32;
     let mut current_repetition = 0u32;
-    let vecs = Arc::clone(&global_vecs.read().unwrap());
+    let vecs = Arc::clone(&global_vecs);
     let mut sketches: HashMap<K, V> = HashMap::new();
     info!("Computing sketches");
     let start_sketch = Instant::now();
@@ -347,7 +349,7 @@ where
                         session.give((h, (s.clone(), k.clone())));
                     }
                     current_repetition += 1;
-                    cap.downgrade(&current_repetition);
+                    cap.downgrade(&cap.time().succ());
                     done = current_repetition >= repetitions;
                 }
             }

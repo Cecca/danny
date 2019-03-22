@@ -29,8 +29,10 @@ use timely::communication::allocator::Allocate;
 use timely::dataflow::channels::pact::Pipeline as PipelinePact;
 use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
 use timely::dataflow::operators::*;
+use timely::dataflow::scopes::Child as ChildScope;
 use timely::dataflow::*;
 use timely::order::Product;
+use timely::progress::timestamp::Refines;
 use timely::progress::timestamp::Timestamp;
 use timely::worker::Worker;
 use timely::Data;
@@ -180,6 +182,7 @@ where
     let (global_left, global_right) = load_vectors(left_path.clone(), right_path.clone(), &config);
 
     let estimator_samples = config.get_estimator_samples();
+    // FIXME: Change to bloom_bits and bloom_k
     let bloom_fpp = config.get_bloom_fpp();
     let bloom_elements = config.get_bloom_elements();
 
@@ -360,7 +363,105 @@ where
     }
 }
 
-pub fn candidates_filter_count<G, T, K, D, F>(
+#[allow(dead_code)]
+#[allow(clippy::too_many_arguments)]
+fn generate_candidates<'a, K, D, G, T1, T2, F, H, S, SV, R, B>(
+    left: Arc<ChunkedDataset<K, D>>,
+    right: Arc<ChunkedDataset<K, D>>,
+    k: ParamK,
+    inner_scope: &ChildScope<'a, G, T2>,
+    hash_collection_builder: B,
+    sketcher_pair: Option<(S, SketchPredicate<SV>)>,
+    probe: ProbeHandle<T1>,
+    batch_size: usize,
+    rng: &mut R,
+) -> Stream<ChildScope<'a, G, T2>, (K, K)>
+where
+    K: Data + Sync + Send + Clone + Abomonation + Debug + Route + Hash + Eq,
+    D: Data + Sync + Send + Clone + Abomonation + Debug,
+    G: Scope<Timestamp = T1>,
+    T1: Timestamp + Succ,
+    T2: Timestamp + Succ + Refines<T1>,
+    F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
+    H: Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash + Ord,
+    S: Sketcher<Input = D, Output = SV> + Send + Sync + Clone + 'static,
+    SV: Data + Debug + Sync + Send + Clone + Abomonation + SketchEstimate + BitBasedSketch,
+    R: Rng + SeedableRng + Send + Sync + Clone + 'static,
+    B: Fn(usize, &mut R) -> LSHCollection<F, H> + Sized + Send + Sync + Clone + 'static,
+{
+    let peers = inner_scope.peers();
+    let matrix = MatrixDescription::for_workers(peers as usize);
+
+    let hash_fn = match k {
+        ParamK::Exact(k) => hash_collection_builder(k, rng),
+        ParamK::Max(max_k) => {
+            unimplemented!()
+            // let best_k = estimate_best_k_from_sample(
+            //     worker,
+            //     global_left_read.clone(),
+            //     global_right_read.clone(),
+            //     estimator_samples,
+            //     max_k,
+            //     hash_collection_builder.clone(),
+            //     rng.clone(),
+            // );
+            // send_k.send(best_k);
+            // info!("Building collection with k={}", best_k);
+            // hash_collection_builder(best_k, &mut rng)
+        }
+    };
+
+    match sketcher_pair {
+        Some((sketcher, sketch_predicate)) => {
+            let left_hashes = source_hashed_sketched(
+                &inner_scope.parent,
+                Arc::clone(&left),
+                hash_fn.clone(),
+                sketcher.clone(),
+                matrix,
+                MatrixDirection::Rows,
+                probe.clone(),
+            )
+            .enter(inner_scope);
+            let right_hashes = source_hashed_sketched(
+                &inner_scope.parent,
+                Arc::clone(&right),
+                hash_fn.clone(),
+                sketcher.clone(),
+                matrix,
+                MatrixDirection::Rows,
+                probe.clone(),
+            )
+            .enter(inner_scope);
+            left_hashes
+                .bucket(&right_hashes, batch_size)
+                .filter_sketches(sketch_predicate)
+        }
+        None => {
+            let left_hashes = source_hashed(
+                &inner_scope.parent,
+                Arc::clone(&left),
+                hash_fn.clone(),
+                matrix,
+                MatrixDirection::Rows,
+                probe.clone(),
+            )
+            .enter(inner_scope);
+            let right_hashes = source_hashed(
+                &inner_scope.parent,
+                Arc::clone(&right),
+                hash_fn.clone(),
+                matrix,
+                MatrixDirection::Columns,
+                probe.clone(),
+            )
+            .enter(inner_scope);
+            left_hashes.bucket(&right_hashes, batch_size)
+        }
+    }
+}
+
+fn candidates_filter_count<G, T, K, D, F>(
     candidates: Stream<G, (K, K)>,
     global_left: Arc<ChunkedDataset<K, D>>,
     global_right: Arc<ChunkedDataset<K, D>>,
