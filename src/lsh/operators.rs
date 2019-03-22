@@ -485,7 +485,7 @@ pub fn source_hashed_adaptive<G, T, K, D, F, H, R>(
     n: usize,
     throttling_probe: ProbeHandle<G::Timestamp>,
     rng: R,
-) -> Stream<G, (H, K, LevelInfo)>
+) -> Stream<G, (H, (K, LevelInfo))>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ,
@@ -598,8 +598,10 @@ where
                                     );
                                     session.give((
                                         h,
-                                        key.clone(),
-                                        LevelInfo::new(this_best_level, current_level),
+                                        (
+                                            key.clone(),
+                                            LevelInfo::new(this_best_level, current_level),
+                                        ),
                                     ));
                                 }
                             }

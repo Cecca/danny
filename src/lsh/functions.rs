@@ -393,7 +393,7 @@ where
     }
 }
 
-#[derive(Clone, Copy, Abomonation)]
+#[derive(Clone, Copy, Abomonation, Debug)]
 pub struct LevelInfo {
     best_level: usize,
     current_level: usize,

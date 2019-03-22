@@ -398,6 +398,7 @@ fn generate_candidates_adaptive<'a, K, D, G, T1, T2, F, H, S, SV, R, B>(
     left: Arc<ChunkedDataset<K, D>>,
     right: Arc<ChunkedDataset<K, D>>,
     max_k: usize,
+    sample_size: usize,
     inner_scope: &ChildScope<'a, G, T2>,
     hash_collection_builder: B,
     sketcher_pair: Option<(S, SketchPredicate<SV>)>,
@@ -426,7 +427,6 @@ where
     match sketcher_pair {
         Some((sketcher, sketch_predicate)) => unimplemented!(),
         None => {
-            let sample_size = 100; // TODO: Make configurable
             let left_hashes = source_hashed_adaptive(
                 &inner_scope.parent,
                 Arc::clone(&left),
@@ -449,9 +449,13 @@ where
                 rng.clone(),
             )
             .enter(inner_scope);
-            unimplemented!()
-            // TODO: Fix bucketing!
-            // left_hashes.bucket(&right_hashes, batch_size)
+            // unimplemented!()
+            left_hashes.bucket_pred(
+                &right_hashes,
+                |(l, r)| l.1.is_match(&r.1),
+                |p| p.0,
+                batch_size,
+            )
         }
     }
 }
