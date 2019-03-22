@@ -252,7 +252,7 @@ where
 
 pub fn source_hashed<G, K, D, F, H>(
     scope: &G,
-    global_vecs: Arc<RwLock<Arc<ChunkedDataset<K, D>>>>,
+    global_vecs: Arc<ChunkedDataset<K, D>>,
     hash_fns: LSHCollection<F, H>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
@@ -260,7 +260,6 @@ pub fn source_hashed<G, K, D, F, H>(
 ) -> Stream<G, (H, K)>
 where
     G: Scope<Timestamp = u32>,
-    // G: Scope<Timestamp = Product<u32, u32>>,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
@@ -271,7 +270,7 @@ where
     let mut current_repetition = 0u32;
     source(scope, "hashed source", move |capability| {
         let mut cap = Some(capability);
-        let vecs = Arc::clone(&global_vecs.read().expect("Could not get global vectors"));
+        let vecs = Arc::clone(&global_vecs);
         move |output| {
             let mut done = false;
             if let Some(cap) = cap.as_mut() {

@@ -177,8 +177,7 @@ where
     let hash_collection_builder = hash_collection_builder.clone();
     let rng = rng.clone();
 
-    let (global_left_read, global_right_read, send_coords, io_barrier, reader_handle) =
-        load_global_vecs_new(left_path.clone(), right_path.clone(), config);
+    let (global_left, global_right) = load_vectors(left_path.clone(), right_path.clone(), &config);
 
     let estimator_samples = config.get_estimator_samples();
     let bloom_fpp = config.get_bloom_fpp();
@@ -191,6 +190,8 @@ where
     ));
 
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
+        let global_left = Arc::clone(&global_left);
+        let global_right = Arc::clone(&global_right);
         let bloom_filter = Arc::clone(&bloom_filter);
         let hash_collection_builder = hash_collection_builder.clone();
         let mut rng = rng.clone();
@@ -203,23 +204,6 @@ where
         let index = worker.index();
         let peers = worker.peers() as u64;
 
-        let send_coords = send_coords
-            .lock()
-            .expect("Cannot get lock on coordinate channel")
-            .clone();
-        let matrix_coords =
-            MatrixDescription::for_workers(peers as usize).row_major_to_pair(index as u64);
-        debug!("Sending coordinates {:?}", matrix_coords);
-        send_coords
-            .send(matrix_coords)
-            .expect("Error while pushing into coordinates channel");
-        debug!("Waiting for input to be loaded");
-        io_barrier.wait();
-        debug!("After worker barrier!");
-
-        let global_left_read = global_left_read.clone();
-        let global_right_read = global_right_read.clone();
-
         let send_k = send_k.lock().unwrap().clone();
 
         let hash_fn = match k {
@@ -228,18 +212,19 @@ where
                 hash_collection_builder(k, &mut rng)
             }
             ParamK::Max(max_k) => {
-                let best_k = estimate_best_k_from_sample(
-                    worker,
-                    global_left_read.clone(),
-                    global_right_read.clone(),
-                    estimator_samples,
-                    max_k,
-                    hash_collection_builder.clone(),
-                    rng.clone(),
-                );
-                send_k.send(best_k);
-                info!("Building collection with k={}", best_k);
-                hash_collection_builder(best_k, &mut rng)
+                unimplemented!()
+                // let best_k = estimate_best_k_from_sample(
+                //     worker,
+                //     global_left_read.clone(),
+                //     global_right_read.clone(),
+                //     estimator_samples,
+                //     max_k,
+                //     hash_collection_builder.clone(),
+                //     rng.clone(),
+                // );
+                // send_k.send(best_k);
+                // info!("Building collection with k={}", best_k);
+                // hash_collection_builder(best_k, &mut rng)
             }
         };
 
@@ -257,34 +242,35 @@ where
 
                 let candidates = match sketcher_pair {
                     Some((sketcher, sketch_predicate)) => {
-                        let left_hashes = source_hashed_sketched(
-                            scope,
-                            Arc::clone(&global_left_read),
-                            hash_fn.clone(),
-                            sketcher.clone(),
-                            matrix,
-                            MatrixDirection::Rows,
-                            probe.clone(),
-                        )
-                        .enter(inner);
-                        let right_hashes = source_hashed_sketched(
-                            scope,
-                            Arc::clone(&global_right_read),
-                            hash_fn.clone(),
-                            sketcher.clone(),
-                            matrix,
-                            MatrixDirection::Rows,
-                            probe.clone(),
-                        )
-                        .enter(inner);
-                        left_hashes
-                            .bucket(&right_hashes, batch_size)
-                            .filter_sketches(sketch_predicate)
+                        unimplemented!()
+                        // let left_hashes = source_hashed_sketched(
+                        //     scope,
+                        //     Arc::clone(&global_left_read),
+                        //     hash_fn.clone(),
+                        //     sketcher.clone(),
+                        //     matrix,
+                        //     MatrixDirection::Rows,
+                        //     probe.clone(),
+                        // )
+                        // .enter(inner);
+                        // let right_hashes = source_hashed_sketched(
+                        //     scope,
+                        //     Arc::clone(&global_right_read),
+                        //     hash_fn.clone(),
+                        //     sketcher.clone(),
+                        //     matrix,
+                        //     MatrixDirection::Rows,
+                        //     probe.clone(),
+                        // )
+                        // .enter(inner);
+                        // left_hashes
+                        //     .bucket(&right_hashes, batch_size)
+                        //     .filter_sketches(sketch_predicate)
                     }
                     None => {
                         let left_hashes = source_hashed(
                             scope,
-                            Arc::clone(&global_left_read),
+                            Arc::clone(&global_left),
                             hash_fn.clone(),
                             matrix,
                             MatrixDirection::Rows,
@@ -293,7 +279,7 @@ where
                         .enter(inner);
                         let right_hashes = source_hashed(
                             scope,
-                            Arc::clone(&global_right_read),
+                            Arc::clone(&global_right),
                             hash_fn.clone(),
                             matrix,
                             MatrixDirection::Columns,
@@ -304,21 +290,10 @@ where
                     }
                 };
 
-                let global_left = Arc::clone(
-                    &global_left_read
-                        .read()
-                        .expect("Cannot get the lock on the global left dataset"),
-                );
-                let global_right = Arc::clone(
-                    &global_right_read
-                        .read()
-                        .expect("Cannot get the lock on the global right dataset"),
-                );
-
                 candidates_filter_count(
                     candidates,
-                    Arc::clone(&global_left_read),
-                    Arc::clone(&global_right_read),
+                    Arc::clone(&global_left),
+                    Arc::clone(&global_right),
                     sim_pred,
                     Arc::clone(&bloom_filter),
                 )
@@ -343,10 +318,6 @@ where
         collect_execution_summaries(execution_summary, send_exec_summary.clone(), &mut worker);
     })
     .expect("Problems with the dataflow");
-
-    reader_handle
-        .join()
-        .expect("Problem joining the reader thread");
 
     if config.is_master() {
         let actual_k = recv_k.recv().expect("Unable to get actual k");
@@ -391,8 +362,8 @@ where
 
 pub fn candidates_filter_count<G, T, K, D, F>(
     candidates: Stream<G, (K, K)>,
-    global_left: Arc<RwLock<Arc<ChunkedDataset<K, D>>>>,
-    global_right: Arc<RwLock<Arc<ChunkedDataset<K, D>>>>,
+    global_left: Arc<ChunkedDataset<K, D>>,
+    global_right: Arc<ChunkedDataset<K, D>>,
     sim_pred: F,
     bloom_filter: Arc<AtomicBloomFilter<(K, K)>>,
 ) -> Stream<G, u64>
@@ -405,8 +376,6 @@ where
 {
     let peers = candidates.scope().peers();
     let matrix = MatrixDescription::for_workers(peers as usize);
-    let global_left = global_left.read().unwrap().clone();
-    let global_right = global_right.read().unwrap().clone();
 
     candidates
         .pair_route(matrix)
