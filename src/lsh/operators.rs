@@ -448,28 +448,40 @@ where
     })
 }
 
-pub fn source_hashed_adaptive<G, T, K, D, F, H>(
+pub fn source_hashed_adaptive<G, T, K, D, F, H, R>(
     scope: &G,
     global_vecs: Arc<ChunkedDataset<K, D>>,
     multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
-    collisions: &Stream<G, ((usize, usize, H), usize)>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
+    n: usize,
     throttling_probe: ProbeHandle<G::Timestamp>,
+    rng: R,
 ) -> Stream<G, (H, K, (u8, u8))>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
-    F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + Abomonation + 'static,
+    F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
     K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
+    R: Rng + SeedableRng + Clone + ?Sized + 'static + Sync + Send,
 {
     let worker: u64 = scope.index() as u64;
     let max_level = multilevel_hasher.max_k();
     let multilevel_hasher = Arc::clone(&multilevel_hasher);
     let multilevel_hasher_2 = Arc::clone(&multilevel_hasher);
     let global_vecs_2 = Arc::clone(&global_vecs);
+
+    let collisions = BestKEstimator::stream_collisions(
+        scope,
+        Arc::clone(&multilevel_hasher),
+        Arc::clone(&global_vecs),
+        n,
+        matrix.clone(),
+        direction.clone(),
+        rng.clone(),
+    );
 
     // First, find the best k value for all the points
     let best_ks = collisions.unary_frontier(Pipeline, "best-k-finder", move |_, _| {

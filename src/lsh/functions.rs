@@ -409,7 +409,7 @@ where
 {
     pub fn stream_collisions<G, K, D, F, R>(
         scope: &G,
-        multilevel_hasher: MultilevelHasher<D, H, F>,
+        multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
         global_vecs: Arc<ChunkedDataset<K, D>>,
         n: usize,
         matrix: MatrixDescription,

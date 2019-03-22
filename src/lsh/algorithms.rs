@@ -421,30 +421,36 @@ where
     let peers = inner_scope.peers();
     let matrix = MatrixDescription::for_workers(peers as usize);
 
-    let multihash = MultilevelHasher::new(max_k, hash_collection_builder, rng);
+    let multihash = Arc::new(MultilevelHasher::new(max_k, hash_collection_builder, rng));
 
     match sketcher_pair {
         Some((sketcher, sketch_predicate)) => unimplemented!(),
         None => {
+            let sample_size = 100; // TODO: Make configurable
+            let left_hashes = source_hashed_adaptive(
+                &inner_scope.parent,
+                Arc::clone(&left),
+                Arc::clone(&multihash),
+                matrix,
+                MatrixDirection::Rows,
+                sample_size,
+                probe.clone(),
+                rng.clone(),
+            )
+            .enter(inner_scope);
+            let right_hashes = source_hashed_adaptive(
+                &inner_scope.parent,
+                Arc::clone(&right),
+                Arc::clone(&multihash),
+                matrix,
+                MatrixDirection::Columns,
+                sample_size,
+                probe.clone(),
+                rng.clone(),
+            )
+            .enter(inner_scope);
             unimplemented!()
-            // let left_hashes = source_hashed(
-            //     &inner_scope.parent,
-            //     Arc::clone(&left),
-            //     hash_fn.clone(),
-            //     matrix,
-            //     MatrixDirection::Rows,
-            //     probe.clone(),
-            // )
-            // .enter(inner_scope);
-            // let right_hashes = source_hashed(
-            //     &inner_scope.parent,
-            //     Arc::clone(&right),
-            //     hash_fn.clone(),
-            //     matrix,
-            //     MatrixDirection::Columns,
-            //     probe.clone(),
-            // )
-            // .enter(inner_scope);
+            // TODO: Fix bucketing!
             // left_hashes.bucket(&right_hashes, batch_size)
         }
     }
