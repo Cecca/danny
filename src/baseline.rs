@@ -189,8 +189,7 @@ where
     let left_path_2 = left_path.clone();
     let right_path_2 = right_path.clone();
 
-    let (global_left_read, global_right_read, send_coords, io_barrier, reader_handle) =
-        load_global_vecs_new::<T>(left_path.clone(), right_path.clone(), config);
+    let (global_left, global_right) = load_vectors(left_path.clone(), right_path.clone(), &config);
 
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |worker| {
         let index = worker.index();
@@ -198,28 +197,20 @@ where
         info!("Started worker {}/{}", index, peers);
         let sim_pred = sim_pred.clone();
 
-        // let (mut left, mut right, probe) =
         worker.dataflow::<u32, _, _>(|scope| {
             let output_send_ch = output_send_ch.lock().unwrap().clone();
+            let global_left = Arc::clone(&global_left);
+            let global_right = Arc::clone(&global_right);
 
-            let send_coords = send_coords.lock().unwrap().clone();
             let matrix = MatrixDescription::for_workers(peers as usize);
             let (row, col) = matrix.row_major_to_pair(index as u64);
-            send_coords
-                .send((row, col))
-                .expect("Error while pushing into coordinates channel");
-            io_barrier.wait();
-
-            let global_left_read = global_left_read.clone();
-            let global_right_read = global_right_read.clone();
-
             source(scope, "Source", move |capability| {
                 let mut cap = Some(capability);
+                let left = Arc::clone(&global_left);
+                let right = Arc::clone(&global_right);
                 move |output| {
                     if let Some(mut cap) = cap.take() {
                         info!("Starting to count pairs (memory {})", proc_mem!());
-                        let left = Arc::clone(&global_left_read.read().unwrap());
-                        let right = Arc::clone(&global_right_read.read().unwrap());
                         let mut count = 0usize;
                         let mut pl = ProgressLogger::new(
                             Duration::from_secs(60),
@@ -247,7 +238,7 @@ where
                             count,
                             proc_mem!()
                         );
-                        output.session(&mut cap).give(count);
+                        output.session(&cap).give(count);
                     }
                 }
             })
@@ -256,10 +247,6 @@ where
         });
     })
     .expect("Something went wrong with the timely dataflow execution");
-
-    reader_handle
-        .join()
-        .expect("Problem joining the reader thread");
 
     if config.is_master() {
         let count: usize = recv
