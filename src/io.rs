@@ -345,11 +345,13 @@ where
     let mut left_builder = ChunkedDataset::builder(matrix_desc.rows as usize);
     let mut right_builder = ChunkedDataset::builder(matrix_desc.columns as usize);
 
+    info!("Getting coordinates");
     for (i, j) in recv_coords.iter() {
         // We know we will receive exactly that many messages
         row_set.insert(i);
         column_set.insert(j);
     }
+    info!("Got coordinates");
 
     debug!("This machine is responsible for rows: {:?}", row_set);
     debug!("This machine is responsible for columns: {:?}", column_set);
