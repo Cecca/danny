@@ -451,6 +451,7 @@ pub fn source_hashed_adaptive<G, K, D, F, H>(
     scope: &G,
     global_vecs: Arc<RwLock<Arc<ChunkedDataset<K, D>>>>,
     multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
+    best_k_estimator: Arc<BestKEstimator<H>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
     throttling_probe: ProbeHandle<G::Timestamp>,
@@ -476,7 +477,7 @@ where
             if let Some(cap) = cap.take() {
                 let mut session = output.session(&cap);
                 for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
-                    let best_k = multilevel_hasher.get_best_k(v);
+                    let best_k = best_k_estimator.get_best_k(&multilevel_hasher, v);
                     session.give((key.clone(), best_k));
                 }
             }

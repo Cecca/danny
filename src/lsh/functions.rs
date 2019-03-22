@@ -359,10 +359,6 @@ where
     F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
 {
     hashers: Vec<LSHCollection<F, H>>,
-    /// One hashmap for each level of k, the values are a vector with a position
-    /// for each repetition, and each repetition is a map between hash value
-    /// and count of things hashing to it
-    buckets: Vec<Vec<HashMap<H, usize>>>,
 }
 
 impl<D, H, F> MultilevelHasher<D, H, F>
@@ -371,19 +367,58 @@ where
     H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,
     F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
 {
-    pub fn from_sample<A, K, B, R>(
+    pub fn new<B, R>(max_k: usize, builder: B, rng: &mut R) -> Self
+    where
+        B: Fn(usize, &mut R) -> LSHCollection<F, H>,
+        R: Rng + SeedableRng + Send + Clone + ?Sized + 'static,
+    {
+        let mut hashers = Vec::new();
+        for k in 0..=max_k {
+            hashers.push(builder(k, rng));
+        }
+        Self { hashers }
+    }
+
+    pub fn max_k(&self) -> usize {
+        self.hashers.len()
+    }
+
+    pub fn repetitions_at_level(&self, level: usize) -> usize {
+        self.hashers[level].repetitions()
+    }
+
+    pub fn hash(&self, v: &D, level: usize, repetition: usize) -> H {
+        self.hashers[level].hash(v, repetition)
+    }
+}
+
+pub struct BestKEstimator<H>
+where
+    H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,
+{
+    /// One hashmap for each level of k, the values are a vector with a position
+    /// for each repetition, and each repetition is a map between hash value
+    /// and count of things hashing to it
+    buckets: Vec<Vec<HashMap<H, usize>>>,
+}
+
+impl<H> BestKEstimator<H>
+where
+    H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,
+{
+    pub fn from_sample<A, K, D, F, R>(
         worker: &mut Worker<A>,
+        multilevel_hasher: &MultilevelHasher<D, H, F>,
         global_vecs: Arc<RwLock<Arc<ChunkedDataset<K, D>>>>,
         n: usize,
-        max_k: usize,
         direction: MatrixDirection,
-        builder: B,
         rng: R,
     ) -> Self
     where
         A: Allocate,
         K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
-        B: Fn(usize, &mut R) -> LSHCollection<F, H>,
+        D: Clone + Data + Debug + Abomonation + Send + Sync,
+        F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
         R: Rng + SeedableRng + Send + Clone + ?Sized + 'static,
     {
         let peers = worker.peers();
@@ -392,10 +427,6 @@ where
         let local = LocalData::new();
         let local_2 = local.clone();
 
-        let mut rng_2 = rng.clone();
-        let rng = Arc::new(Mutex::new(rng));
-        let rng = Arc::clone(&rng);
-        let rng = rng.lock().unwrap().clone();
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
             let mut p1 = ProbeHandle::new();
             let mut p2 = p1.clone();
@@ -418,20 +449,20 @@ where
         worker.step_while(|| probe.less_than(&1));
 
         let sample = local_2.data().to_vec();
-        Self::new(max_k, &sample, builder, &mut rng_2)
+        Self::new(multilevel_hasher.max_k(), &sample, &multilevel_hasher)
     }
 
-    pub fn new<B, R>(max_k: usize, sample: &[D], builder: B, rng: &mut R) -> Self
+    pub fn new<D, F>(
+        max_k: usize,
+        sample: &[D],
+        multilevel_hasher: &MultilevelHasher<D, H, F>,
+    ) -> Self
     where
-        B: Fn(usize, &mut R) -> LSHCollection<F, H>,
-        R: Rng + SeedableRng + Send + Clone + ?Sized + 'static,
+        D: Clone + Data + Debug + Abomonation + Send + Sync,
+        F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
     {
-        let mut hashers = Vec::new();
-        for k in 0..=max_k {
-            hashers.push(builder(k, rng));
-        }
         let mut buckets = Vec::new();
-        for hasher in hashers.iter() {
+        for hasher in multilevel_hasher.hashers.iter() {
             let mut repetitions_maps = Vec::new();
             for rep in 0..hasher.repetitions() {
                 let mut rep_map = HashMap::new();
@@ -443,21 +474,17 @@ where
             }
             buckets.push(repetitions_maps);
         }
-        Self { hashers, buckets }
+        Self { buckets }
     }
 
-    pub fn max_k(&self) -> usize {
-        self.hashers.len()
-    }
-
-    pub fn repetitions_at_level(&self, level: usize) -> usize {
-        self.hashers[level].repetitions()
-    }
-
-    pub fn get_best_k(&self, v: &D) -> usize {
+    pub fn get_best_k<D, F>(&self, multilevel_hasher: &MultilevelHasher<D, H, F>, v: &D) -> usize
+    where
+        D: Clone + Data + Debug + Abomonation + Send + Sync,
+        F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
+    {
         let mut min_work = std::usize::MAX;
         let mut best_k = 0;
-        for (idx, hasher) in self.hashers.iter().enumerate() {
+        for (idx, hasher) in multilevel_hasher.hashers.iter().enumerate() {
             let mut work = hasher.repetitions();
             for rep in 0..hasher.repetitions() {
                 let h = hasher.hash(v, rep);
@@ -471,10 +498,6 @@ where
             }
         }
         best_k
-    }
-
-    pub fn hash(&self, v: &D, level: usize, repetition: usize) -> H {
-        self.hashers[level].hash(v, repetition)
     }
 }
 
