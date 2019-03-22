@@ -313,6 +313,68 @@ impl ReadDataFile for BagOfWords {
     }
 }
 
+pub fn load_vectors<D>(
+    left_path_main: String,
+    right_path_main: String,
+    config: &Config,
+) -> (Arc<ChunkedDataset<u32, D>>, Arc<ChunkedDataset<u32, D>>)
+where
+    for<'de> D: Deserialize<'de> + ReadBinaryFile + Sync + Send + Clone + 'static,
+{
+    let timely_builder = config.get_timely_builder();
+    let (send_coords, recv_coords) = channel();
+    let send_coords = Arc::new(Mutex::new(send_coords));
+
+    timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
+        let index = worker.index();
+        let peers = worker.peers() as u64;
+        let send_coords = send_coords.lock().unwrap().clone();
+        let matrix_coords =
+            MatrixDescription::for_workers(peers as usize).row_major_to_pair(index as u64);
+        debug!("Sending coordinates {:?}", matrix_coords);
+        send_coords
+            .send(matrix_coords)
+            .expect("Error while pushing into coordinates channel");
+    })
+    .unwrap();
+
+    let total_workers = config.get_total_workers();
+    let matrix_desc = MatrixDescription::for_workers(total_workers);
+    let mut row_set = HashSet::new();
+    let mut column_set = HashSet::new();
+    let mut left_builder = ChunkedDataset::builder(matrix_desc.rows as usize);
+    let mut right_builder = ChunkedDataset::builder(matrix_desc.columns as usize);
+
+    for (i, j) in recv_coords.iter() {
+        // We know we will receive exactly that many messages
+        row_set.insert(i);
+        column_set.insert(j);
+    }
+
+    debug!("This machine is responsible for rows: {:?}", row_set);
+    debug!("This machine is responsible for columns: {:?}", column_set);
+    debug!("Memory before reading data {}", proc_mem!());
+    ReadBinaryFile::read_binary(
+        left_path_main.into(),
+        |l| row_set.contains(&((l % matrix_desc.rows as usize) as u8)),
+        |c, v| {
+            left_builder.insert(c as u32, v);
+        },
+    );
+    ReadBinaryFile::read_binary(
+        right_path_main.into(),
+        |l| column_set.contains(&((l % matrix_desc.columns as usize) as u8)),
+        |c, v| {
+            right_builder.insert(c as u32, v);
+        },
+    );
+
+    (
+        Arc::new(left_builder.finish()),
+        Arc::new(right_builder.finish()),
+    )
+}
+
 pub fn load_global_vecs_new<D>(
     left_path_main: String,
     right_path_main: String,
