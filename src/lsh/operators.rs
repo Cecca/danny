@@ -420,7 +420,7 @@ where
         seeder.gen::<f64>();
     }
 
-    let mut rng = R::from_rng(seeder).expect("Error initializing random number generator");
+    let rng = R::from_rng(seeder).expect("Error initializing random number generator");
 
     source(scope, "hashed source", move |capability| {
         let mut rng = rng;
@@ -448,17 +448,18 @@ where
     })
 }
 
-pub fn source_hashed_adaptive<G, K, D, F, H>(
+pub fn source_hashed_adaptive<G, T, K, D, F, H>(
     scope: &G,
     global_vecs: Arc<ChunkedDataset<K, D>>,
     multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
-    best_k_estimator: Arc<BestKEstimator<H>>,
+    collisions: &Stream<G, ((usize, usize, H), usize)>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
     throttling_probe: ProbeHandle<G::Timestamp>,
 ) -> Stream<G, (H, K, (u8, u8))>
 where
-    G: Scope<Timestamp = u32>,
+    G: Scope<Timestamp = T>,
+    T: Timestamp + Succ,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + Abomonation + 'static,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
@@ -471,15 +472,26 @@ where
     let global_vecs_2 = Arc::clone(&global_vecs);
 
     // First, find the best k value for all the points
-    let best_ks = source(scope, "best-k-finder", move |capability| {
-        let mut cap = Some(capability);
+    let best_ks = collisions.unary_frontier(Pipeline, "best-k-finder", move |_, _| {
         let vecs = Arc::clone(&global_vecs);
-        move |output| {
-            if let Some(cap) = cap.take() {
-                let mut session = output.session(&cap);
-                for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
-                    let best_k = best_k_estimator.get_best_k(&multilevel_hasher, v);
-                    session.give((key.clone(), best_k));
+        let mut collisions = HashMap::new();
+        move |input, output| {
+            input.for_each(|t, data| {
+                let mut data = data.replace(Vec::new());
+                collisions
+                    .entry(t.retain())
+                    .or_insert_with(Vec::new)
+                    .append(&mut data);
+            });
+
+            for (time, counts) in collisions.iter_mut() {
+                if !input.frontier().less_equal(time) {
+                    let estimator = BestKEstimator::from_counts(&multilevel_hasher, &counts);
+                    let mut session = output.session(&time);
+                    for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
+                        let best_k = estimator.get_best_k(&multilevel_hasher, v);
+                        session.give((key.clone(), best_k));
+                    }
                 }
             }
         }

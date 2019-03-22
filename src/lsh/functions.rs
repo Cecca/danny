@@ -529,6 +529,29 @@ where
         Self { buckets }
     }
 
+    pub fn from_counts<D, F>(
+        multilevel_hasher: &MultilevelHasher<D, H, F>,
+        counts: &[((usize, usize, H), usize)],
+    ) -> Self
+    where
+        D: Clone + Data + Debug + Abomonation + Send + Sync,
+        F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
+    {
+        let mut buckets = Vec::new();
+        for hasher in multilevel_hasher.hashers.iter() {
+            let mut repetitions_maps = Vec::new();
+            for _ in 0..hasher.repetitions() {
+                let rep_map = HashMap::new();
+                repetitions_maps.push(rep_map);
+            }
+            buckets.push(repetitions_maps);
+        }
+        for ((level, repetition, h), count) in counts {
+            buckets[*level][*repetition].insert(h.clone(), *count);
+        }
+        Self { buckets }
+    }
+
     pub fn get_best_k<D, F>(&self, multilevel_hasher: &MultilevelHasher<D, H, F>, v: &D) -> usize
     where
         D: Clone + Data + Debug + Abomonation + Send + Sync,
