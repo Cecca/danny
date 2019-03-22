@@ -454,7 +454,7 @@ pub fn source_hashed_adaptive<G, K, D, F, H>(
     matrix: MatrixDescription,
     direction: MatrixDirection,
     throttling_probe: ProbeHandle<G::Timestamp>,
-) -> Stream<G, (H, K)>
+) -> Stream<G, (H, K, (u8, u8))>
 where
     G: Scope<Timestamp = u32>,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
@@ -462,32 +462,111 @@ where
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
     K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
 {
-    // let worker: u64 = scope.index() as u64;
-    // let mut current_repetition = 0u32;
-    // source(scope, "sampler", move |capability| {
-    //     let mut cap = Some(capability);
-    //     let vecs = Arc::clone(&global_vecs.read().expect("Could not get global vectors"));
-    //     move |output| {
-    //         let mut done = false;
-    //         if let Some(cap) = cap.as_mut() {
-    //             if !throttling_probe.less_than(cap.time()) {
-    //                 let mut session = output.session(&cap);
-    //                 for (k, v) in vecs.iter_stripe(&matrix, direction, worker) {
-    //                     let h = hash_fns.hash(v, current_repetition as usize);
-    //                     session.give((h, k.clone()));
-    //                 }
-    //                 current_repetition += 1;
-    //                 cap.downgrade(&current_repetition);
-    //                 done = current_repetition >= repetitions;
-    //             }
-    //         }
+    let worker: u64 = scope.index() as u64;
+    let max_level = multilevel_hasher.max_k();
+    let multilevel_hasher = Arc::clone(&multilevel_hasher);
+    let multilevel_hasher_2 = Arc::clone(&multilevel_hasher);
+    let global_vecs_2 = Arc::clone(&global_vecs);
 
-    //         if done {
-    //             // Drop the capability to signal that we will send no more data
-    //             cap = None;
-    //             info!("Generated all repetitions");
-    //         }
-    //     }
-    // });
-    unimplemented!()
+    // First, find the best k value for all the points
+    let best_ks = source(scope, "best-k-finder", move |capability| {
+        let mut cap = Some(capability);
+        let vecs = Arc::clone(&global_vecs.read().expect("Could not get global vectors"));
+        move |output| {
+            if let Some(cap) = cap.take() {
+                let mut session = output.session(&cap);
+                for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
+                    let best_k = multilevel_hasher.get_best_k(v);
+                    session.give((key.clone(), best_k));
+                }
+            }
+        }
+    });
+
+    // Find the minimum among these k values
+    let min_k = best_ks
+        .map(|p| p.1)
+        // Find the minimum in each worker
+        .accumulate(std::usize::MAX, |min_k, data| {
+            for &x in data.iter() {
+                *min_k = std::cmp::min(*min_k, x);
+            }
+        })
+        // Find the minimum of the minimum
+        .exchange(|_| 0)
+        .accumulate(std::usize::MAX, |min_k, data| {
+            for &x in data.iter() {
+                *min_k = std::cmp::min(*min_k, x);
+            }
+        })
+        // Send the overall minimum to everybody
+        .broadcast();
+
+    best_ks.binary_frontier(
+        &min_k,
+        Pipeline,
+        Pipeline,
+        "adaptive-source",
+        move |default_cap, _| {
+            let mut cap = Some(default_cap);
+            let mut min_k: Option<usize> = None;
+            let mut best_ks: HashMap<K, usize> = HashMap::new();
+            let mut current_level = 0;
+            let mut current_repetition = 0;
+            let mut current_max_repetitions =
+                multilevel_hasher_2.repetitions_at_level(current_level);
+            let mut done = false;
+            let vecs = Arc::clone(&global_vecs_2.read().expect("Could not get global vectors"));
+            move |best_ks_input, min_k_input, output| {
+                min_k_input.for_each(|_t, data| {
+                    assert!(min_k.is_none());
+                    assert!(data.len() == 0);
+                    min_k.replace(data[0]);
+                    current_level = data[0] - 1;
+                });
+                best_ks_input.for_each(|_t, data| {
+                    let mut data = data.replace(Vec::new());
+                    for (key, k) in data.drain(..) {
+                        best_ks.insert(key, k);
+                    }
+                });
+                if let Some(_min_k) = min_k {
+                    if let Some(cap) = cap.as_mut() {
+                        if !throttling_probe.less_than(cap.time()) {
+                            let mut session = output.session(&cap);
+                            for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
+                                let this_best_level = best_ks[key] - 1;
+                                if current_level <= this_best_level {
+                                    let h = multilevel_hasher_2.hash(
+                                        v,
+                                        current_level,
+                                        current_repetition,
+                                    );
+                                    session.give((
+                                        h,
+                                        key.clone(),
+                                        ((current_level + 1) as u8, (this_best_level + 1) as u8),
+                                    ));
+                                }
+                            }
+                            cap.downgrade(&cap.time().succ());
+                            current_repetition += 1;
+                            if current_repetition >= current_max_repetitions {
+                                current_level += 1;
+                                current_repetition = 0;
+                                current_max_repetitions =
+                                    multilevel_hasher_2.repetitions_at_level(current_level)
+                            }
+                            done = current_level >= max_level;
+                        }
+                    }
+                }
+                if done {
+                    // Drop the capability to signal that we will send no more data
+                    cap = None;
+                    info!("Generated all repetitions");
+                }
+            }
+        },
+    )
 }

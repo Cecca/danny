@@ -392,6 +392,14 @@ where
         Self { hashers, buckets }
     }
 
+    pub fn max_k(&self) -> usize {
+        self.hashers.len()
+    }
+
+    pub fn repetitions_at_level(&self, level: usize) -> usize {
+        self.hashers[level].repetitions()
+    }
+
     pub fn get_best_k(&self, v: &D) -> usize {
         let mut min_work = std::usize::MAX;
         let mut best_k = 0;
@@ -411,8 +419,8 @@ where
         best_k
     }
 
-    pub fn hash(&self, v: &D, k: usize, repetition: usize) -> H {
-        self.hashers[k - 1].hash(v, repetition)
+    pub fn hash(&self, v: &D, level: usize, repetition: usize) -> H {
+        self.hashers[level].hash(v, repetition)
     }
 }
 
