@@ -290,7 +290,6 @@ impl CmdlineConfig {
                         .parse::<usize>()
                         .expect("k should be an unsigned integer");
                     ParamK::Max(_k)
-                })
             });
         let sketch_bits = matches.value_of("BITS").map(|bits_str| {
             bits_str

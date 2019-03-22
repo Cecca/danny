@@ -216,17 +216,31 @@ where
 
                 let matrix = MatrixDescription::for_workers(peers as usize);
 
-                let candidates = generate_candidates_global_k(
-                    Arc::clone(&global_left),
-                    Arc::clone(&global_right),
-                    k,
-                    &inner,
-                    hash_collection_builder,
-                    sketcher_pair,
-                    probe.clone(),
-                    batch_size,
-                    &mut rng,
-                );
+                let candidates = match k {
+                    ParamK::Adaptive(k) => generate_candidates_adaptive(
+                        Arc::clone(&global_left),
+                        Arc::clone(&global_right),
+                        k,
+                        estimator_samples,
+                        &inner,
+                        hash_collection_builder,
+                        sketcher_pair,
+                        probe.clone(),
+                        batch_size,
+                        &mut rng,
+                    ),
+                    k => generate_candidates_global_k(
+                        Arc::clone(&global_left),
+                        Arc::clone(&global_right),
+                        k,
+                        &inner,
+                        hash_collection_builder,
+                        sketcher_pair,
+                        probe.clone(),
+                        batch_size,
+                        &mut rng,
+                    ),
+                };
 
                 candidates_filter_count(
                     candidates,
