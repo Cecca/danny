@@ -1,8 +1,10 @@
 use crate::config::Config;
+use crate::dataset::*;
 use crate::experiment::Experiment;
 use crate::io::*;
 use crate::logging::init_event_logging;
 use crate::logging::*;
+use crate::lsh::operators::collect_sample;
 use crate::measure::InnerProduct;
 use crate::operators::Route;
 use crate::operators::*;
@@ -20,12 +22,14 @@ use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Barrier, Mutex, RwLock};
 use std::thread;
 use std::time::Instant;
+use timely::communication::allocator::Allocate;
 use timely::dataflow::channels::pact::{Exchange as ExchangePact, Pipeline};
 use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use timely::progress::Timestamp;
+use timely::worker::Worker;
 use timely::Data;
 
 pub trait LSHFunction {
@@ -367,7 +371,57 @@ where
     H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,
     F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
 {
-    pub fn new<I, B, R>(max_k: usize, sample: &[D], builder: B, rng: &mut R) -> Self
+    pub fn from_sample<A, K, B, R>(
+        worker: &mut Worker<A>,
+        global_vecs: Arc<RwLock<Arc<ChunkedDataset<K, D>>>>,
+        n: usize,
+        max_k: usize,
+        direction: MatrixDirection,
+        builder: B,
+        rng: R,
+    ) -> Self
+    where
+        A: Allocate,
+        K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
+        B: Fn(usize, &mut R) -> LSHCollection<F, H>,
+        R: Rng + SeedableRng + Send + Clone + ?Sized + 'static,
+    {
+        let peers = worker.peers();
+        let global_vecs = Arc::clone(&global_vecs);
+
+        let local = LocalData::new();
+        let local_2 = local.clone();
+
+        let mut rng_2 = rng.clone();
+        let rng = Arc::new(Mutex::new(rng));
+        let rng = Arc::clone(&rng);
+        let rng = rng.lock().unwrap().clone();
+        let probe = worker.dataflow::<u32, _, _>(move |scope| {
+            let mut p1 = ProbeHandle::new();
+            let mut p2 = p1.clone();
+            let matrix = MatrixDescription::for_workers(peers as usize);
+            info!("Collecting samples");
+            collect_sample::<_, _, _, F, _, _>(
+                scope,
+                global_vecs,
+                n,
+                matrix,
+                direction,
+                rng.clone(),
+            )
+            .map(|p| p.1)
+            .broadcast()
+            .probe_with(&mut p1)
+            .capture_into(local);
+            p1
+        });
+        worker.step_while(|| probe.less_than(&1));
+
+        let sample = local_2.data().to_vec();
+        Self::new(max_k, &sample, builder, &mut rng_2)
+    }
+
+    pub fn new<B, R>(max_k: usize, sample: &[D], builder: B, rng: &mut R) -> Self
     where
         B: Fn(usize, &mut R) -> LSHCollection<F, H>,
         R: Rng + SeedableRng + Send + Clone + ?Sized + 'static,

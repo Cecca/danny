@@ -458,7 +458,7 @@ pub fn source_hashed_adaptive<G, K, D, F, H>(
 where
     G: Scope<Timestamp = u32>,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
-    F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
+    F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + Abomonation + 'static,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
     K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
 {

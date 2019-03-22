@@ -114,7 +114,6 @@ where
     let k_local = LocalData::new();
     let k_local_2 = k_local.clone();
 
-    dbg!(best_k);
     let best_k: Vec<usize> = best_k.iter().cloned().collect();
     let probe = worker.dataflow::<u32, _, _>(move |scope| {
         let mut probe = ProbeHandle::new();
@@ -505,9 +504,18 @@ where
             ParamK::Exact(k) => panic!("Only adaptive k is supported!"),
             // FIXME: Introduce adaptive k variant
             ParamK::Max(max_k) => {
-                send_k.send(max_k);
-                // MultilevelHasher
-                unimplemented!()
+                let best_k = estimate_best_k_from_sample(
+                    worker,
+                    global_left_read.clone(),
+                    global_right_read.clone(),
+                    estimator_samples,
+                    max_k,
+                    hash_collection_builder.clone(),
+                    rng.clone(),
+                );
+                send_k.send(best_k);
+                info!("Building collection with k={}", best_k);
+                hash_collection_builder(best_k, &mut rng)
             }
         };
         let repetitions = hash_fn.repetitions();
