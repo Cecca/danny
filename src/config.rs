@@ -248,6 +248,7 @@ impl CmdlineConfig {
             (@arg MEASURE: -m --measure +required +takes_value "The similarity measure to be used")
             (@arg K: -k +takes_value "The number of concatenations of the hash function")
             (@arg MAX_K: --("max-k") +takes_value "The max number of concatenations of the hash function: auto sets it. Overridden by -k")
+            (@arg ADAPTIVE_K: --("adaptive-k") +takes_value "The max number of concatenations of the hash function in the adaptive algorithm: auto sets it. Overridden by -k")
             (@arg THRESHOLD: -r --range +required +takes_value "The similarity threshold")
             (@arg BITS: --("sketch-bits") +takes_value "The number of bits to use for sketching")
             (@arg LEFT: +required "Path to the left hand side of the join")
@@ -285,11 +286,20 @@ impl CmdlineConfig {
                 ParamK::Exact(_k)
             })
             .or_else(|| {
+                matches.value_of("ADAPTIVE_K").map(|adaptive_k_str| {
+                    let _k = adaptive_k_str
+                        .parse::<usize>()
+                        .expect("k should be an unsigned integer");
+                    ParamK::Adaptive(_k)
+                })
+            })
+            .or_else(|| {
                 matches.value_of("MAX_K").map(|max_k_str| {
                     let _k = max_k_str
                         .parse::<usize>()
                         .expect("k should be an unsigned integer");
                     ParamK::Max(_k)
+                })
             });
         let sketch_bits = matches.value_of("BITS").map(|bits_str| {
             bits_str
