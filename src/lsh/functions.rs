@@ -393,6 +393,29 @@ where
     }
 }
 
+#[derive(Clone, Copy, Abomonation)]
+pub struct LevelInfo {
+    best_level: usize,
+    current_level: usize,
+}
+
+impl LevelInfo {
+    pub fn new(best_level: usize, current_level: usize) -> Self {
+        Self {
+            best_level,
+            current_level,
+        }
+    }
+
+    pub fn is_match(&self, other: &Self) -> bool {
+        if self.current_level == other.current_level {
+            self.current_level == std::cmp::min(self.best_level, other.current_level)
+        } else {
+            false
+        }
+    }
+}
+
 pub struct BestKEstimator<H>
 where
     H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,

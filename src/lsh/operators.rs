@@ -121,6 +121,17 @@ where
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     fn bucket(&self, right: &Stream<G, (H, K)>, batch_size: usize) -> Stream<G, (K, K)>;
+    fn bucket_pred<P, R, O>(
+        &self,
+        right: &Stream<G, (H, K)>,
+        pred: P,
+        result: R,
+        batch_size: usize,
+    ) -> Stream<G, (O, O)>
+    where
+        O: Data,
+        P: FnMut(&(K, K)) -> bool + 'static,
+        R: Fn(K) -> O + 'static;
 }
 
 impl<G, T, H, K> BucketStream<G, T, H, K> for Stream<G, (H, K)>
@@ -131,6 +142,21 @@ where
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     fn bucket(&self, right: &Stream<G, (H, K)>, batch_size: usize) -> Stream<G, (K, K)> {
+        self.bucket_pred(right, |_| true, |k| k, batch_size)
+    }
+
+    fn bucket_pred<P, R, O>(
+        &self,
+        right: &Stream<G, (H, K)>,
+        pred: P,
+        result: R,
+        batch_size: usize,
+    ) -> Stream<G, (O, O)>
+    where
+        O: Data,
+        P: FnMut(&(K, K)) -> bool + 'static,
+        R: Fn(K) -> O + 'static,
+    {
         let mut buckets = HashMap::new();
         let mut generators = Vec::new();
         let logger = self.scope().danny_logger();
@@ -141,6 +167,7 @@ where
             ExchangePact::new(|pair: &(H, K)| pair.0.route()),
             "bucket",
             move |_, _| {
+                let mut pred = pred;
                 move |left_in, right_in, output| {
                     left_in.for_each(|t, d| {
                         debug!(
@@ -192,8 +219,8 @@ where
                         // Emit some output pairs
                         let mut session = output.session(time);
                         let mut cnt = 0;
-                        for pair in generator.take(batch_size) {
-                            session.give(pair);
+                        for (l, r) in generator.filter(|p| pred(p)).take(batch_size) {
+                            session.give((result(l), result(r)));
                             cnt += 1;
                         }
                         log_event!(logger, LogEvent::GeneratedPairs(cnt));
@@ -448,6 +475,7 @@ where
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn source_hashed_adaptive<G, T, K, D, F, H, R>(
     scope: &G,
     global_vecs: Arc<ChunkedDataset<K, D>>,
@@ -457,7 +485,7 @@ pub fn source_hashed_adaptive<G, T, K, D, F, H, R>(
     n: usize,
     throttling_probe: ProbeHandle<G::Timestamp>,
     rng: R,
-) -> Stream<G, (H, K, (u8, u8))>
+) -> Stream<G, (H, K, LevelInfo)>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ,
@@ -571,7 +599,7 @@ where
                                     session.give((
                                         h,
                                         key.clone(),
-                                        ((current_level + 1) as u8, (this_best_level + 1) as u8),
+                                        LevelInfo::new(this_best_level, current_level),
                                     ));
                                 }
                             }
