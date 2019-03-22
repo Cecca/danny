@@ -242,7 +242,6 @@ where
                 hash_collection_builder(best_k, &mut rng)
             }
         };
-        let repetitions = hash_fn.repetitions();
 
         let hash_fn = hash_fn.clone();
         let sketcher_pair = sketcher_pair.clone();
