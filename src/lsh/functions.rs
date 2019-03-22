@@ -24,6 +24,7 @@ use std::thread;
 use std::time::Instant;
 use timely::communication::allocator::Allocate;
 use timely::dataflow::channels::pact::{Exchange as ExchangePact, Pipeline};
+use timely::dataflow::operators::aggregation::Aggregate;
 use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::*;
@@ -406,6 +407,57 @@ impl<H> BestKEstimator<H>
 where
     H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,
 {
+    pub fn stream_collisions<G, K, D, F, R>(
+        scope: &G,
+        multilevel_hasher: MultilevelHasher<D, H, F>,
+        global_vecs: Arc<ChunkedDataset<K, D>>,
+        n: usize,
+        matrix: MatrixDescription,
+        direction: MatrixDirection,
+        rng: R,
+    ) -> Stream<G, ((usize, usize, H), usize)>
+    where
+        G: Scope,
+        K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
+        D: Clone + Data + Debug + Abomonation + Send + Sync,
+        F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
+        R: Rng + SeedableRng + Send + Clone + ?Sized + 'static,
+    {
+        let worker = scope.index() as u64;
+        let multilevel_hasher = multilevel_hasher;
+        source(scope, "best-k-stream", move |cap| {
+            let multilevel_hasher = multilevel_hasher;
+            let vecs = Arc::clone(&global_vecs);
+            let mut cap = Some(cap);
+            let mut rng = rng;
+            move |output| {
+                if let Some(cap) = cap.take() {
+                    let mut session = output.session(&cap);
+                    let p = n as f64 / vecs.stripe_len(&matrix, direction, worker) as f64;
+                    info!("Sampling with probability {} from each block", p);
+                    for (_k, v) in vecs.iter_stripe(&matrix, direction, worker) {
+                        if rng.gen_bool(p) {
+                            for (level, hasher) in multilevel_hasher.hashers.iter().enumerate() {
+                                for repetition in 0..multilevel_hasher.repetitions_at_level(level) {
+                                    let h = hasher.hash(v, repetition);
+                                    session.give(((level, repetition, h), 1));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })
+        .aggregate(
+            |_key, val, agg| {
+                *agg += val;
+            },
+            |key, agg: usize| (key, agg),
+            |key| (key.0 * 31 + key.1) as u64,
+        )
+        .broadcast()
+    }
+
     pub fn from_sample<A, K, D, F, R>(
         worker: &mut Worker<A>,
         multilevel_hasher: &MultilevelHasher<D, H, F>,
