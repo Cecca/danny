@@ -31,6 +31,7 @@ use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use timely::order::Product;
+use timely::progress::timestamp::Timestamp;
 use timely::worker::Worker;
 use timely::Data;
 
@@ -315,39 +316,17 @@ where
                         .expect("Cannot get the lock on the global right dataset"),
                 );
 
-                candidates
-                    .pair_route(matrix)
-                    .map(|pair| pair.1)
-                    // .approximate_distinct(1 << bloom_elements, bloom_fpp, 123123123)
-                    .approximate_distinct_atomic(Arc::clone(&bloom_filter))
-                    .unary(PipelinePact, "count-matching", move |_, _| {
-                        let mut pl = ProgressLogger::new(
-                            Duration::from_secs(60),
-                            "comparisons".to_owned(),
-                            None,
-                        );
-                        move |input, output| {
-                            input.for_each(|t, d| {
-                                let mut data = d.replace(Vec::new());
-                                let count = data
-                                    .drain(..)
-                                    .filter(|(lk, rk)| {
-                                        let lv = &global_left[lk];
-                                        let rv = &global_right[rk];
-                                        sim_pred(lv, rv)
-                                    })
-                                    .count() as u64;
-                                pl.add(count);
-                                let mut session = output.session(&t);
-                                session.give(count);
-                            });
-                        }
-                    })
-                    .stream_sum()
-                    .exchange(|_| 0)
-                    .leave()
-                    .probe_with(&mut probe)
-                    .capture_into(output_send_ch);
+                candidates_filter_count(
+                    candidates,
+                    Arc::clone(&global_left_read),
+                    Arc::clone(&global_right_read),
+                    sim_pred,
+                    Arc::clone(&bloom_filter),
+                )
+                .exchange(|_| 0)
+                .leave()
+                .probe_with(&mut probe)
+                .capture_into(output_send_ch);
 
                 probe
             })
@@ -409,4 +388,50 @@ where
     } else {
         0
     }
+}
+
+pub fn candidates_filter_count<G, T, K, D, F>(
+    candidates: Stream<G, (K, K)>,
+    global_left: Arc<RwLock<Arc<ChunkedDataset<K, D>>>>,
+    global_right: Arc<RwLock<Arc<ChunkedDataset<K, D>>>>,
+    sim_pred: F,
+    bloom_filter: Arc<AtomicBloomFilter<(K, K)>>,
+) -> Stream<G, u64>
+where
+    G: Scope<Timestamp = T>,
+    T: Timestamp + Succ,
+    K: Data + Route + Sync + Send + Clone + Abomonation + Debug + Hash,
+    D: Data + Sync + Send + Clone + Abomonation + Debug,
+    F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
+{
+    let peers = candidates.scope().peers();
+    let matrix = MatrixDescription::for_workers(peers as usize);
+    let global_left = global_left.read().unwrap().clone();
+    let global_right = global_right.read().unwrap().clone();
+
+    candidates
+        .pair_route(matrix)
+        .map(|pair| pair.1)
+        .approximate_distinct_atomic(Arc::clone(&bloom_filter))
+        .unary(PipelinePact, "count-matching", move |_, _| {
+            let mut pl =
+                ProgressLogger::new(Duration::from_secs(60), "comparisons".to_owned(), None);
+            move |input, output| {
+                input.for_each(|t, d| {
+                    let mut data = d.replace(Vec::new());
+                    let count = data
+                        .drain(..)
+                        .filter(|(lk, rk)| {
+                            let lv = &global_left[lk];
+                            let rv = &global_right[rk];
+                            sim_pred(lv, rv)
+                        })
+                        .count() as u64;
+                    pl.add(count);
+                    let mut session = output.session(&t);
+                    session.give(count);
+                });
+            }
+        })
+        .stream_sum()
 }
