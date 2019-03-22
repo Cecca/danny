@@ -166,9 +166,6 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let (send_k, recv_k) = channel();
-    let send_k = Arc::new(Mutex::new(send_k));
-
     let batch_size = config.get_batch_size();
 
     let left_path = left_path.clone();
@@ -207,31 +204,6 @@ where
         let index = worker.index();
         let peers = worker.peers() as u64;
 
-        let send_k = send_k.lock().unwrap().clone();
-
-        let hash_fn = match k {
-            ParamK::Exact(k) => {
-                send_k.send(k);
-                hash_collection_builder(k, &mut rng)
-            }
-            ParamK::Max(max_k) => {
-                unimplemented!()
-                // let best_k = estimate_best_k_from_sample(
-                //     worker,
-                //     global_left_read.clone(),
-                //     global_right_read.clone(),
-                //     estimator_samples,
-                //     max_k,
-                //     hash_collection_builder.clone(),
-                //     rng.clone(),
-                // );
-                // send_k.send(best_k);
-                // info!("Building collection with k={}", best_k);
-                // hash_collection_builder(best_k, &mut rng)
-            }
-        };
-
-        let hash_fn = hash_fn.clone();
         let sketcher_pair = sketcher_pair.clone();
 
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
@@ -243,55 +215,17 @@ where
 
                 let matrix = MatrixDescription::for_workers(peers as usize);
 
-                let candidates = match sketcher_pair {
-                    Some((sketcher, sketch_predicate)) => {
-                        unimplemented!()
-                        // let left_hashes = source_hashed_sketched(
-                        //     scope,
-                        //     Arc::clone(&global_left_read),
-                        //     hash_fn.clone(),
-                        //     sketcher.clone(),
-                        //     matrix,
-                        //     MatrixDirection::Rows,
-                        //     probe.clone(),
-                        // )
-                        // .enter(inner);
-                        // let right_hashes = source_hashed_sketched(
-                        //     scope,
-                        //     Arc::clone(&global_right_read),
-                        //     hash_fn.clone(),
-                        //     sketcher.clone(),
-                        //     matrix,
-                        //     MatrixDirection::Rows,
-                        //     probe.clone(),
-                        // )
-                        // .enter(inner);
-                        // left_hashes
-                        //     .bucket(&right_hashes, batch_size)
-                        //     .filter_sketches(sketch_predicate)
-                    }
-                    None => {
-                        let left_hashes = source_hashed(
-                            scope,
-                            Arc::clone(&global_left),
-                            hash_fn.clone(),
-                            matrix,
-                            MatrixDirection::Rows,
-                            probe.clone(),
-                        )
-                        .enter(inner);
-                        let right_hashes = source_hashed(
-                            scope,
-                            Arc::clone(&global_right),
-                            hash_fn.clone(),
-                            matrix,
-                            MatrixDirection::Columns,
-                            probe.clone(),
-                        )
-                        .enter(inner);
-                        left_hashes.bucket(&right_hashes, batch_size)
-                    }
-                };
+                let candidates = generate_candidates(
+                    Arc::clone(&global_left),
+                    Arc::clone(&global_right),
+                    k,
+                    &inner,
+                    hash_collection_builder,
+                    sketcher_pair,
+                    probe.clone(),
+                    batch_size,
+                    &mut rng,
+                );
 
                 candidates_filter_count(
                     candidates,
@@ -300,7 +234,7 @@ where
                     sim_pred,
                     Arc::clone(&bloom_filter),
                 )
-                .exchange(|_| 0)
+                .exchange(|_| 0) // Bring all the counts to the first worker
                 .leave()
                 .probe_with(&mut probe)
                 .capture_into(output_send_ch);
@@ -323,10 +257,6 @@ where
     .expect("Problems with the dataflow");
 
     if config.is_master() {
-        let actual_k = recv_k.recv().expect("Unable to get actual k");
-        info!("Actual k that was used is {}", actual_k);
-        experiment.add_tag("actual_k", actual_k);
-
         let mut exec_summaries = Vec::new();
         for summary in recv_exec_summary.iter() {
             if let TimelyEvent::Messages(_, msgs) = summary {
@@ -363,7 +293,6 @@ where
     }
 }
 
-#[allow(dead_code)]
 #[allow(clippy::too_many_arguments)]
 fn generate_candidates<'a, K, D, G, T1, T2, F, H, S, SV, R, B>(
     left: Arc<ChunkedDataset<K, D>>,

@@ -210,7 +210,7 @@ impl Config {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum ParamK {
     Max(usize),
     Exact(usize),
