@@ -399,7 +399,7 @@ mod tests {
 
 pub fn collect_sample<G, K, D, F, H, R>(
     scope: &G,
-    global_vecs: Arc<RwLock<Arc<ChunkedDataset<K, D>>>>,
+    global_vecs: Arc<ChunkedDataset<K, D>>,
     n: usize,
     matrix: MatrixDescription,
     direction: MatrixDirection,
@@ -425,7 +425,7 @@ where
     source(scope, "hashed source", move |capability| {
         let mut rng = rng;
         let mut cap = Some(capability);
-        let vecs = Arc::clone(&global_vecs.read().expect("Could not get global vectors"));
+        let vecs = Arc::clone(&global_vecs);
         move |output| {
             let mut done = false;
             if let Some(cap) = cap.as_mut() {
@@ -450,7 +450,7 @@ where
 
 pub fn source_hashed_adaptive<G, K, D, F, H>(
     scope: &G,
-    global_vecs: Arc<RwLock<Arc<ChunkedDataset<K, D>>>>,
+    global_vecs: Arc<ChunkedDataset<K, D>>,
     multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
     best_k_estimator: Arc<BestKEstimator<H>>,
     matrix: MatrixDescription,
@@ -473,7 +473,7 @@ where
     // First, find the best k value for all the points
     let best_ks = source(scope, "best-k-finder", move |capability| {
         let mut cap = Some(capability);
-        let vecs = Arc::clone(&global_vecs.read().expect("Could not get global vectors"));
+        let vecs = Arc::clone(&global_vecs);
         move |output| {
             if let Some(cap) = cap.take() {
                 let mut session = output.session(&cap);
@@ -518,7 +518,7 @@ where
             let mut current_max_repetitions =
                 multilevel_hasher_2.repetitions_at_level(current_level);
             let mut done = false;
-            let vecs = Arc::clone(&global_vecs_2.read().expect("Could not get global vectors"));
+            let vecs = Arc::clone(&global_vecs_2);
             move |best_ks_input, min_k_input, output| {
                 min_k_input.for_each(|_t, data| {
                     assert!(min_k.is_none());

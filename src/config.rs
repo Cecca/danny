@@ -214,13 +214,16 @@ impl Config {
 pub enum ParamK {
     Max(usize),
     Exact(usize),
+    Adaptive(usize),
 }
 
 impl ParamK {
     pub fn to_string(&self) -> String {
         match self {
+            // TODO: report the actual k
             ParamK::Max(k) => "Max(k)".to_owned(),
             ParamK::Exact(k) => "Exact(k)".to_owned(),
+            ParamK::Adaptive(k) => "Adaptive(k)".to_owned(),
         }
     }
 }

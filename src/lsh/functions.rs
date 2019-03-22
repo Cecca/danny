@@ -409,7 +409,7 @@ where
     pub fn from_sample<A, K, D, F, R>(
         worker: &mut Worker<A>,
         multilevel_hasher: &MultilevelHasher<D, H, F>,
-        global_vecs: Arc<RwLock<Arc<ChunkedDataset<K, D>>>>,
+        global_vecs: Arc<ChunkedDataset<K, D>>,
         n: usize,
         direction: MatrixDirection,
         rng: R,

@@ -37,11 +37,12 @@ use timely::progress::timestamp::Timestamp;
 use timely::worker::Worker;
 use timely::Data;
 
+#[allow(dead_code)]
 #[allow(clippy::too_many_arguments)]
-pub fn estimate_best_k_from_sample<A, K, D, F, H, B, R>(
+fn estimate_best_k_from_sample<A, K, D, F, H, B, R>(
     worker: &mut Worker<A>,
-    global_left: Arc<RwLock<Arc<ChunkedDataset<K, D>>>>,
-    global_right: Arc<RwLock<Arc<ChunkedDataset<K, D>>>>,
+    global_left: Arc<ChunkedDataset<K, D>>,
+    global_right: Arc<ChunkedDataset<K, D>>,
     n: usize,
     max_k: usize,
     builder: B,
@@ -215,7 +216,7 @@ where
 
                 let matrix = MatrixDescription::for_workers(peers as usize);
 
-                let candidates = generate_candidates(
+                let candidates = generate_candidates_global_k(
                     Arc::clone(&global_left),
                     Arc::clone(&global_right),
                     k,
@@ -294,7 +295,7 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-fn generate_candidates<'a, K, D, G, T1, T2, F, H, S, SV, R, B>(
+fn generate_candidates_global_k<'a, K, D, G, T1, T2, F, H, S, SV, R, B>(
     left: Arc<ChunkedDataset<K, D>>,
     right: Arc<ChunkedDataset<K, D>>,
     k: ParamK,
@@ -324,7 +325,7 @@ where
     let hash_fn = match k {
         ParamK::Exact(k) => hash_collection_builder(k, rng),
         ParamK::Max(max_k) => {
-            unimplemented!()
+            unimplemented!("I have to change the datatype accepted by the estimate function")
             // let best_k = estimate_best_k_from_sample(
             //     worker,
             //     global_left_read.clone(),
@@ -338,6 +339,7 @@ where
             // info!("Building collection with k={}", best_k);
             // hash_collection_builder(best_k, &mut rng)
         }
+        ParamK::Adaptive(_) => panic!("You should not be here!!"),
     };
 
     match sketcher_pair {
@@ -386,6 +388,64 @@ where
             )
             .enter(inner_scope);
             left_hashes.bucket(&right_hashes, batch_size)
+        }
+    }
+}
+
+#[allow(dead_code)]
+#[allow(clippy::too_many_arguments)]
+fn generate_candidates_adaptive<'a, K, D, G, T1, T2, F, H, S, SV, R, B>(
+    left: Arc<ChunkedDataset<K, D>>,
+    right: Arc<ChunkedDataset<K, D>>,
+    max_k: usize,
+    inner_scope: &ChildScope<'a, G, T2>,
+    hash_collection_builder: B,
+    sketcher_pair: Option<(S, SketchPredicate<SV>)>,
+    probe: ProbeHandle<T1>,
+    batch_size: usize,
+    rng: &mut R,
+) -> Stream<ChildScope<'a, G, T2>, (K, K)>
+where
+    K: Data + Sync + Send + Clone + Abomonation + Debug + Route + Hash + Eq,
+    D: Data + Sync + Send + Clone + Abomonation + Debug,
+    G: Scope<Timestamp = T1>,
+    T1: Timestamp + Succ,
+    T2: Timestamp + Succ + Refines<T1>,
+    F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
+    H: Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash + Ord,
+    S: Sketcher<Input = D, Output = SV> + Send + Sync + Clone + 'static,
+    SV: Data + Debug + Sync + Send + Clone + Abomonation + SketchEstimate + BitBasedSketch,
+    R: Rng + SeedableRng + Send + Sync + Clone + 'static,
+    B: Fn(usize, &mut R) -> LSHCollection<F, H> + Sized + Send + Sync + Clone + 'static,
+{
+    let peers = inner_scope.peers();
+    let matrix = MatrixDescription::for_workers(peers as usize);
+
+    let multihash = MultilevelHasher::new(max_k, hash_collection_builder, rng);
+
+    match sketcher_pair {
+        Some((sketcher, sketch_predicate)) => unimplemented!(),
+        None => {
+            unimplemented!()
+            // let left_hashes = source_hashed(
+            //     &inner_scope.parent,
+            //     Arc::clone(&left),
+            //     hash_fn.clone(),
+            //     matrix,
+            //     MatrixDirection::Rows,
+            //     probe.clone(),
+            // )
+            // .enter(inner_scope);
+            // let right_hashes = source_hashed(
+            //     &inner_scope.parent,
+            //     Arc::clone(&right),
+            //     hash_fn.clone(),
+            //     matrix,
+            //     MatrixDirection::Columns,
+            //     probe.clone(),
+            // )
+            // .enter(inner_scope);
+            // left_hashes.bucket(&right_hashes, batch_size)
         }
     }
 }
