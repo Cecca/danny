@@ -459,15 +459,19 @@ where
                     let mut session = output.session(&cap);
                     let p = n as f64 / vecs.stripe_len(&matrix, direction, worker) as f64;
                     info!("Sampling with probability {} from each block", p);
+                    let mut accumulator = HashMap::new();
                     for (_level, v) in vecs.iter_stripe(&matrix, direction, worker) {
                         if rng.gen_bool(p) {
                             for (level, hasher) in multilevel_hasher.hashers.iter().enumerate() {
                                 for repetition in 0..multilevel_hasher.repetitions_at_level(level) {
                                     let h = hasher.hash(v, repetition);
-                                    session.give(((level, repetition, h), 1));
+                                    *accumulator.entry((level, repetition, h)).or_insert(0) += 1;
                                 }
                             }
                         }
+                    }
+                    for e in accumulator.drain() {
+                        session.give(e);
                     }
                     info!(
                         "Sampled vectors and generated collisions (memory {})",
