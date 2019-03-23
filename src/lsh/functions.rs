@@ -431,6 +431,25 @@ impl<H> BestLevelEstimator<H>
 where
     H: Clone + Hash + Eq + Ord + Debug + Send + Sync + Data + Abomonation,
 {
+    // pub fn best_levels_stream<G, K, D, F, R>(
+    //     scope: &G,
+    //     multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
+    //     global_vecs: Arc<ChunkedDataset<K, D>>,
+    //     n: usize,
+    //     matrix: MatrixDescription,
+    //     direction: MatrixDirection,
+    //     rng: R,
+    // ) -> Stream<G, (K, usize)>
+    // where
+    //     G: Scope,
+    //     K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
+    //     D: Clone + Data + Debug + Abomonation + Send + Sync,
+    //     F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
+    //     R: Rng + SeedableRng + Send + Clone + ?Sized + 'static,
+    // {
+    //     unimplemented!()
+    // }
+
     pub fn stream_collisions<G, K, D, F, R>(
         scope: &G,
         multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
@@ -470,6 +489,7 @@ where
                             }
                         }
                     }
+                    info!("Outputting {} collision messages", accumulator.len());
                     for e in accumulator.drain() {
                         session.give(e);
                     }
