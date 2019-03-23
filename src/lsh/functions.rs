@@ -368,19 +368,19 @@ where
     H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,
     F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
 {
-    pub fn new<B, R>(max_k: usize, builder: B, rng: &mut R) -> Self
+    pub fn new<B, R>(max_level: usize, builder: B, rng: &mut R) -> Self
     where
         B: Fn(usize, &mut R) -> LSHCollection<F, H>,
         R: Rng + SeedableRng + Send + Clone + ?Sized + 'static,
     {
         let mut hashers = Vec::new();
-        for k in 0..=max_k {
-            hashers.push(builder(k, rng));
+        for level in 0..=max_level {
+            hashers.push(builder(level, rng));
         }
         Self { hashers }
     }
 
-    pub fn max_k(&self) -> usize {
+    pub fn max_level(&self) -> usize {
         self.hashers.len()
     }
 
@@ -416,7 +416,7 @@ impl LevelInfo {
     }
 }
 
-pub struct BestKEstimator<H>
+pub struct BestLevelEstimator<H>
 where
     H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,
 {
@@ -426,7 +426,7 @@ where
     buckets: Vec<Vec<HashMap<H, usize>>>,
 }
 
-impl<H> BestKEstimator<H>
+impl<H> BestLevelEstimator<H>
 where
     H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,
 {
@@ -448,7 +448,7 @@ where
     {
         let worker = scope.index() as u64;
         let multilevel_hasher = multilevel_hasher;
-        source(scope, "best-k-stream", move |cap| {
+        source(scope, "collisions-stream", move |cap| {
             let multilevel_hasher = multilevel_hasher;
             let vecs = Arc::clone(&global_vecs);
             let mut cap = Some(cap);
@@ -458,7 +458,7 @@ where
                     let mut session = output.session(&cap);
                     let p = n as f64 / vecs.stripe_len(&matrix, direction, worker) as f64;
                     info!("Sampling with probability {} from each block", p);
-                    for (_k, v) in vecs.iter_stripe(&matrix, direction, worker) {
+                    for (_level, v) in vecs.iter_stripe(&matrix, direction, worker) {
                         if rng.gen_bool(p) {
                             for (level, hasher) in multilevel_hasher.hashers.iter().enumerate() {
                                 for repetition in 0..multilevel_hasher.repetitions_at_level(level) {
@@ -524,7 +524,7 @@ where
         worker.step_while(|| probe.less_than(&1));
 
         let sample = local_2.data().to_vec();
-        Self::new(multilevel_hasher.max_k(), &sample, &multilevel_hasher)
+        Self::new(multilevel_hasher.max_level(), &sample, &multilevel_hasher)
     }
 
     pub fn new<D, F>(
@@ -549,7 +549,7 @@ where
             }
             buckets.push(repetitions_maps);
         }
-        Self { buckets }
+        BestLevelEstimator { buckets }
     }
 
     pub fn from_counts<D, F>(
@@ -572,16 +572,20 @@ where
         for ((level, repetition, h), count) in counts {
             buckets[*level][*repetition].insert(h.clone(), *count);
         }
-        Self { buckets }
+        BestLevelEstimator { buckets }
     }
 
-    pub fn get_best_k<D, F>(&self, multilevel_hasher: &MultilevelHasher<D, H, F>, v: &D) -> usize
+    pub fn get_best_level<D, F>(
+        &self,
+        multilevel_hasher: &MultilevelHasher<D, H, F>,
+        v: &D,
+    ) -> usize
     where
         D: Clone + Data + Debug + Abomonation + Send + Sync,
         F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
     {
         let mut min_work = std::usize::MAX;
-        let mut best_k = 0;
+        let mut best_level = 0;
         for (idx, hasher) in multilevel_hasher.hashers.iter().enumerate() {
             let mut work = hasher.repetitions();
             for rep in 0..hasher.repetitions() {
@@ -590,12 +594,12 @@ where
             }
             if work < min_work {
                 min_work = work;
-                best_k = idx + 1;
+                best_level = idx + 1;
             } else {
-                return best_k;
+                return best_level;
             }
         }
-        best_k
+        best_level
     }
 }
 

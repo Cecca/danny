@@ -496,23 +496,23 @@ where
     R: Rng + SeedableRng + Clone + ?Sized + 'static + Sync + Send,
 {
     let worker: u64 = scope.index() as u64;
-    let max_level = multilevel_hasher.max_k();
+    let max_level = multilevel_hasher.max_level();
     let multilevel_hasher = Arc::clone(&multilevel_hasher);
     let multilevel_hasher_2 = Arc::clone(&multilevel_hasher);
     let global_vecs_2 = Arc::clone(&global_vecs);
 
-    let collisions = BestKEstimator::stream_collisions(
+    let collisions = BestLevelEstimator::stream_collisions(
         scope,
         Arc::clone(&multilevel_hasher),
         Arc::clone(&global_vecs),
         n,
-        matrix.clone(),
-        direction.clone(),
+        matrix,
+        direction,
         rng.clone(),
     );
 
     // First, find the best k value for all the points
-    let best_ks = collisions.unary_frontier(Pipeline, "best-k-finder", move |_, _| {
+    let best_levels = collisions.unary_frontier(Pipeline, "best-level-finder", move |_, _| {
         let vecs = Arc::clone(&global_vecs);
         let mut collisions = HashMap::new();
         move |input, output| {
@@ -526,70 +526,70 @@ where
 
             for (time, counts) in collisions.iter_mut() {
                 if !input.frontier().less_equal(time) {
-                    let estimator = BestKEstimator::from_counts(&multilevel_hasher, &counts);
+                    let estimator = BestLevelEstimator::from_counts(&multilevel_hasher, &counts);
                     let mut session = output.session(&time);
                     for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
-                        let best_k = estimator.get_best_k(&multilevel_hasher, v);
-                        session.give((key.clone(), best_k));
+                        let best_level = estimator.get_best_level(&multilevel_hasher, v);
+                        session.give((key.clone(), best_level));
                     }
                 }
             }
         }
     });
 
-    // Find the minimum among these k values
-    let min_k = best_ks
+    // Find the minimum among the levels
+    let min_level = best_levels
         .map(|p| p.1)
         // Find the minimum in each worker
-        .accumulate(std::usize::MAX, |min_k, data| {
+        .accumulate(std::usize::MAX, |min_level, data| {
             for &x in data.iter() {
-                *min_k = std::cmp::min(*min_k, x);
+                *min_level = std::cmp::min(*min_level, x);
             }
         })
         // Find the minimum of the minimum
         .exchange(|_| 0)
-        .accumulate(std::usize::MAX, |min_k, data| {
+        .accumulate(std::usize::MAX, |min_level, data| {
             for &x in data.iter() {
-                *min_k = std::cmp::min(*min_k, x);
+                *min_level = std::cmp::min(*min_level, x);
             }
         })
         // Send the overall minimum to everybody
         .broadcast();
 
-    best_ks.binary_frontier(
-        &min_k,
+    best_levels.binary_frontier(
+        &min_level,
         Pipeline,
         Pipeline,
         "adaptive-source",
         move |default_cap, _| {
             let mut cap = Some(default_cap);
-            let mut min_k: Option<usize> = None;
-            let mut best_ks: HashMap<K, usize> = HashMap::new();
+            let mut min_level: Option<usize> = None;
+            let mut best_levels: HashMap<K, usize> = HashMap::new();
             let mut current_level = 0;
             let mut current_repetition = 0;
             let mut current_max_repetitions =
                 multilevel_hasher_2.repetitions_at_level(current_level);
             let mut done = false;
             let vecs = Arc::clone(&global_vecs_2);
-            move |best_ks_input, min_k_input, output| {
-                min_k_input.for_each(|_t, data| {
-                    assert!(min_k.is_none());
+            move |best_levels_input, min_level_input, output| {
+                min_level_input.for_each(|_t, data| {
+                    assert!(min_level.is_none());
                     assert!(data.len() == 0);
-                    min_k.replace(data[0]);
+                    min_level.replace(data[0]);
                     current_level = data[0] - 1;
                 });
-                best_ks_input.for_each(|_t, data| {
+                best_levels_input.for_each(|_t, data| {
                     let mut data = data.replace(Vec::new());
-                    for (key, k) in data.drain(..) {
-                        best_ks.insert(key, k);
+                    for (key, level) in data.drain(..) {
+                        best_levels.insert(key, level);
                     }
                 });
-                if let Some(_min_k) = min_k {
+                if let Some(_min_level) = min_level {
                     if let Some(cap) = cap.as_mut() {
                         if !throttling_probe.less_than(cap.time()) {
                             let mut session = output.session(&cap);
                             for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
-                                let this_best_level = best_ks[key] - 1;
+                                let this_best_level = best_levels[key] - 1;
                                 if current_level <= this_best_level {
                                     let h = multilevel_hasher_2.hash(
                                         v,
