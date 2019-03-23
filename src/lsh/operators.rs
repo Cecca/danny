@@ -522,10 +522,6 @@ where
                     .entry(t.retain())
                     .or_insert_with(Vec::new)
                     .append(&mut data);
-                info!(
-                    "Added new data to the collisions map (memory {})",
-                    proc_mem!()
-                );
             });
 
             for (time, counts) in collisions.iter_mut() {
