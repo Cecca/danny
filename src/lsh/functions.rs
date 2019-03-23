@@ -500,13 +500,45 @@ where
                 }
             }
         })
-        .aggregate(
-            |_key, val, agg| {
-                *agg += val;
+        .unary_frontier(
+            ExchangePact::new(|(k, _): &((usize, usize, H), usize)| (k.0 * 31 + k.1) as u64),
+            "aggregate collisions",
+            |_, _| {
+                let mut state = HashMap::new();
+                move |input, output| {
+                    input.for_each(|t, data| {
+                        let mut data = data.replace(Vec::new());
+                        let entry = state.entry(t.retain()).or_insert_with(HashMap::new);
+                        for (k, v) in data.drain(..) {
+                            *entry.entry(k).or_insert(0) += v;
+                        }
+                    });
+
+                    for (t, counts) in state.iter_mut() {
+                        if !input.frontier().less_equal(t) {
+                            info!(
+                                "Memory after aggregating counts {}. Outputting {} elements",
+                                proc_mem!(),
+                                counts.len()
+                            );
+                            let mut session = output.session(t);
+                            for e in counts.drain() {
+                                session.give(e);
+                            }
+                        }
+                    }
+
+                    state.retain(|_, counts| !counts.is_empty());
+                }
             },
-            |key, agg: usize| (key, agg),
-            |key| (key.0 * 31 + key.1) as u64,
         )
+        // .aggregate(
+        //     |_key, val, agg| {
+        //         *agg += val;
+        //     },
+        //     |key, agg: usize| (key, agg),
+        //     |key| (key.0 * 31 + key.1) as u64,
+        // )
         .broadcast()
     }
 
