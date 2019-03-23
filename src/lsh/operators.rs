@@ -522,6 +522,7 @@ where
                     .entry(t.retain())
                     .or_insert_with(Vec::new)
                     .append(&mut data);
+                info!("Added new data to the collisions map (memory {})", proc_mem!()h);
             });
 
             for (time, counts) in collisions.iter_mut() {
@@ -533,7 +534,10 @@ where
                         let best_level = estimator.get_best_level(&multilevel_hasher, v);
                         session.give((key.clone(), best_level));
                     }
-                    info!("Found best level for each and every vector, clearing counts");
+                    info!(
+                        "Found best level for each and every vector, clearing counts (memory {})",
+                        proc_mem!()
+                    );
                     counts.clear();
                 }
             }

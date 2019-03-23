@@ -468,7 +468,10 @@ where
                             }
                         }
                     }
-                    info!("Sampled vectors and generated collisions");
+                    info!(
+                        "Sampled vectors and generated collisions (memory {})",
+                        proc_mem!()
+                    );
                 }
             }
         })
