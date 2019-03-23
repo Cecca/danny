@@ -15,6 +15,7 @@ use rand::distributions::{Distribution, Normal, Uniform};
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
 use std::clone::Clone;
+use std::collections::BTreeMap;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -418,17 +419,17 @@ impl LevelInfo {
 
 pub struct BestLevelEstimator<H>
 where
-    H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,
+    H: Clone + Hash + Eq + Ord + Debug + Send + Sync + Data + Abomonation,
 {
     /// One hashmap for each level of k, the values are a vector with a position
     /// for each repetition, and each repetition is a map between hash value
     /// and count of things hashing to it
-    buckets: Vec<Vec<HashMap<H, usize>>>,
+    buckets: Vec<Vec<BTreeMap<H, usize>>>,
 }
 
 impl<H> BestLevelEstimator<H>
 where
-    H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,
+    H: Clone + Hash + Eq + Ord + Debug + Send + Sync + Data + Abomonation,
 {
     pub fn stream_collisions<G, K, D, F, R>(
         scope: &G,
@@ -497,7 +498,7 @@ where
         for hasher in multilevel_hasher.hashers.iter() {
             let mut repetitions_maps = Vec::new();
             for _ in 0..hasher.repetitions() {
-                let rep_map = HashMap::new();
+                let rep_map = BTreeMap::new();
                 repetitions_maps.push(rep_map);
             }
             buckets.push(repetitions_maps);

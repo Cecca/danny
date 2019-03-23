@@ -491,7 +491,7 @@ where
     T: Timestamp + Succ,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
-    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
+    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
     K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
     R: Rng + SeedableRng + Clone + ?Sized + 'static + Sync + Send,
 {
