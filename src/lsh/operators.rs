@@ -528,6 +528,7 @@ where
                 if !input.frontier().less_equal(time) {
                     info!("Finding best level for each and every vector");
                     let estimator = BestLevelEstimator::from_counts(&multilevel_hasher, &counts);
+                    info!("Built estimator: {}", estimator.describe());
                     let mut session = output.session(&time);
                     for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
                         let best_level = estimator.get_best_level(&multilevel_hasher, v);
@@ -639,7 +640,6 @@ where
                 if done {
                     // Drop the capability to signal that we will send no more data
                     cap = None;
-                    info!("Generated all repetitions");
                 }
             }
         },

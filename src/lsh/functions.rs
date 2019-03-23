@@ -534,6 +534,23 @@ where
         }
         best_level
     }
+
+    pub fn describe(&self) -> String {
+        let chunks: Vec<String> = self
+            .buckets
+            .iter()
+            .enumerate()
+            .map(|(idx, level)| {
+                let num_repetitions = level.len();
+                let num_entries = level.iter().map(|m| m.len()).sum::<usize>();
+                format!(
+                    "{}: {} repetitions, {} entries",
+                    idx, num_repetitions, num_entries
+                )
+            })
+            .collect();
+        chunks.join(" ")
+    }
 }
 
 #[cfg(test)]
