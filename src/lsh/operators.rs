@@ -515,8 +515,16 @@ where
     let best_levels = collisions.unary_frontier(Pipeline, "best-level-finder", move |_, _| {
         let vecs = Arc::clone(&global_vecs);
         let mut collisions = HashMap::new();
+        let mut start_receiving = None;
         move |input, output| {
             input.for_each(|t, data| {
+                if start_receiving.is_none() {
+                    info!(
+                        "Start to receive simulated collisions (memory {})",
+                        proc_mem!()
+                    );
+                    start_receiving = Some(Instant::now());
+                }
                 let mut data = data.replace(Vec::new());
                 collisions
                     .entry(t.retain())
@@ -526,6 +534,12 @@ where
 
             for (time, counts) in collisions.iter_mut() {
                 if !input.frontier().less_equal(time) {
+                    let end_receiving = Instant::now();
+                    info!(
+                        "Time to receive all simulated collisions {:?} (memory {:?})",
+                        end_receiving - start_receiving.unwrap(),
+                        proc_mem!()
+                    );
                     info!("Finding best level for each and every vector");
                     let estimator = BestLevelEstimator::from_counts(&multilevel_hasher, &counts);
                     info!("Built estimator: {}", estimator.describe());
@@ -604,6 +618,7 @@ where
                                 current_repetition,
                                 proc_mem!()
                             );
+                            let start = Instant::now();
                             let mut session = output.session(&cap);
                             for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
                                 let this_best_level = best_levels[key];
@@ -622,7 +637,11 @@ where
                                     ));
                                 }
                             }
-                            info!("Emitted all pairs (current memory {})", proc_mem!());
+                            info!(
+                                "Emitted all pairs in {:?} (current memory {})",
+                                Instant::now() - start,
+                                proc_mem!()
+                            );
                             cap.downgrade(&cap.time().succ());
                             current_repetition += 1;
                             if current_repetition >= current_max_repetitions {
