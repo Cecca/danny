@@ -594,8 +594,11 @@ where
                     if let Some(cap) = cap.as_mut() {
                         if !throttling_probe.less_than(cap.time()) {
                             info!(
-                                "Level {}/{} repetition {}",
-                                current_level, max_level, current_repetition
+                                "Level {}/{} repetition {} (current memory {})",
+                                current_level,
+                                max_level,
+                                current_repetition,
+                                proc_mem!()
                             );
                             let mut session = output.session(&cap);
                             for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
@@ -615,6 +618,7 @@ where
                                     ));
                                 }
                             }
+                            info!("Emitted all pairs (current memory {})", proc_mem!());
                             cap.downgrade(&cap.time().succ());
                             current_repetition += 1;
                             if current_repetition >= current_max_repetitions {
