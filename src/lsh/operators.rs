@@ -526,14 +526,19 @@ where
 
             for (time, counts) in collisions.iter_mut() {
                 if !input.frontier().less_equal(time) {
+                    info!("Finding best level for each and every vector");
                     let estimator = BestLevelEstimator::from_counts(&multilevel_hasher, &counts);
                     let mut session = output.session(&time);
                     for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
                         let best_level = estimator.get_best_level(&multilevel_hasher, v);
                         session.give((key.clone(), best_level));
                     }
+                    info!("Found best level for each and every vector, clearing counts");
+                    counts.clear();
                 }
             }
+
+            collisions.retain(|_, counts| !counts.is_empty());
         }
     });
 
@@ -554,7 +559,8 @@ where
             }
         })
         // Send the overall minimum to everybody
-        .broadcast();
+        .broadcast()
+        .inspect(|d| info!("Minimum level {:?}", d));
 
     best_levels.binary_frontier(
         &min_level,
@@ -574,9 +580,9 @@ where
             move |best_levels_input, min_level_input, output| {
                 min_level_input.for_each(|_t, data| {
                     assert!(min_level.is_none());
-                    assert!(data.len() == 0);
+                    assert!(data.len() == 1);
                     min_level.replace(data[0]);
-                    current_level = data[0] - 1;
+                    current_level = data[0];
                 });
                 best_levels_input.for_each(|_t, data| {
                     let mut data = data.replace(Vec::new());
@@ -587,9 +593,13 @@ where
                 if let Some(_min_level) = min_level {
                     if let Some(cap) = cap.as_mut() {
                         if !throttling_probe.less_than(cap.time()) {
+                            info!(
+                                "Level {}/{} repetition {}",
+                                current_level, max_level, current_repetition
+                            );
                             let mut session = output.session(&cap);
                             for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
-                                let this_best_level = best_levels[key] - 1;
+                                let this_best_level = best_levels[key];
                                 if current_level <= this_best_level {
                                     let h = multilevel_hasher_2.hash(
                                         v,
@@ -609,11 +619,13 @@ where
                             current_repetition += 1;
                             if current_repetition >= current_max_repetitions {
                                 current_level += 1;
-                                current_repetition = 0;
-                                current_max_repetitions =
-                                    multilevel_hasher_2.repetitions_at_level(current_level)
+                                done = current_level >= max_level;
+                                if !done {
+                                    current_repetition = 0;
+                                    current_max_repetitions =
+                                        multilevel_hasher_2.repetitions_at_level(current_level)
+                                }
                             }
-                            done = current_level >= max_level;
                         }
                     }
                 }

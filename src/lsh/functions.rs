@@ -468,6 +468,7 @@ where
                             }
                         }
                     }
+                    info!("Sampled vectors and generated collisions");
                 }
             }
         })
