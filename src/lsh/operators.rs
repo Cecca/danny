@@ -536,13 +536,18 @@ where
                 if !input.frontier().less_equal(time) {
                     let end_receiving = Instant::now();
                     info!(
-                        "Time to receive all simulated collisions {:?} (memory {:?})",
+                        "Time to receive {} simulated collisions {:?} (memory {:?})",
+                        counts.len(),
                         end_receiving - start_receiving.unwrap(),
                         proc_mem!()
                     );
                     info!("Finding best level for each and every vector");
                     let estimator = BestLevelEstimator::from_counts(&multilevel_hasher, &counts);
-                    info!("Built estimator: {}", estimator.describe());
+                    info!(
+                        "Built estimator (total mem {}): {}",
+                        proc_mem!(),
+                        estimator.describe()
+                    );
                     let mut session = output.session(&time);
                     for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
                         let best_level = estimator.get_best_level(&multilevel_hasher, v);
