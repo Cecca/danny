@@ -483,9 +483,7 @@ where
                     let mut accumulator = HashMap::new();
                     for (_, v) in vecs.iter_stripe(&matrix, direction, worker) {
                         if rng.gen_bool(p) {
-                            for (level, hasher) in
-                                multilevel_hasher.hashers.iter().enumerate().skip(8)
-                            {
+                            for (level, hasher) in multilevel_hasher.hashers.iter().enumerate() {
                                 for repetition in 0..multilevel_hasher.repetitions_at_level(level) {
                                     let h = hasher.hash(v, repetition);
                                     *accumulator.entry((level, repetition, h)).or_insert(0) += 1;
@@ -504,45 +502,43 @@ where
                 }
             }
         })
-        .unary_frontier(
-            ExchangePact::new(|(k, _): &((usize, usize, H), usize)| (k.0 * 31 + k.1) as u64),
-            "aggregate collisions",
-            |_, _| {
-                let mut state = HashMap::new();
-                move |input, output| {
-                    input.for_each(|t, data| {
-                        let mut data = data.replace(Vec::new());
-                        let entry = state.entry(t.retain()).or_insert_with(HashMap::new);
-                        for (k, v) in data.drain(..) {
-                            *entry.entry(k).or_insert(0) += v;
-                        }
-                    });
-
-                    for (t, counts) in state.iter_mut() {
-                        if !input.frontier().less_equal(t) {
-                            info!(
-                                "Memory after aggregating counts {}. Outputting {} elements",
-                                proc_mem!(),
-                                counts.len()
-                            );
-                            let mut session = output.session(t);
-                            for e in counts.drain() {
-                                session.give(e);
-                            }
-                        }
-                    }
-
-                    state.retain(|_, counts| !counts.is_empty());
-                }
-            },
-        )
-        // .aggregate(
-        //     |_key, val, agg| {
-        //         *agg += val;
+        // .unary_frontier(
+        //     ExchangePact::new(|(k, _): &((usize, usize, H), usize)| (k.0 * 31 + k.1) as u64),
+        //     "aggregate collisions",
+        //     |_, _| {
+        //         let mut state = HashMap::new();
+        //         move |input, output| {
+        //             input.for_each(|t, data| {
+        //                 let mut data = data.replace(Vec::new());
+        //                 let entry = state.entry(t.retain()).or_insert_with(HashMap::new);
+        //                 for (k, v) in data.drain(..) {
+        //                     *entry.entry(k).or_insert(0) += v;
+        //                 }
+        //             });
+        //             for (t, counts) in state.iter_mut() {
+        //                 if !input.frontier().less_equal(t) {
+        //                     info!(
+        //                         "Memory after aggregating counts {}. Outputting {} elements",
+        //                         proc_mem!(),
+        //                         counts.len()
+        //                     );
+        //                     let mut session = output.session(t);
+        //                     for e in counts.drain() {
+        //                         session.give(e);
+        //                     }
+        //                 }
+        //             }
+        //             state.retain(|_, counts| !counts.is_empty());
+        //         }
         //     },
-        //     |key, agg: usize| (key, agg),
-        //     |key| (key.0 * 31 + key.1) as u64,
         // )
+        .aggregate(
+            |_key, val, agg| {
+                *agg += val;
+            },
+            |key, agg: usize| (key, agg),
+            |key| (key.0 * 31 + key.1) as u64,
+        )
         .broadcast()
     }
 
@@ -569,6 +565,18 @@ where
         BestLevelEstimator { buckets }
     }
 
+    pub fn cost_str(&self) -> String {
+        let mut res = String::new();
+        for (level, repetitions) in self.buckets.iter().enumerate() {
+            let cost = repetitions
+                .iter()
+                .map(|buckets_map| buckets_map.values().sum::<usize>())
+                .sum::<usize>();
+            res.push_str(&format!(" ({}): {}", level, cost));
+        }
+        res
+    }
+
     pub fn get_best_level<D, F>(
         &self,
         multilevel_hasher: &MultilevelHasher<D, H, F>,
@@ -580,7 +588,7 @@ where
     {
         let mut min_work = std::usize::MAX;
         let mut best_level = 0;
-        for (idx, hasher) in multilevel_hasher.hashers.iter().enumerate().skip(8) {
+        for (idx, hasher) in multilevel_hasher.hashers.iter().enumerate() {
             let mut work = hasher.repetitions();
             for rep in 0..hasher.repetitions() {
                 let h = hasher.hash(v, rep);

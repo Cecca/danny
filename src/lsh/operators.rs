@@ -543,11 +543,10 @@ where
                     );
                     info!("Finding best level for each and every vector");
                     let estimator = BestLevelEstimator::from_counts(&multilevel_hasher, &counts);
-                    info!(
-                        "Built estimator (total mem {}): {}",
-                        proc_mem!(),
-                        estimator.describe()
-                    );
+                    info!("Built estimator (total mem {})", proc_mem!(),);
+                    if worker == 0 {
+                        info!("Estimator: {}", estimator.cost_str());
+                    }
                     let mut session = output.session(&time);
                     for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
                         let best_level = estimator.get_best_level(&multilevel_hasher, v);
