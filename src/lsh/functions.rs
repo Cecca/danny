@@ -550,6 +550,14 @@ where
             // )
             .delay(|tup, time| time.succs((tup.0).0))
             .broadcast()
+            .inspect_batch(|time, data| {
+                info!(
+                    "broadcasting time {:?} # messages {}, memory {}",
+                    time,
+                    data.len(),
+                    proc_mem!()
+                )
+            })
             .leave()
         })
     }
