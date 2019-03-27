@@ -548,10 +548,13 @@ where
                         info!("Estimator: {}", estimator.cost_str());
                     }
                     let mut session = output.session(&time);
+                    let mut level_stats = BTreeMap::new();
                     for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
                         let best_level = estimator.get_best_level(&multilevel_hasher, v);
                         session.give((key.clone(), best_level));
+                        *level_stats.entry(best_level).or_insert(0usize) += 1;
                     }
+                    info!("Distribution of counts {:#?}", level_stats);
                     info!(
                         "Found best level for each and every vector, clearing counts (memory {})",
                         proc_mem!()
