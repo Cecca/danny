@@ -481,9 +481,11 @@ where
                     let p = n as f64 / vecs.stripe_len(&matrix, direction, worker) as f64;
                     info!("Sampling with probability {} from each block", p);
                     let mut accumulator = HashMap::new();
-                    for (_level, v) in vecs.iter_stripe(&matrix, direction, worker) {
+                    for (_, v) in vecs.iter_stripe(&matrix, direction, worker) {
                         if rng.gen_bool(p) {
-                            for (level, hasher) in multilevel_hasher.hashers.iter().enumerate() {
+                            for (level, hasher) in
+                                multilevel_hasher.hashers.iter().enumerate().skip(8)
+                            {
                                 for repetition in 0..multilevel_hasher.repetitions_at_level(level) {
                                     let h = hasher.hash(v, repetition);
                                     *accumulator.entry((level, repetition, h)).or_insert(0) += 1;
