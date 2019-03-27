@@ -546,6 +546,7 @@ where
                     info!("Built estimator (total mem {})", proc_mem!(),);
                     if worker == 0 {
                         info!("Estimator: {}", estimator.cost_str());
+                        info!("{}", estimator.bucket_detail());
                     }
                     let mut session = output.session(&time);
                     let mut level_stats = BTreeMap::new();

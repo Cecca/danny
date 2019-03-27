@@ -572,7 +572,28 @@ where
                 .iter()
                 .map(|buckets_map| buckets_map.values().sum::<usize>())
                 .sum::<usize>();
-            res.push_str(&format!(" ({}): {}", level, cost));
+            let overall_buckets = repetitions
+                .iter()
+                .map(|buckets_map| buckets_map.len())
+                .sum::<usize>();
+            res.push_str(&format!(
+                " ({}): {} [{}]",
+                level,
+                cost,
+                cost as f64 / overall_buckets as f64
+            ));
+        }
+        res
+    }
+
+    pub fn bucket_detail(&self) -> String {
+        let mut res = String::new();
+        for (level, repetitions) in self.buckets.iter().enumerate() {
+            res.push_str(&format!("  level {} ", level));
+            for buckets_map in repetitions.iter() {
+                res.push_str(&format!("\n     {:?}", buckets_map));
+            }
+            res.push('\n');
         }
         res
     }
@@ -592,13 +613,11 @@ where
             let mut work = hasher.repetitions();
             for rep in 0..hasher.repetitions() {
                 let h = hasher.hash(v, rep);
-                work += self.buckets[idx][rep].get(&h).unwrap_or(&0usize);
+                work += 1 + self.buckets[idx][rep].get(&h).unwrap_or(&0usize);
             }
             if work < min_work {
                 min_work = work;
-                best_level = idx + 1;
-            } else {
-                return best_level;
+                best_level = idx;
             }
         }
         best_level

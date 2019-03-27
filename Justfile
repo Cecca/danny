@@ -38,3 +38,14 @@ merge BRANCH:
     --sort=-committerdate \
     --format "[%(committerdate:short)] %(HEAD) %(color:green)%(refname:short) %(color:yellow)%(committerdate:relative) %(color:reset)"
 
+build-release:
+  cargo build --release
+
+left='~/Datasets/GoogleWords/google-1k.bin'
+right='~/Datasets/GoogleWords/google-1k.bin'
+
+run-debug: build-release
+  test ! -f /tmp/log || rm /tmp/log 
+  cargo run  --release --bin danny -- -r 0.6 -m cosine -a fixed-lsh --adaptive-k 6 {{left}} {{right}} 2> /tmp/log   
+  less /tmp/log
+
