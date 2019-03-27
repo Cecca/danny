@@ -536,13 +536,13 @@ where
                 }
             },
         )
-        .aggregate(
-            |_key, val, agg| {
-                *agg += val;
-            },
-            |key, agg: usize| (key, agg),
-            |key| (key.0 * 31 + key.1) as u64,
-        )
+        // .aggregate(
+        //     |_key, val, agg| {
+        //         *agg += val;
+        //     },
+        //     |key, agg: usize| (key, agg),
+        //     |key| (key.0 * 31 + key.1) as u64,
+        // )
         .broadcast()
     }
 
@@ -580,7 +580,7 @@ where
     {
         let mut min_work = std::usize::MAX;
         let mut best_level = 0;
-        for (idx, hasher) in multilevel_hasher.hashers.iter().enumerate() {
+        for (idx, hasher) in multilevel_hasher.hashers.iter().enumerate().skip(8) {
             let mut work = hasher.repetitions();
             for rep in 0..hasher.repetitions() {
                 let h = hasher.hash(v, rep);
