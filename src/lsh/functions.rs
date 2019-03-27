@@ -483,7 +483,9 @@ where
                     let mut accumulator = HashMap::new();
                     for (_, v) in vecs.iter_stripe(&matrix, direction, worker) {
                         if rng.gen_bool(p) {
-                            for (level, hasher) in multilevel_hasher.hashers.iter().enumerate() {
+                            for (level, hasher) in
+                                multilevel_hasher.hashers.iter().enumerate().skip(5)
+                            {
                                 for repetition in 0..multilevel_hasher.repetitions_at_level(level) {
                                     let h = hasher.hash(v, repetition);
                                     *accumulator.entry((level, repetition, h)).or_insert(0) += 1;
@@ -609,7 +611,7 @@ where
     {
         let mut min_work = std::usize::MAX;
         let mut best_level = 0;
-        for (idx, hasher) in multilevel_hasher.hashers.iter().enumerate() {
+        for (idx, hasher) in multilevel_hasher.hashers.iter().enumerate().skip(5) {
             let mut work = hasher.repetitions();
             for rep in 0..hasher.repetitions() {
                 let h = hasher.hash(v, rep);
