@@ -30,6 +30,7 @@ use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
+use timely::order::Product;
 use timely::progress::Timestamp;
 use timely::worker::Worker;
 use timely::Data;
@@ -450,7 +451,7 @@ where
     //     unimplemented!()
     // }
 
-    pub fn stream_collisions<G, K, D, F, R>(
+    pub fn stream_collisions<G, T, K, D, F, R>(
         scope: &G,
         multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
         global_vecs: Arc<ChunkedDataset<K, D>>,
@@ -460,7 +461,8 @@ where
         rng: R,
     ) -> Stream<G, ((usize, usize, H), usize)>
     where
-        G: Scope,
+        G: Scope<Timestamp = T>,
+        T: Timestamp + Succ,
         K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
         D: Clone + Data + Debug + Abomonation + Send + Sync,
         F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
@@ -468,78 +470,88 @@ where
     {
         let worker = scope.index() as u64;
         let multilevel_hasher = multilevel_hasher;
-        source(scope, "collisions-stream", move |cap| {
-            let multilevel_hasher = multilevel_hasher;
-            let vecs = Arc::clone(&global_vecs);
-            let mut cap = Some(cap);
-            let mut rng = rng;
-            move |output| {
-                if let Some(cap) = cap.take() {
-                    let mut session = output.session(&cap);
-                    let p = n as f64 / vecs.stripe_len(&matrix, direction, worker) as f64;
-                    info!("Sampling with probability {} from each block", p);
-                    let mut accumulator = HashMap::new();
-                    for (_level, v) in vecs.iter_stripe(&matrix, direction, worker) {
-                        if rng.gen_bool(p) {
-                            for (level, hasher) in multilevel_hasher.hashers.iter().enumerate() {
-                                for repetition in 0..multilevel_hasher.repetitions_at_level(level) {
-                                    let h = hasher.hash(v, repetition);
-                                    *accumulator.entry((level, repetition, h)).or_insert(0) += 1;
+        let mut outer = scope.clone();
+        outer.scoped::<Product<T, u8>, _, _>("broadcasting scope", |inner| {
+            source(scope, "collisions-stream", move |cap| {
+                let multilevel_hasher = multilevel_hasher;
+                let vecs = Arc::clone(&global_vecs);
+                let mut cap = Some(cap);
+                let mut rng = rng;
+                move |output| {
+                    if let Some(cap) = cap.take() {
+                        let mut session = output.session(&cap);
+                        let p = n as f64 / vecs.stripe_len(&matrix, direction, worker) as f64;
+                        info!("Sampling with probability {} from each block", p);
+                        let mut accumulator = HashMap::new();
+                        for (_level, v) in vecs.iter_stripe(&matrix, direction, worker) {
+                            if rng.gen_bool(p) {
+                                for (level, hasher) in multilevel_hasher.hashers.iter().enumerate()
+                                {
+                                    for repetition in
+                                        0..multilevel_hasher.repetitions_at_level(level)
+                                    {
+                                        let h = hasher.hash(v, repetition);
+                                        *accumulator.entry((level, repetition, h)).or_insert(0) +=
+                                            1;
+                                    }
                                 }
                             }
                         }
-                    }
-                    info!("Outputting {} collision messages", accumulator.len());
-                    for e in accumulator.drain() {
-                        session.give(e);
-                    }
-                    info!(
-                        "Sampled vectors and generated collisions (memory {})",
-                        proc_mem!()
-                    );
-                }
-            }
-        })
-        .unary_frontier(
-            ExchangePact::new(|(k, _): &((usize, usize, H), usize)| (k.0 * 31 + k.1) as u64),
-            "aggregate collisions",
-            |_, _| {
-                let mut state = HashMap::new();
-                move |input, output| {
-                    input.for_each(|t, data| {
-                        let mut data = data.replace(Vec::new());
-                        let entry = state.entry(t.retain()).or_insert_with(HashMap::new);
-                        for (k, v) in data.drain(..) {
-                            *entry.entry(k).or_insert(0) += v;
+                        info!("Outputting {} collision messages", accumulator.len());
+                        for e in accumulator.drain() {
+                            session.give(e);
                         }
-                    });
+                        info!(
+                            "Sampled vectors and generated collisions (memory {})",
+                            proc_mem!()
+                        );
+                    }
+                }
+            })
+            .enter(inner)
+            .unary_frontier(
+                ExchangePact::new(|(k, _): &((usize, usize, H), usize)| (k.0 * 31 + k.1) as u64),
+                "aggregate collisions",
+                |_, _| {
+                    let mut state = HashMap::new();
+                    move |input, output| {
+                        input.for_each(|t, data| {
+                            let mut data = data.replace(Vec::new());
+                            let entry = state.entry(t.retain()).or_insert_with(HashMap::new);
+                            for (k, v) in data.drain(..) {
+                                *entry.entry(k).or_insert(0) += v;
+                            }
+                        });
 
-                    for (t, counts) in state.iter_mut() {
-                        if !input.frontier().less_equal(t) {
-                            info!(
-                                "Memory after aggregating counts {}. Outputting {} elements",
-                                proc_mem!(),
-                                counts.len()
-                            );
-                            let mut session = output.session(t);
-                            for e in counts.drain() {
-                                session.give(e);
+                        for (t, counts) in state.iter_mut() {
+                            if !input.frontier().less_equal(t) {
+                                info!(
+                                    "Memory after aggregating counts {}. Outputting {} elements",
+                                    proc_mem!(),
+                                    counts.len()
+                                );
+                                let mut session = output.session(t);
+                                for e in counts.drain() {
+                                    session.give(e);
+                                }
                             }
                         }
-                    }
 
-                    state.retain(|_, counts| !counts.is_empty());
-                }
-            },
-        )
-        // .aggregate(
-        //     |_key, val, agg| {
-        //         *agg += val;
-        //     },
-        //     |key, agg: usize| (key, agg),
-        //     |key| (key.0 * 31 + key.1) as u64,
-        // )
-        .broadcast()
+                        state.retain(|_, counts| !counts.is_empty());
+                    }
+                },
+            )
+            // .aggregate(
+            //     |_key, val, agg| {
+            //         *agg += val;
+            //     },
+            //     |key, agg: usize| (key, agg),
+            //     |key| (key.0 * 31 + key.1) as u64,
+            // )
+            .delay(|tup, time| time.succs((tup.0).0))
+            .broadcast()
+            .leave()
+        })
     }
 
     pub fn from_counts<D, F>(
