@@ -46,6 +46,6 @@ right='~/Datasets/GoogleWords/google-1k.bin'
 
 run-debug: build-release
   test ! -f /tmp/log || rm /tmp/log 
-  cargo run  --release --bin danny -- -r 0.6 -m cosine -a fixed-lsh --adaptive-k 6 {{left}} {{right}} 2> /tmp/log   
+  cargo run  --release --bin danny -- -r 0.6 -m cosine -a fixed-lsh --adaptive-k 10,18 {{left}} {{right}} 2> /tmp/log   
   less /tmp/log
 

@@ -568,7 +568,8 @@ where
             let mut work = hasher.repetitions();
             for rep in 0..hasher.repetitions() {
                 let h = hasher.hash(v, rep);
-                work += 1 + self.buckets[idx][rep].get(&h).unwrap_or(&0usize);
+                let collisions_count = self.buckets[idx][rep].get(&h).unwrap_or(&0usize);
+                work += 1 + collisions_count * collisions_count;
             }
             if work < min_work {
                 min_work = work;
