@@ -621,10 +621,11 @@ where
                     if let Some(cap) = cap.as_mut() {
                         if !throttling_probe.less_than(cap.time()) {
                             info!(
-                                "Level {}/{} repetition {} (current memory {})",
+                                "Level {}/{} repetition {}/{} (current memory {})",
                                 current_level,
                                 max_level,
                                 current_repetition,
+                                current_max_repetitions,
                                 proc_mem!()
                             );
                             let start = Instant::now();

@@ -386,7 +386,7 @@ where
     }
 
     pub fn max_level(&self) -> usize {
-        self.hashers.len()
+        *self.hashers.keys().max().unwrap()
     }
 
     pub fn repetitions_at_level(&self, level: usize) -> usize {
