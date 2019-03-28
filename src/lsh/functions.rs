@@ -352,8 +352,7 @@ where
     best_k
 }
 
-/// Structure that tells to each vector its best k.
-/// It also allows to hash a vector at the desired level k. In this respect,
+/// Structure that allows to hash a vector at the desired level k. In this respect,
 /// it is somehow the multi-level counterpart of LSHCollection
 pub struct MultilevelHasher<D, H, F>
 where
@@ -361,7 +360,7 @@ where
     H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,
     F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
 {
-    hashers: Vec<LSHCollection<F, H>>,
+    hashers: HashMap<usize, LSHCollection<F, H>>,
 }
 
 impl<D, H, F> MultilevelHasher<D, H, F>
@@ -370,14 +369,18 @@ where
     H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,
     F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
 {
-    pub fn new<B, R>(max_level: usize, builder: B, rng: &mut R) -> Self
+    pub fn new<B, R>(min_level: usize, max_level: usize, builder: B, rng: &mut R) -> Self
     where
         B: Fn(usize, &mut R) -> LSHCollection<F, H>,
         R: Rng + SeedableRng + Send + Clone + ?Sized + 'static,
     {
-        let mut hashers = Vec::new();
-        for level in 0..=max_level {
-            hashers.push(builder(level, rng));
+        info!(
+            "Building MultiLevelHasher with minimum level {} and maximum level {}",
+            min_level, max_level
+        );
+        let mut hashers = HashMap::new();
+        for level in min_level..=max_level {
+            hashers.insert(level, builder(level, rng));
         }
         Self { hashers }
     }
@@ -387,11 +390,11 @@ where
     }
 
     pub fn repetitions_at_level(&self, level: usize) -> usize {
-        self.hashers[level].repetitions()
+        self.hashers[&level].repetitions()
     }
 
     pub fn hash(&self, v: &D, level: usize, repetition: usize) -> H {
-        self.hashers[level].hash(v, repetition)
+        self.hashers[&level].hash(v, repetition)
     }
 }
 
@@ -425,32 +428,13 @@ where
     /// One hashmap for each level of k, the values are a vector with a position
     /// for each repetition, and each repetition is a map between hash value
     /// and count of things hashing to it
-    buckets: Vec<Vec<BTreeMap<H, usize>>>,
+    buckets: HashMap<usize, Vec<BTreeMap<H, usize>>>,
 }
 
 impl<H> BestLevelEstimator<H>
 where
     H: Clone + Hash + Eq + Ord + Debug + Send + Sync + Data + Abomonation,
 {
-    // pub fn best_levels_stream<G, K, D, F, R>(
-    //     scope: &G,
-    //     multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
-    //     global_vecs: Arc<ChunkedDataset<K, D>>,
-    //     n: usize,
-    //     matrix: MatrixDescription,
-    //     direction: MatrixDirection,
-    //     rng: R,
-    // ) -> Stream<G, (K, usize)>
-    // where
-    //     G: Scope,
-    //     K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
-    //     D: Clone + Data + Debug + Abomonation + Send + Sync,
-    //     F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
-    //     R: Rng + SeedableRng + Send + Clone + ?Sized + 'static,
-    // {
-    //     unimplemented!()
-    // }
-
     pub fn stream_collisions<G, T, K, D, F, R>(
         scope: &G,
         multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
@@ -483,12 +467,11 @@ where
                     let mut accumulator = HashMap::new();
                     for (_, v) in vecs.iter_stripe(&matrix, direction, worker) {
                         if rng.gen_bool(p) {
-                            for (level, hasher) in
-                                multilevel_hasher.hashers.iter().enumerate().skip(5)
-                            {
-                                for repetition in 0..multilevel_hasher.repetitions_at_level(level) {
+                            for (level, hasher) in multilevel_hasher.hashers.iter() {
+                                for repetition in 0..multilevel_hasher.repetitions_at_level(*level)
+                                {
                                     let h = hasher.hash(v, repetition);
-                                    *accumulator.entry((level, repetition, h)).or_insert(0) += 1;
+                                    *accumulator.entry((*level, repetition, h)).or_insert(0) += 1;
                                 }
                             }
                         }
@@ -504,36 +487,6 @@ where
                 }
             }
         })
-        // .unary_frontier(
-        //     ExchangePact::new(|(k, _): &((usize, usize, H), usize)| (k.0 * 31 + k.1) as u64),
-        //     "aggregate collisions",
-        //     |_, _| {
-        //         let mut state = HashMap::new();
-        //         move |input, output| {
-        //             input.for_each(|t, data| {
-        //                 let mut data = data.replace(Vec::new());
-        //                 let entry = state.entry(t.retain()).or_insert_with(HashMap::new);
-        //                 for (k, v) in data.drain(..) {
-        //                     *entry.entry(k).or_insert(0) += v;
-        //                 }
-        //             });
-        //             for (t, counts) in state.iter_mut() {
-        //                 if !input.frontier().less_equal(t) {
-        //                     info!(
-        //                         "Memory after aggregating counts {}. Outputting {} elements",
-        //                         proc_mem!(),
-        //                         counts.len()
-        //                     );
-        //                     let mut session = output.session(t);
-        //                     for e in counts.drain() {
-        //                         session.give(e);
-        //                     }
-        //                 }
-        //             }
-        //             state.retain(|_, counts| !counts.is_empty());
-        //         }
-        //     },
-        // )
         .aggregate(
             |_key, val, agg| {
                 *agg += val;
@@ -552,24 +505,24 @@ where
         D: Clone + Data + Debug + Abomonation + Send + Sync,
         F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
     {
-        let mut buckets = Vec::new();
-        for hasher in multilevel_hasher.hashers.iter() {
+        let mut buckets = HashMap::new();
+        for (level, hasher) in multilevel_hasher.hashers.iter() {
             let mut repetitions_maps = Vec::new();
             for _ in 0..hasher.repetitions() {
                 let rep_map = BTreeMap::new();
                 repetitions_maps.push(rep_map);
             }
-            buckets.push(repetitions_maps);
+            buckets.insert(*level, repetitions_maps);
         }
         for ((level, repetition, h), count) in counts {
-            buckets[*level][*repetition].insert(h.clone(), *count);
+            buckets.get_mut(level).unwrap()[*repetition].insert(h.clone(), *count);
         }
         BestLevelEstimator { buckets }
     }
 
     pub fn cost_str(&self) -> String {
         let mut res = String::new();
-        for (level, repetitions) in self.buckets.iter().enumerate() {
+        for (level, repetitions) in self.buckets.iter() {
             let cost = repetitions
                 .iter()
                 .map(|buckets_map| buckets_map.values().sum::<usize>())
@@ -590,7 +543,7 @@ where
 
     pub fn bucket_detail(&self) -> String {
         let mut res = String::new();
-        for (level, repetitions) in self.buckets.iter().enumerate() {
+        for (level, repetitions) in self.buckets.iter() {
             res.push_str(&format!("  level {} ", level));
             for buckets_map in repetitions.iter() {
                 res.push_str(&format!("\n     {:?}", buckets_map));
@@ -611,7 +564,7 @@ where
     {
         let mut min_work = std::usize::MAX;
         let mut best_level = 0;
-        for (idx, hasher) in multilevel_hasher.hashers.iter().enumerate().skip(5) {
+        for (idx, hasher) in multilevel_hasher.hashers.iter() {
             let mut work = hasher.repetitions();
             for rep in 0..hasher.repetitions() {
                 let h = hasher.hash(v, rep);
@@ -619,27 +572,10 @@ where
             }
             if work < min_work {
                 min_work = work;
-                best_level = idx;
+                best_level = *idx;
             }
         }
         best_level
-    }
-
-    pub fn describe(&self) -> String {
-        let chunks: Vec<String> = self
-            .buckets
-            .iter()
-            .enumerate()
-            .map(|(idx, level)| {
-                let num_repetitions = level.len();
-                let num_entries = level.iter().map(|m| m.len()).sum::<usize>();
-                format!(
-                    "{}: {} repetitions, {} entries",
-                    idx, num_repetitions, num_entries
-                )
-            })
-            .collect();
-        chunks.join(" ")
     }
 }
 

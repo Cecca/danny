@@ -217,10 +217,11 @@ where
                 let matrix = MatrixDescription::for_workers(peers as usize);
 
                 let candidates = match k {
-                    ParamK::Adaptive(k) => generate_candidates_adaptive(
+                    ParamK::Adaptive(min_k, max_k) => generate_candidates_adaptive(
                         Arc::clone(&global_left),
                         Arc::clone(&global_right),
-                        k,
+                        min_k,
+                        max_k,
                         estimator_samples,
                         &inner,
                         hash_collection_builder,
@@ -353,7 +354,7 @@ where
             // info!("Building collection with k={}", best_k);
             // hash_collection_builder(best_k, &mut rng)
         }
-        ParamK::Adaptive(_) => panic!("You should not be here!!"),
+        ParamK::Adaptive(_, _) => panic!("You should not be here!!"),
     };
 
     match sketcher_pair {
@@ -411,6 +412,7 @@ where
 fn generate_candidates_adaptive<'a, K, D, G, T1, T2, F, H, S, SV, R, B>(
     left: Arc<ChunkedDataset<K, D>>,
     right: Arc<ChunkedDataset<K, D>>,
+    min_k: usize,
     max_k: usize,
     sample_size: usize,
     inner_scope: &ChildScope<'a, G, T2>,
@@ -436,7 +438,12 @@ where
     let peers = inner_scope.peers();
     let matrix = MatrixDescription::for_workers(peers as usize);
 
-    let multihash = Arc::new(MultilevelHasher::new(max_k, hash_collection_builder, rng));
+    let multihash = Arc::new(MultilevelHasher::new(
+        min_k,
+        max_k,
+        hash_collection_builder,
+        rng,
+    ));
 
     match sketcher_pair {
         Some((sketcher, sketch_predicate)) => unimplemented!(),

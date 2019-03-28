@@ -599,8 +599,7 @@ where
             let mut best_levels: HashMap<K, usize> = HashMap::new();
             let mut current_level = 0;
             let mut current_repetition = 0;
-            let mut current_max_repetitions =
-                multilevel_hasher_2.repetitions_at_level(current_level);
+            let mut current_max_repetitions = 0;
             let mut done = false;
             let vecs = Arc::clone(&global_vecs_2);
             move |best_levels_input, min_level_input, output| {
@@ -609,6 +608,8 @@ where
                     assert!(data.len() == 1);
                     min_level.replace(data[0]);
                     current_level = data[0];
+                    current_max_repetitions =
+                        multilevel_hasher_2.repetitions_at_level(current_level);
                 });
                 best_levels_input.for_each(|_t, data| {
                     let mut data = data.replace(Vec::new());

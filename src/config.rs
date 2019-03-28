@@ -214,7 +214,7 @@ impl Config {
 pub enum ParamK {
     Max(usize),
     Exact(usize),
-    Adaptive(usize),
+    Adaptive(usize, usize),
 }
 
 impl ParamK {
@@ -223,7 +223,7 @@ impl ParamK {
             // TODO: report the actual k
             ParamK::Max(k) => "Max(k)".to_owned(),
             ParamK::Exact(k) => "Exact(k)".to_owned(),
-            ParamK::Adaptive(k) => "Adaptive(k)".to_owned(),
+            ParamK::Adaptive(min_, max_k) => "Adaptive(k)".to_owned(),
         }
     }
 }
@@ -287,10 +287,25 @@ impl CmdlineConfig {
             })
             .or_else(|| {
                 matches.value_of("ADAPTIVE_K").map(|adaptive_k_str| {
-                    let _k = adaptive_k_str
-                        .parse::<usize>()
-                        .expect("k should be an unsigned integer");
-                    ParamK::Adaptive(_k)
+                    if adaptive_k_str.contains(",") {
+                        let mut tokens = adaptive_k_str.split(",");
+                        let min_k = tokens
+                            .next()
+                            .unwrap()
+                            .parse::<usize>()
+                            .expect("k should be an unsigned integer");
+                        let max_k = tokens
+                            .next()
+                            .unwrap()
+                            .parse::<usize>()
+                            .expect("k should be an unsigned integer");
+                        ParamK::Adaptive(min_k, max_k)
+                    } else {
+                        let _k = adaptive_k_str
+                            .parse::<usize>()
+                            .expect("k should be an unsigned integer");
+                        ParamK::Adaptive(0, _k)
+                    }
                 })
             })
             .or_else(|| {
