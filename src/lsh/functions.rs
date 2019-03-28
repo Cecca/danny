@@ -497,6 +497,75 @@ where
         .broadcast()
     }
 
+    pub fn best_levels<G, T, K, D, F>(
+        collisions_stream: &Stream<G, ((usize, usize, H), usize)>,
+        multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
+        global_vecs: Arc<ChunkedDataset<K, D>>,
+        matrix: MatrixDescription,
+        direction: MatrixDirection,
+    ) -> Stream<G, (K, usize)>
+    where
+        G: Scope<Timestamp = T>,
+        T: Timestamp + Succ,
+        K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
+        D: Clone + Data + Debug + Abomonation + Send + Sync,
+        F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
+    {
+        let worker = collisions_stream.scope().index() as u64;
+        collisions_stream.unary_frontier(Pipeline, "best-level-finder", move |_, _| {
+            let vecs = Arc::clone(&global_vecs);
+            let mut collisions = HashMap::new();
+            let mut start_receiving = None;
+            move |input, output| {
+                input.for_each(|t, data| {
+                    if start_receiving.is_none() {
+                        debug!(
+                            "Start to receive simulated collisions (memory {})",
+                            proc_mem!()
+                        );
+                        start_receiving = Some(Instant::now());
+                    }
+                    let mut data = data.replace(Vec::new());
+                    collisions
+                        .entry(t.retain())
+                        .or_insert_with(Vec::new)
+                        .append(&mut data);
+                });
+
+                for (time, counts) in collisions.iter_mut() {
+                    if !input.frontier().less_equal(time) {
+                        let end_receiving = Instant::now();
+                        debug!(
+                            "Time to receive {} simulated collisions {:?} (memory {:?})",
+                            counts.len(),
+                            end_receiving - start_receiving.unwrap(),
+                            proc_mem!()
+                        );
+                        debug!("Finding best level for each and every vector");
+                        let estimator =
+                            BestLevelEstimator::from_counts(&multilevel_hasher, &counts);
+                        debug!("Built estimator (total mem {})", proc_mem!(),);
+                        let mut session = output.session(&time);
+                        let mut level_stats = BTreeMap::new();
+                        for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
+                            let best_level = estimator.get_best_level(&multilevel_hasher, v);
+                            session.give((key.clone(), best_level));
+                            *level_stats.entry(best_level).or_insert(0usize) += 1;
+                        }
+                        info!("Distribution of counts {:#?}", level_stats);
+                        debug!(
+                        "Found best level for each and every vector, clearing counts (memory {})",
+                        proc_mem!()
+                    );
+                        counts.clear();
+                    }
+                }
+
+                collisions.retain(|_, counts| !counts.is_empty());
+            }
+        })
+    }
+
     pub fn from_counts<D, F>(
         multilevel_hasher: &MultilevelHasher<D, H, F>,
         counts: &[((usize, usize, H), usize)],

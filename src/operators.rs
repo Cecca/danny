@@ -482,6 +482,38 @@ where
     }
 }
 
+pub trait BroadcastedMin<G>
+where
+    G: Scope,
+{
+    fn broadcasted_min(&self) -> Stream<G, usize>;
+}
+
+impl<G, K> BroadcastedMin<G> for Stream<G, (K, usize)>
+where
+    G: Scope,
+    K: Data + Debug + Send + Sync + Abomonation,
+{
+    fn broadcasted_min(&self) -> Stream<G, usize> {
+        self.map(|p| p.1)
+            // Find the minimum in each worker
+            .accumulate(std::usize::MAX, |min_val, data| {
+                for &x in data.iter() {
+                    *min_val = std::cmp::min(*min_val, x);
+                }
+            })
+            // Find the minimum of the minimum
+            .exchange(|_| 0)
+            .accumulate(std::usize::MAX, |min_val, data| {
+                for &x in data.iter() {
+                    *min_val = std::cmp::min(*min_val, x);
+                }
+            })
+            // Send the overall minimum to everybody
+            .broadcast()
+    }
+}
+
 pub trait StreamCount<G, D>
 where
     G: Scope,
