@@ -26,7 +26,7 @@ pub fn init_logging(_conf: &Config) -> () {
         .format(move |buf, record| {
             writeln!(
                 buf,
-                "[{}, {:?}] {:?} - {}: {}",
+                "[{}, {:?}] {:.2?} - {}: {}",
                 hostname,
                 std::thread::current().id(),
                 Instant::now() - start,

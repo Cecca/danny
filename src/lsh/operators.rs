@@ -519,7 +519,7 @@ where
         move |input, output| {
             input.for_each(|t, data| {
                 if start_receiving.is_none() {
-                    info!(
+                    debug!(
                         "Start to receive simulated collisions (memory {})",
                         proc_mem!()
                     );
