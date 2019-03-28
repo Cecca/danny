@@ -20,14 +20,16 @@ use timely::worker::{AsWorker, Worker};
 // This is the place to hook into if we want to use syslog
 pub fn init_logging(_conf: &Config) -> () {
     let hostname = get_hostname();
+    let start = Instant::now();
     Builder::from_default_env()
         .filter_level(log::LevelFilter::Info)
         .format(move |buf, record| {
             writeln!(
                 buf,
-                "[{}, {:?}] {}: {}",
+                "[{}, {:?}] {:?} - {}: {}",
                 hostname,
                 std::thread::current().id(),
+                Instant::now() - start,
                 record.level(),
                 record.args()
             )

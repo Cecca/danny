@@ -535,19 +535,15 @@ where
             for (time, counts) in collisions.iter_mut() {
                 if !input.frontier().less_equal(time) {
                     let end_receiving = Instant::now();
-                    info!(
+                    debug!(
                         "Time to receive {} simulated collisions {:?} (memory {:?})",
                         counts.len(),
                         end_receiving - start_receiving.unwrap(),
                         proc_mem!()
                     );
-                    info!("Finding best level for each and every vector");
+                    debug!("Finding best level for each and every vector");
                     let estimator = BestLevelEstimator::from_counts(&multilevel_hasher, &counts);
-                    info!("Built estimator (total mem {})", proc_mem!(),);
-                    // if worker == 0 {
-                    //     info!("Estimator: {}", estimator.cost_str());
-                    //     info!("{}", estimator.bucket_detail());
-                    // }
+                    debug!("Built estimator (total mem {})", proc_mem!(),);
                     let mut session = output.session(&time);
                     let mut level_stats = BTreeMap::new();
                     for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
@@ -556,7 +552,7 @@ where
                         *level_stats.entry(best_level).or_insert(0usize) += 1;
                     }
                     info!("Distribution of counts {:#?}", level_stats);
-                    info!(
+                    debug!(
                         "Found best level for each and every vector, clearing counts (memory {})",
                         proc_mem!()
                     );
@@ -620,14 +616,16 @@ where
                 if let Some(_min_level) = min_level {
                     if let Some(cap) = cap.as_mut() {
                         if !throttling_probe.less_than(cap.time()) {
-                            info!(
-                                "Level {}/{} repetition {}/{} (current memory {})",
-                                current_level,
-                                max_level,
-                                current_repetition,
-                                current_max_repetitions,
-                                proc_mem!()
-                            );
+                            if worker == 0 {
+                                info!(
+                                    "Level {}/{} repetition {}/{} (current memory {})",
+                                    current_level,
+                                    max_level,
+                                    current_repetition,
+                                    current_max_repetitions,
+                                    proc_mem!()
+                                );
+                            }
                             let start = Instant::now();
                             let mut session = output.session(&cap);
                             for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
@@ -647,7 +645,7 @@ where
                                     ));
                                 }
                             }
-                            info!(
+                            debug!(
                                 "Emitted all pairs in {:?} (current memory {})",
                                 Instant::now() - start,
                                 proc_mem!()
