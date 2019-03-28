@@ -569,7 +569,7 @@ where
             for rep in 0..hasher.repetitions() {
                 let h = hasher.hash(v, rep);
                 let collisions_count = self.buckets[idx][rep].get(&h).unwrap_or(&0usize);
-                work += collisions_count;
+                work += collisions_count.pow(2);
             }
             if work < min_work {
                 min_work = work;
