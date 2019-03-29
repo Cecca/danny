@@ -428,7 +428,7 @@ where
     /// One hashmap for each level of k, the values are a vector with a position
     /// for each repetition, and each repetition is a map between hash value
     /// and count of things hashing to it
-    buckets: HashMap<usize, Vec<BTreeMap<H, usize>>>,
+    buckets: HashMap<usize, Vec<HashMap<H, usize>>>,
 }
 
 impl<H> BestLevelEstimator<H>
@@ -542,17 +542,23 @@ where
                             proc_mem!()
                         );
                         debug!("Finding best level for each and every vector");
+                        let start_estimation = Instant::now();
                         let estimator =
                             BestLevelEstimator::from_counts(&multilevel_hasher, &counts);
                         debug!("Built estimator (total mem {})", proc_mem!(),);
                         let mut session = output.session(&time);
-                        let mut level_stats = BTreeMap::new();
+                        let mut level_stats = HashMap::new();
                         for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
                             let best_level = estimator.get_best_level(&multilevel_hasher, v);
                             session.give((key.clone(), best_level));
                             *level_stats.entry(best_level).or_insert(0usize) += 1;
                         }
-                        info!("Distribution of counts {:#?}", level_stats);
+                        let end_estimation = Instant::now();
+                        info!(
+                            "Distribution of counts ({:.2?}) {:#?}",
+                            end_estimation - start_estimation,
+                            level_stats
+                        );
                         debug!(
                         "Found best level for each and every vector, clearing counts (memory {})",
                         proc_mem!()
@@ -578,7 +584,7 @@ where
         for (level, hasher) in multilevel_hasher.hashers.iter() {
             let mut repetitions_maps = Vec::new();
             for _ in 0..hasher.repetitions() {
-                let rep_map = BTreeMap::new();
+                let rep_map = HashMap::new();
                 repetitions_maps.push(rep_map);
             }
             buckets.insert(*level, repetitions_maps);
