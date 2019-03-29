@@ -216,7 +216,8 @@ impl TabulatedHasher {
 #[derive(Clone)]
 pub struct MinHash {
     k: usize,
-    hashers: Vec<TabulatedHasher>,
+    alphas: Vec<u64>,
+    betas: Vec<u64>,
     coeffs: Vec<u64>,
 }
 
@@ -225,14 +226,22 @@ impl MinHash {
     where
         R: Rng + ?Sized,
     {
-        let mut hashers = Vec::with_capacity(k);
+        // let mut hashers = Vec::with_capacity(k);
         let uniform = Uniform::new(0u64, std::u64::MAX);
-        let mut coeffs = Vec::new();
+        let mut alphas = Vec::with_capacity(k);
+        let mut betas = Vec::with_capacity(k);
+        let mut coeffs = Vec::with_capacity(k);
         for _ in 0..k {
-            hashers.push(TabulatedHasher::new(rng));
+            alphas.push(uniform.sample(rng));
+            betas.push(uniform.sample(rng));
             coeffs.push(uniform.sample(rng));
         }
-        MinHash { k, hashers, coeffs }
+        MinHash {
+            k,
+            alphas,
+            betas,
+            coeffs,
+        }
     }
 
     pub fn collection<R>(k: usize, repetitions: usize, rng: &mut R) -> LSHCollection<MinHash, u32>
@@ -266,12 +275,18 @@ impl LSHFunction for MinHash {
 
     fn hash(&self, v: &BagOfWords) -> u32 {
         let mut h = 0u64;
-        for (hasher, coeff) in self.hashers.iter().zip(self.coeffs.iter()) {
+        // for (hasher, coeff) in self.hashers.iter().zip(self.coeffs.iter()) {
+        for ((alpha, beta), coeff) in self
+            .alphas
+            .iter()
+            .zip(self.betas.iter())
+            .zip(self.coeffs.iter())
+        {
             assert!(!v.words().is_empty(), "The collection of words is empty");
             let min_w = v
                 .words()
                 .iter()
-                .map(|w| hasher.hash(*w))
+                .map(|w| (alpha.wrapping_mul(*w as u64)).wrapping_add(*beta) >> 32)
                 .min()
                 .expect("No minimum");
             h = h.wrapping_add(coeff.wrapping_mul(min_w));
