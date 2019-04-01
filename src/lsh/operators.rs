@@ -533,7 +533,6 @@ where
     let (mut best_levels_output, best_levels_stream) = builder.new_output();
     let (mut other_levels_output, other_levels_stream) = builder.new_output();
     builder.build(move |mut capabilities| {
-        dbg!(&capabilities);
         let mut other_levels_capability = Some(capabilities.pop().unwrap());
         let mut best_levels_capability = Some(capabilities.pop().unwrap());
 
@@ -550,11 +549,8 @@ where
                 FrontieredInputHandle::new(&mut input_best_levels, &frontiers[0]);
             let mut min_level_input =
                 FrontieredInputHandle::new(&mut input_min_level, &frontiers[1]);
-            info!("Activating best levels output");
             let mut output_best_levels = best_levels_output.activate();
-            info!("Activating other levels output");
             let mut output_other_levels = other_levels_output.activate();
-            info!("Activated outputs");
 
             min_level_input.for_each(|_t, data| {
                 assert!(min_level.is_none());
@@ -591,8 +587,6 @@ where
                         let mut best_session = output_best_levels.session(&best_levels_capability);
                         let mut others_session =
                             output_other_levels.session(&other_levels_capability);
-                        dbg!(&best_levels_capability);
-                        dbg!(&other_levels_capability);
                         for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
                             let this_best_level = best_levels[key];
                             if current_level == this_best_level {
