@@ -448,7 +448,7 @@ where
     match sketcher_pair {
         Some((sketcher, sketch_predicate)) => unimplemented!(),
         None => {
-            let left_hashes = source_hashed_adaptive(
+            let (left_hashes_best, left_hashes_other) = source_hashed_adaptive(
                 &inner_scope.parent,
                 Arc::clone(&left),
                 Arc::clone(&multihash),
@@ -457,9 +457,8 @@ where
                 sample_size,
                 probe.clone(),
                 rng.clone(),
-            )
-            .enter(inner_scope);
-            let right_hashes = source_hashed_adaptive(
+            );
+            let (right_hashes_best, right_hashes_other) = source_hashed_adaptive(
                 &inner_scope.parent,
                 Arc::clone(&right),
                 Arc::clone(&multihash),
@@ -468,15 +467,21 @@ where
                 sample_size,
                 probe.clone(),
                 rng.clone(),
-            )
-            .enter(inner_scope);
+            );
             // unimplemented!()
-            left_hashes.bucket_pred(
-                &right_hashes,
+            let stream_a = left_hashes_best.enter(&inner_scope).bucket_pred(
+                &right_hashes_other.enter(&inner_scope),
                 |(l, r)| l.1.is_match(&r.1),
                 |p| p.0,
                 batch_size,
-            )
+            );
+            let stream_b = left_hashes_other.enter(&inner_scope).bucket_pred(
+                &right_hashes_best.enter(&inner_scope),
+                |(l, r)| l.1.is_match(&r.1),
+                |p| p.0,
+                batch_size,
+            );
+            stream_a.concat(&stream_b)
         }
     }
 }
