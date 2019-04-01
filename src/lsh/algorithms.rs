@@ -471,13 +471,19 @@ where
             // unimplemented!()
             let stream_a = left_hashes_best.enter(&inner_scope).bucket_pred(
                 &right_hashes_other.enter(&inner_scope),
-                |(l, r)| l.1.is_match(&r.1),
+                |(l, r)| {
+                    assert!(l.1.is_match(&r.1));
+                    true
+                },
                 |p| p.0,
                 batch_size,
             );
             let stream_b = left_hashes_other.enter(&inner_scope).bucket_pred(
                 &right_hashes_best.enter(&inner_scope),
-                |(l, r)| l.1.is_match(&r.1),
+                |(l, r)| {
+                    assert!(l.1.is_match(&r.1));
+                    true
+                },
                 |p| p.0,
                 batch_size,
             );
