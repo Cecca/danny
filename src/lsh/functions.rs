@@ -478,6 +478,7 @@ where
                 if let Some(cap) = cap.take() {
                     let mut session = output.session(&cap);
                     let p = n as f64 / vecs.stripe_len(&matrix, direction, worker) as f64;
+                    let weight: usize = (1.0 / p).ceil() as usize;
                     info!("Sampling with probability {} from each block", p);
                     let mut accumulator = HashMap::new();
                     for (_, v) in vecs.iter_stripe(&matrix, direction, worker) {
@@ -486,7 +487,8 @@ where
                                 for repetition in 0..multilevel_hasher.repetitions_at_level(*level)
                                 {
                                     let h = hasher.hash(v, repetition);
-                                    *accumulator.entry((*level, repetition, h)).or_insert(0) += 1;
+                                    *accumulator.entry((*level, repetition, h)).or_insert(0) +=
+                                        weight;
                                 }
                             }
                         }
