@@ -487,10 +487,7 @@ pub fn source_hashed_adaptive<G, T, K, D, F, H, R>(
     n: usize,
     throttling_probe: ProbeHandle<G::Timestamp>,
     rng: R,
-) -> (
-    Stream<G, (H, (K, LevelInfo))>,
-    Stream<G, (H, (K, LevelInfo))>,
-)
+) -> (Stream<G, (H, K)>, Stream<G, (H, K)>)
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ,
@@ -592,21 +589,12 @@ where
                             if current_level == this_best_level {
                                 let h =
                                     multilevel_hasher_2.hash(v, current_level, current_repetition);
-                                best_session.give((
-                                    h.clone(),
-                                    (key.clone(), LevelInfo::new(this_best_level, current_level)),
-                                ));
-                                others_session.give((
-                                    h.clone(),
-                                    (key.clone(), LevelInfo::new(this_best_level, current_level)),
-                                ));
+                                best_session.give((h.clone(), key.clone()));
+                                others_session.give((h.clone(), key.clone()));
                             } else if current_level < this_best_level {
                                 let h =
                                     multilevel_hasher_2.hash(v, current_level, current_repetition);
-                                others_session.give((
-                                    h,
-                                    (key.clone(), LevelInfo::new(this_best_level, current_level)),
-                                ));
+                                others_session.give((h, key.clone()));
                             }
                         }
                         debug!(
