@@ -23,16 +23,20 @@ use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Barrier, Mutex, RwLock};
 use std::thread;
 use std::time::Instant;
+use timely::communication::Push;
 use timely::dataflow::channels::pact::{Exchange as ExchangePact, Pipeline};
+use timely::dataflow::channels::Bundle;
 use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::generic::{FrontieredInputHandle, InputHandle, OutputHandle};
+use timely::dataflow::operators::Capability;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use timely::order::Product;
 use timely::progress::Timestamp;
 use timely::Data;
+use timely::ExchangeData;
 
 pub struct PairGenerator<H, K>
 where
@@ -477,6 +481,45 @@ where
     })
 }
 
+pub struct OutputAll {}
+
+impl OutputAll {
+    pub fn output_pairs<'a, I, T, K, D, H, F, P>(
+        vectors: I,
+        current_level: usize,
+        current_repetition: usize,
+        multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
+        best_levels: &HashMap<K, usize>,
+        output_best: &mut OutputHandle<'a, T, (H, K), P>,
+        output_current: &mut OutputHandle<'a, T, (H, K), P>,
+        capability_best: &mut Capability<T>,
+        capability_current: &mut Capability<T>,
+    ) where
+        I: IntoIterator<Item = &'a (K, D)>,
+        K: ExchangeData + Hash + Eq,
+        D: ExchangeData + Debug,
+        T: Timestamp,
+        H: ExchangeData + Debug + Eq + Hash,
+        F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
+        // P: Push<Bundle<T, D>>,
+        P: Push<timely::communication::Message<timely::dataflow::channels::Message<T, (H, K)>>>,
+    {
+        let mut session_best = output_best.session(&capability_best);
+        let mut session_current = output_current.session(&capability_current);
+        for (key, v) in vectors.into_iter() {
+            let this_best_level = best_levels[key]; //.get(key).unwrap();
+            if current_level == this_best_level {
+                let h = multilevel_hasher.hash(v, current_level, current_repetition);
+                session_best.give((h.clone(), key.clone()));
+                session_current.give((h.clone(), key.clone()));
+            } else if current_level < this_best_level {
+                let h = multilevel_hasher.hash(v, current_level, current_repetition);
+                session_current.give((h, key.clone()));
+            }
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn source_hashed_adaptive<G, T, K, D, F, H, R>(
     scope: &G,
@@ -581,22 +624,17 @@ where
                             );
                         }
                         let start = Instant::now();
-                        let mut best_session = output_best_levels.session(&best_levels_capability);
-                        let mut others_session =
-                            output_other_levels.session(&other_levels_capability);
-                        for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
-                            let this_best_level = best_levels[key];
-                            if current_level == this_best_level {
-                                let h =
-                                    multilevel_hasher_2.hash(v, current_level, current_repetition);
-                                best_session.give((h.clone(), key.clone()));
-                                others_session.give((h.clone(), key.clone()));
-                            } else if current_level < this_best_level {
-                                let h =
-                                    multilevel_hasher_2.hash(v, current_level, current_repetition);
-                                others_session.give((h, key.clone()));
-                            }
-                        }
+                        OutputAll::output_pairs(
+                            vecs.iter_stripe(&matrix, direction, worker),
+                            current_level,
+                            current_repetition,
+                            Arc::clone(&multilevel_hasher_2),
+                            &best_levels,
+                            &mut output_best_levels,
+                            &mut output_other_levels,
+                            best_levels_capability,
+                            other_levels_capability,
+                        );
                         debug!(
                             "Emitted all pairs in {:?} (current memory {})",
                             Instant::now() - start,
