@@ -481,10 +481,38 @@ where
     })
 }
 
-pub struct OutputAll {}
+pub trait AdaptiveOutputGeneration {
+    #[allow(clippy::too_many_arguments)]
+    fn output_pairs<'a, I, T, K, D, H, F, P>(
+        &self,
+        vectors: I,
+        current_level: usize,
+        current_repetition: usize,
+        multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
+        best_levels: &HashMap<K, usize>,
+        output_best: &mut OutputHandle<'a, T, (H, K), P>,
+        output_current: &mut OutputHandle<'a, T, (H, K), P>,
+        capability_best: &mut Capability<T>,
+        capability_current: &mut Capability<T>,
+    ) where
+        I: IntoIterator<Item = &'a (K, D)>,
+        K: ExchangeData + Hash + Eq,
+        D: ExchangeData + Debug,
+        T: Timestamp,
+        H: ExchangeData + Debug + Eq + Hash,
+        F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
+        // P: Push<Bundle<T, D>>,
+        P: Push<timely::communication::Message<timely::dataflow::channels::Message<T, (H, K)>>>;
+}
 
-impl OutputAll {
-    pub fn output_pairs<'a, I, T, K, D, H, F, P>(
+pub struct OutputAll {}
+pub struct OutputBest {}
+pub struct OutputCurrent {}
+
+impl AdaptiveOutputGeneration for OutputAll {
+    #[allow(clippy::too_many_arguments)]
+    fn output_pairs<'a, I, T, K, D, H, F, P>(
+        &self,
         vectors: I,
         current_level: usize,
         current_repetition: usize,
@@ -520,11 +548,78 @@ impl OutputAll {
     }
 }
 
+impl AdaptiveOutputGeneration for OutputBest {
+    #[allow(clippy::too_many_arguments)]
+    fn output_pairs<'a, I, T, K, D, H, F, P>(
+        &self,
+        vectors: I,
+        current_level: usize,
+        current_repetition: usize,
+        multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
+        best_levels: &HashMap<K, usize>,
+        output_best: &mut OutputHandle<'a, T, (H, K), P>,
+        output_current: &mut OutputHandle<'a, T, (H, K), P>,
+        capability_best: &mut Capability<T>,
+        capability_current: &mut Capability<T>,
+    ) where
+        I: IntoIterator<Item = &'a (K, D)>,
+        K: ExchangeData + Hash + Eq,
+        D: ExchangeData + Debug,
+        T: Timestamp,
+        H: ExchangeData + Debug + Eq + Hash,
+        F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
+        P: Push<timely::communication::Message<timely::dataflow::channels::Message<T, (H, K)>>>,
+    {
+        let mut session_best = output_best.session(&capability_best);
+        let mut session_current = output_current.session(&capability_current);
+        for (key, v) in vectors.into_iter() {
+            let this_best_level = best_levels[key]; //.get(key).unwrap();
+            if current_level == this_best_level {
+                let h = multilevel_hasher.hash(v, current_level, current_repetition);
+                session_best.give((h.clone(), key.clone()));
+                session_current.give((h.clone(), key.clone()));
+            }
+        }
+    }
+}
+
+impl AdaptiveOutputGeneration for OutputCurrent {
+    #[allow(clippy::too_many_arguments)]
+    fn output_pairs<'a, I, T, K, D, H, F, P>(
+        &self,
+        vectors: I,
+        current_level: usize,
+        current_repetition: usize,
+        multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
+        best_levels: &HashMap<K, usize>,
+        output_best: &mut OutputHandle<'a, T, (H, K), P>,
+        output_current: &mut OutputHandle<'a, T, (H, K), P>,
+        capability_best: &mut Capability<T>,
+        capability_current: &mut Capability<T>,
+    ) where
+        I: IntoIterator<Item = &'a (K, D)>,
+        K: ExchangeData + Hash + Eq,
+        D: ExchangeData + Debug,
+        T: Timestamp,
+        H: ExchangeData + Debug + Eq + Hash,
+        F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
+        P: Push<timely::communication::Message<timely::dataflow::channels::Message<T, (H, K)>>>,
+    {
+        let mut session_best = output_best.session(&capability_best);
+        let mut session_current = output_current.session(&capability_current);
+        for (key, v) in vectors.into_iter() {
+            let h = multilevel_hasher.hash(v, current_level, current_repetition);
+            session_current.give((h.clone(), key.clone()));
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
-pub fn source_hashed_adaptive<G, T, K, D, F, H, R>(
+pub fn source_hashed_adaptive<G, T, K, D, F, H, R, OS>(
     scope: &G,
     global_vecs: Arc<ChunkedDataset<K, D>>,
     multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
+    output_strategy: OS,
     matrix: MatrixDescription,
     direction: MatrixDirection,
     n: usize,
@@ -538,6 +633,7 @@ where
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
     K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
+    OS: AdaptiveOutputGeneration + 'static,
     R: Rng + SeedableRng + Clone + ?Sized + 'static + Sync + Send,
 {
     let worker: u64 = scope.index() as u64;
@@ -624,7 +720,7 @@ where
                             );
                         }
                         let start = Instant::now();
-                        OutputAll::output_pairs(
+                        output_strategy.output_pairs(
                             vecs.iter_stripe(&matrix, direction, worker),
                             current_level,
                             current_repetition,
