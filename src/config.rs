@@ -33,6 +33,8 @@ pub struct Config {
     sketch_epsilon: f64,
     #[serde(default = "Config::default_estimator_samples")]
     estimator_samples: usize,
+    #[serde(default = "Config::default_cost_balance")]
+    cost_balance: f64,
     #[serde(default = "Config::default_batch_size")]
     batch_size: usize,
     #[serde(default = "Config::default_bloom_elements")]
@@ -56,6 +58,8 @@ impl Config {
             DANNY_BASELINES_PATH  The path to the baselines file
             DANNY_ESTIMATOR_SAMPLES  The number of vectors to sample _in each worker_ to
                                      estimate the best k value
+            DANNY_COST_BALANCE In the adaptive algorithm, a number less than 1 gives more weight
+                               to the collisions, a number larger than 1 penalizes the repetitions
             DANNY_BATCH_SIZE   The number of candidate pairs generated at a time
             DANNY_BLOOM_ELEMENTS   Number of elements expected in the bloom filters (power of two)
             DANNY_BLOOM_FPP    False positive rate of the bloom filter
@@ -105,6 +109,10 @@ impl Config {
         0.01
     }
 
+    fn default_cost_balance() -> f64 {
+        1.0
+    }
+
     fn default_threads() -> usize {
         1
     }
@@ -139,6 +147,10 @@ impl Config {
 
     pub fn get_estimator_samples(&self) -> usize {
         self.estimator_samples
+    }
+
+    pub fn get_cost_balance(&self) -> f64 {
+        self.cost_balance
     }
 
     pub fn get_batch_size(&self) -> usize {

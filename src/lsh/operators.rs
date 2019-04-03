@@ -639,6 +639,7 @@ pub fn source_hashed_adaptive<G, T, K, D, F, H, R, OS>(
     matrix: MatrixDescription,
     direction: MatrixDirection,
     n: usize,
+    balance: f64,
     throttling_probe: ProbeHandle<G::Timestamp>,
     rng: R,
 ) -> (Stream<G, (H, K)>, Stream<G, (H, K)>)
@@ -676,6 +677,7 @@ where
         Arc::clone(&global_vecs),
         matrix,
         direction,
+        balance,
     );
     // Find the minimum among the levels
     let min_level = best_levels.broadcasted_min();

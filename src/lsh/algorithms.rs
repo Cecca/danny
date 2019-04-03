@@ -180,6 +180,7 @@ where
     let (global_left, global_right) = load_vectors(left_path.clone(), right_path.clone(), &config);
 
     let estimator_samples = config.get_estimator_samples();
+    let cost_balance = config.get_cost_balance();
     // FIXME: Change to bloom_bits and bloom_k
     let bloom_fpp = config.get_bloom_fpp();
     let bloom_elements = config.get_bloom_elements();
@@ -223,6 +224,7 @@ where
                         min_k,
                         max_k,
                         estimator_samples,
+                        cost_balance,
                         &inner,
                         hash_collection_builder,
                         sketcher_pair,
@@ -415,6 +417,7 @@ fn generate_candidates_adaptive<'a, K, D, G, T1, T2, F, H, S, SV, R, B>(
     min_k: usize,
     max_k: usize,
     sample_size: usize,
+    cost_balance: f64,
     inner_scope: &ChildScope<'a, G, T2>,
     hash_collection_builder: B,
     sketcher_pair: Option<(S, SketchPredicate<SV>)>,
@@ -456,6 +459,7 @@ where
                 matrix,
                 MatrixDirection::Rows,
                 sample_size,
+                cost_balance,
                 probe.clone(),
                 rng.clone(),
             );
@@ -467,6 +471,7 @@ where
                 matrix,
                 MatrixDirection::Columns,
                 sample_size,
+                cost_balance,
                 probe.clone(),
                 rng.clone(),
             );

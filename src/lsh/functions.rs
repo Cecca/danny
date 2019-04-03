@@ -444,6 +444,9 @@ where
     /// for each repetition, and each repetition is a map between hash value
     /// and count of things hashing to it
     buckets: HashMap<usize, Vec<HashMap<H, usize>>>,
+    /// A balance less than 1 gives more weight to the collisions in the computation of the cost,
+    /// a value greater than 1 gives more weight to the repetitions
+    balance: f64,
 }
 
 impl<H> BestLevelEstimator<H>
@@ -520,6 +523,7 @@ where
         global_vecs: Arc<ChunkedDataset<K, D>>,
         matrix: MatrixDescription,
         direction: MatrixDirection,
+        balance: f64,
     ) -> Stream<G, (K, usize)>
     where
         G: Scope<Timestamp = T>,
@@ -561,7 +565,7 @@ where
                         debug!("Finding best level for each and every vector");
                         let start_estimation = Instant::now();
                         let estimator =
-                            BestLevelEstimator::from_counts(&multilevel_hasher, &counts);
+                            BestLevelEstimator::from_counts(&multilevel_hasher, &counts, balance);
                         debug!("Built estimator (total mem {})", proc_mem!(),);
                         let mut session = output.session(&time);
                         let mut level_stats = HashMap::new();
@@ -592,6 +596,7 @@ where
     pub fn from_counts<D, F>(
         multilevel_hasher: &MultilevelHasher<D, H, F>,
         counts: &[((usize, usize, H), usize)],
+        balance: f64,
     ) -> Self
     where
         D: Clone + Data + Debug + Abomonation + Send + Sync,
@@ -609,7 +614,7 @@ where
         for ((level, repetition, h), count) in counts {
             buckets.get_mut(level).unwrap()[*repetition].insert(h.clone(), *count);
         }
-        BestLevelEstimator { buckets }
+        BestLevelEstimator { buckets, balance }
     }
 
     pub fn cost_str(&self) -> String {
@@ -657,7 +662,7 @@ where
         let mut min_work = std::usize::MAX;
         let mut best_level = 0;
         for (idx, hasher) in multilevel_hasher.hashers.iter() {
-            let mut work = hasher.repetitions();
+            let mut work = (self.balance * hasher.repetitions() as f64) as usize;
             for rep in 0..hasher.repetitions() {
                 let h = hasher.hash(v, rep);
                 let collisions_count = self.buckets[idx][rep].get(&h).unwrap_or(&0usize);
