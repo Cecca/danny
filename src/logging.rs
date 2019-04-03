@@ -84,24 +84,25 @@ macro_rules! proc_mem {
     };
 }
 
-pub fn init_event_logging<A>(worker: &Worker<A>) -> Arc<ExecutionSummary>
+pub fn init_event_logging<A>(worker: &Worker<A>) -> Arc<Mutex<ExecutionSummary>>
 where
     A: timely::communication::Allocate,
 {
-    let summary = Arc::new(ExecutionSummary::new());
-    let summary_thread = summary.clone();
+    let summary = Arc::new(Mutex::new(ExecutionSummary::default()));
+    let summary_thread = Arc::clone(&summary);
     worker
         .log_register()
         .insert::<LogEvent, _>("danny", move |_time, data| {
+            let mut summary = summary_thread.lock().unwrap();
             for event in data.drain(..) {
-                summary_thread.add(event.2);
+                summary.add(event.2);
             }
         });
     summary
 }
 
 pub fn collect_execution_summaries<A>(
-    execution_summary: Arc<ExecutionSummary>,
+    execution_summary: Arc<Mutex<ExecutionSummary>>,
     send: Arc<Mutex<Sender<TimelyEvent<u32, FrozenExecutionSummary>>>>,
     worker: &mut Worker<A>,
 ) where
@@ -118,7 +119,7 @@ pub fn collect_execution_summaries<A>(
 
         (input, probe)
     });
-    let execution_summary = execution_summary.clone().freeze();
+    let execution_summary = execution_summary.lock().unwrap().freeze();
     input.send(execution_summary);
     input.advance_to(1);
     worker.step_while(|| probe.less_than(&1));
@@ -153,58 +154,48 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ExecutionSummary {
-    sketch_discarded: AtomicUsize,
-    distinct_pairs: AtomicUsize,
-    duplicates_discarded: AtomicUsize,
-    generated_pairs: AtomicUsize,
-    received_hashes: AtomicUsize,
+    sketch_discarded: usize,
+    distinct_pairs: usize,
+    duplicates_discarded: usize,
+    generated_pairs: usize,
+    received_hashes: usize,
 }
 
 impl ExecutionSummary {
-    pub fn new() -> Self {
-        ExecutionSummary {
-            sketch_discarded: 0.into(),
-            distinct_pairs: 0.into(),
-            duplicates_discarded: 0.into(),
-            generated_pairs: 0.into(),
-            received_hashes: 0.into(),
-        }
-    }
-
     pub fn freeze(&self) -> FrozenExecutionSummary {
         FrozenExecutionSummary {
-            sketch_discarded: self.sketch_discarded.load(Ordering::SeqCst),
-            distinct_pairs: self.distinct_pairs.load(Ordering::SeqCst),
-            duplicates_discarded: self.duplicates_discarded.load(Ordering::SeqCst),
-            generated_pairs: self.generated_pairs.load(Ordering::SeqCst),
-            received_hashes: self.received_hashes.load(Ordering::SeqCst),
+            sketch_discarded: self.sketch_discarded,
+            distinct_pairs: self.distinct_pairs,
+            duplicates_discarded: self.duplicates_discarded,
+            generated_pairs: self.generated_pairs,
+            received_hashes: self.received_hashes,
         }
     }
 
-    pub fn add(&self, event: LogEvent) {
+    pub fn add(&mut self, event: LogEvent) {
         match event {
             LogEvent::SketchDiscarded(count) => {
-                self.sketch_discarded.fetch_add(count, Ordering::SeqCst);
+                self.sketch_discarded += count;
             }
             LogEvent::DistinctPairs(count) => {
-                self.distinct_pairs.fetch_add(count, Ordering::SeqCst);
+                self.distinct_pairs += count;
             }
             LogEvent::DuplicatesDiscarded(count) => {
-                self.duplicates_discarded.fetch_add(count, Ordering::SeqCst);
+                self.duplicates_discarded += count;
             }
             LogEvent::GeneratedPairs(count) => {
-                self.generated_pairs.fetch_add(count, Ordering::SeqCst);
+                self.generated_pairs += count;
             }
             LogEvent::ReceivedHashes(count) => {
-                self.received_hashes.fetch_add(count, Ordering::SeqCst);
+                self.received_hashes += count;
             }
         }
     }
 }
 
-#[derive(Debug, Abomonation, Clone)]
+#[derive(Debug, Abomonation, Clone, Default)]
 pub struct FrozenExecutionSummary {
     pub sketch_discarded: usize,
     pub distinct_pairs: usize,
@@ -214,15 +205,6 @@ pub struct FrozenExecutionSummary {
 }
 
 impl FrozenExecutionSummary {
-    pub fn zero() -> Self {
-        FrozenExecutionSummary {
-            sketch_discarded: 0,
-            distinct_pairs: 0,
-            duplicates_discarded: 0,
-            generated_pairs: 0,
-            received_hashes: 0,
-        }
-    }
     pub fn sum(&self, other: &Self) -> Self {
         FrozenExecutionSummary {
             sketch_discarded: self.sketch_discarded + other.sketch_discarded,

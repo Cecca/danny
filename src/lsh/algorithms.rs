@@ -383,7 +383,7 @@ where
         }
         let global_summary = exec_summaries
             .iter()
-            .fold(FrozenExecutionSummary::zero(), |a, b| a.sum(b));
+            .fold(FrozenExecutionSummary::default(), |a, b| a.sum(b));
         // From `recv` we get an entry for each timestamp, containing a one-element vector with the
         // count of output pairs for a given timestamp. We sum across all the timestamps, so we need to
         // remove the duplicates
