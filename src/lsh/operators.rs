@@ -529,20 +529,19 @@ impl AdaptiveOutputGeneration for OutputAll {
         T: Timestamp,
         H: ExchangeData + Debug + Eq + Hash,
         F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
-        // P: Push<Bundle<T, D>>,
         P: Push<timely::communication::Message<timely::dataflow::channels::Message<T, (H, K)>>>,
     {
         let mut session_best = output_best.session(&capability_best);
         let mut session_current = output_current.session(&capability_current);
+        let mut cnt = 0;
         for (key, v) in vectors.into_iter() {
-            let this_best_level = best_levels[key]; //.get(key).unwrap();
-            if current_level == this_best_level {
+            let this_best_level = best_levels[key];
+            if current_level <= this_best_level {
                 let h = multilevel_hasher.hash(v, current_level, current_repetition);
-                session_best.give((h.clone(), key.clone()));
-            } else if current_level <= this_best_level {
-                // Note that we use the <= because we want also to emit the points for
-                // which this is the best level on the "current" output
-                let h = multilevel_hasher.hash(v, current_level, current_repetition);
+                if current_level == this_best_level {
+                    session_best.give((h.clone(), key.clone()));
+                    cnt += 1;
+                }
                 session_current.give((h, key.clone()));
             }
         }
