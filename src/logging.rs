@@ -141,10 +141,10 @@ pub enum LogEvent {
     DuplicatesDiscarded(usize),
     GeneratedPairs(usize),
     ReceivedHashes(usize),
-    /// Hash values generated for best level by the adaptive algorithm at (level, repetition)
-    AdaptiveBestGenerated(usize, usize, usize),
-    /// Hash values generated for current levels by the adaptive algorithm at (level, repetition)
-    AdaptiveCurrentGenerated(usize, usize, usize),
+    /// Hash values generated for best level by the adaptive algorithm at level, across all repetitions
+    AdaptiveBestGenerated(usize, usize),
+    /// Hash values generated for current levels by the adaptive algorithm at level, across all repetitions
+    AdaptiveCurrentGenerated(usize, usize),
 }
 
 pub trait AsDannyLogger {
@@ -167,12 +167,12 @@ pub struct ExecutionSummary {
     duplicates_discarded: usize,
     generated_pairs: usize,
     received_hashes: usize,
-    adaptive_best: HashMap<(usize, usize), usize>,
-    adaptive_current: HashMap<(usize, usize), usize>,
+    adaptive_best: HashMap<usize, usize>,
+    adaptive_current: HashMap<usize, usize>,
 }
 
 impl ExecutionSummary {
-    fn map_to_vec(m: &HashMap<(usize, usize), usize>) -> Vec<((usize, usize), usize)> {
+    fn map_to_vec(m: &HashMap<usize, usize>) -> Vec<(usize, usize)> {
         m.iter().map(|(k, v)| (*k, *v)).collect()
     }
 
@@ -205,17 +205,11 @@ impl ExecutionSummary {
             LogEvent::ReceivedHashes(count) => {
                 self.received_hashes += count;
             }
-            LogEvent::AdaptiveBestGenerated(level, repetition, count) => {
-                *self
-                    .adaptive_best
-                    .entry((level, repetition))
-                    .or_insert(0usize) += count;
+            LogEvent::AdaptiveBestGenerated(level, count) => {
+                *self.adaptive_best.entry(level).or_insert(0usize) += count;
             }
-            LogEvent::AdaptiveCurrentGenerated(level, repetition, count) => {
-                *self
-                    .adaptive_current
-                    .entry((level, repetition))
-                    .or_insert(0usize) += count;
+            LogEvent::AdaptiveCurrentGenerated(level, count) => {
+                *self.adaptive_current.entry(level).or_insert(0usize) += count;
             }
         }
     }
@@ -228,16 +222,13 @@ pub struct FrozenExecutionSummary {
     pub duplicates_discarded: usize,
     pub generated_pairs: usize,
     pub received_hashes: usize,
-    pub adaptive_best: Vec<((usize, usize), usize)>,
-    pub adaptive_current: Vec<((usize, usize), usize)>,
+    pub adaptive_best: Vec<(usize, usize)>,
+    pub adaptive_current: Vec<(usize, usize)>,
 }
 
 impl FrozenExecutionSummary {
-    fn sum_vecs(
-        a: &Vec<((usize, usize), usize)>,
-        b: &Vec<((usize, usize), usize)>,
-    ) -> Vec<((usize, usize), usize)> {
-        let mut data: HashMap<(usize, usize), usize> = a.iter().cloned().collect();
+    fn sum_vecs(a: &Vec<(usize, usize)>, b: &Vec<(usize, usize)>) -> Vec<(usize, usize)> {
+        let mut data: HashMap<usize, usize> = a.iter().cloned().collect();
         for (k, v) in b.iter() {
             *data.entry(*k).or_insert(0usize) += v;
         }

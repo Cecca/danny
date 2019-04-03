@@ -494,7 +494,8 @@ pub trait AdaptiveOutputGeneration {
         output_current: &mut OutputHandle<'a, T, (H, K), P>,
         capability_best: &mut Capability<T>,
         capability_current: &mut Capability<T>,
-    ) where
+    ) -> (usize, usize)
+    where
         I: IntoIterator<Item = &'a (K, D)>,
         K: ExchangeData + Hash + Eq,
         D: ExchangeData + Debug,
@@ -522,7 +523,8 @@ impl AdaptiveOutputGeneration for OutputAll {
         output_current: &mut OutputHandle<'a, T, (H, K), P>,
         capability_best: &mut Capability<T>,
         capability_current: &mut Capability<T>,
-    ) where
+    ) -> (usize, usize)
+    where
         I: IntoIterator<Item = &'a (K, D)>,
         K: ExchangeData + Hash + Eq,
         D: ExchangeData + Debug,
@@ -533,18 +535,21 @@ impl AdaptiveOutputGeneration for OutputAll {
     {
         let mut session_best = output_best.session(&capability_best);
         let mut session_current = output_current.session(&capability_current);
-        let mut cnt = 0;
+        let mut cnt_best = 0;
+        let mut cnt_current = 0;
         for (key, v) in vectors.into_iter() {
             let this_best_level = best_levels[key];
             if current_level <= this_best_level {
                 let h = multilevel_hasher.hash(v, current_level, current_repetition);
                 if current_level == this_best_level {
                     session_best.give((h.clone(), key.clone()));
-                    cnt += 1;
+                    cnt_best += 1;
                 }
                 session_current.give((h, key.clone()));
+                cnt_current += 1;
             }
         }
+        (cnt_best, cnt_current)
     }
 }
 
@@ -561,7 +566,8 @@ impl AdaptiveOutputGeneration for OutputBest {
         output_current: &mut OutputHandle<'a, T, (H, K), P>,
         capability_best: &mut Capability<T>,
         capability_current: &mut Capability<T>,
-    ) where
+    ) -> (usize, usize)
+    where
         I: IntoIterator<Item = &'a (K, D)>,
         K: ExchangeData + Hash + Eq,
         D: ExchangeData + Debug,
@@ -580,6 +586,7 @@ impl AdaptiveOutputGeneration for OutputBest {
                 cnt += 1;
             }
         }
+        (cnt, 0)
     }
 }
 
@@ -596,7 +603,8 @@ impl AdaptiveOutputGeneration for OutputCurrent {
         output_current: &mut OutputHandle<'a, T, (H, K), P>,
         capability_best: &mut Capability<T>,
         capability_current: &mut Capability<T>,
-    ) where
+    ) -> (usize, usize)
+    where
         I: IntoIterator<Item = &'a (K, D)>,
         K: ExchangeData + Hash + Eq,
         D: ExchangeData + Debug,
@@ -606,10 +614,13 @@ impl AdaptiveOutputGeneration for OutputCurrent {
         P: Push<timely::communication::Message<timely::dataflow::channels::Message<T, (H, K)>>>,
     {
         let mut session_current = output_current.session(&capability_current);
+        let mut cnt = 0;
         for (key, v) in vectors.into_iter() {
             let h = multilevel_hasher.hash(v, current_level, current_repetition);
             session_current.give((h.clone(), key.clone()));
+            cnt += 1;
         }
+        (0, cnt)
     }
 }
 
@@ -640,6 +651,7 @@ where
     let multilevel_hasher = Arc::clone(&multilevel_hasher);
     let multilevel_hasher_2 = Arc::clone(&multilevel_hasher);
     let global_vecs_2 = Arc::clone(&global_vecs);
+    let logger = scope.danny_logger();
 
     let collisions = BestLevelEstimator::stream_collisions(
         scope,
@@ -719,7 +731,7 @@ where
                             );
                         }
                         let start = Instant::now();
-                        output_strategy.output_pairs(
+                        let (emitted_best, emitted_current) = output_strategy.output_pairs(
                             vecs.iter_stripe(&matrix, direction, worker),
                             current_level,
                             current_repetition,
@@ -729,6 +741,14 @@ where
                             &mut output_other_levels,
                             best_levels_capability,
                             other_levels_capability,
+                        );
+                        log_event!(
+                            logger,
+                            LogEvent::AdaptiveBestGenerated(current_level, emitted_best)
+                        );
+                        log_event!(
+                            logger,
+                            LogEvent::AdaptiveCurrentGenerated(current_level, emitted_current)
                         );
                         debug!(
                             "Emitted all pairs in {:?} (current memory {})",

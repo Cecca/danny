@@ -301,7 +301,7 @@ where
             fraction_distinct, global_summary.distinct_pairs, potential_pairs
         );
         info!("Precision: {}", precision);
-        info!("Global summary {:?}", global_summary);
+        info!("Global summary \n{:#?}", global_summary);
 
         count as usize
     } else {
