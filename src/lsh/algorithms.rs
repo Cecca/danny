@@ -295,7 +295,7 @@ where
         let potential_pairs =
             D::num_elements(left_path_final.into()) * D::num_elements(right_path_final.into());
         let fraction_distinct = global_summary.distinct_pairs as f64 / potential_pairs as f64;
-        global_summary.add_to_experiment("execution_summary", experiment);
+        global_summary.add_to_experiment(experiment);
         info!(
             "Evaluated fraction of the potential pairs: {} ({}/{})",
             fraction_distinct, global_summary.distinct_pairs, potential_pairs

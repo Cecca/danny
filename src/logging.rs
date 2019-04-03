@@ -236,8 +236,10 @@ impl FrozenExecutionSummary {
     }
 
     pub fn sum(&self, other: &Self) -> Self {
-        let adaptive_best = Self::sum_vecs(&self.adaptive_best, &other.adaptive_best);
-        let adaptive_current = Self::sum_vecs(&self.adaptive_current, &other.adaptive_current);
+        let mut adaptive_best = Self::sum_vecs(&self.adaptive_best, &other.adaptive_best);
+        let mut adaptive_current = Self::sum_vecs(&self.adaptive_current, &other.adaptive_current);
+        adaptive_best.sort();
+        adaptive_current.sort();
         FrozenExecutionSummary {
             sketch_discarded: self.sketch_discarded + other.sketch_discarded,
             distinct_pairs: self.distinct_pairs + other.distinct_pairs,
@@ -249,9 +251,9 @@ impl FrozenExecutionSummary {
         }
     }
 
-    pub fn add_to_experiment(&self, table: &str, experiment: &mut Experiment) {
+    pub fn add_to_experiment(&self, experiment: &mut Experiment) {
         experiment.append(
-            table,
+            "aggregated_counters",
             row!(
                 "sketch_discarded" => self.sketch_discarded,
                 "distinct_pairs" => self.distinct_pairs,
@@ -259,7 +261,23 @@ impl FrozenExecutionSummary {
                 "generated_pairs" => self.generated_pairs,
                 "received_hashes" => self.received_hashes
             ),
-        )
+        );
+        for (level, best_c) in self.adaptive_best.iter() {
+            let current_c = self
+                .adaptive_current
+                .iter()
+                .find(|p| p.0 == *level)
+                .expect("Level not found during experiment dumping")
+                .1;
+            experiment.append(
+                "adaptive_counters",
+                row!("level" => *level, "kind" => "best", "count" => *best_c),
+            );
+            experiment.append(
+                "adaptive_counters",
+                row!("level" => *level, "kind" => "current", "count" => current_c),
+            );
+        }
     }
 }
 
