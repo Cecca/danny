@@ -580,7 +580,6 @@ impl AdaptiveOutputGeneration for OutputBest {
                 cnt += 1;
             }
         }
-        info!("Output {} hashed values for level {}", cnt, current_level);
     }
 }
 
