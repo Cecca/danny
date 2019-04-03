@@ -134,13 +134,34 @@ macro_rules! log_event {
     };
 }
 
+/// To be used to map from a timestamp to a step of the algorithm
+pub trait ToStepId {
+    fn to_step_id(&self) -> usize;
+}
+
+impl ToStepId for u32 {
+    fn to_step_id(&self) -> usize {
+        *self as usize
+    }
+}
+
+impl<O, I> ToStepId for timely::order::Product<O, I>
+where
+    O: ToStepId,
+{
+    fn to_step_id(&self) -> usize {
+        self.outer.to_step_id()
+    }
+}
+
 #[derive(Debug, Clone, Abomonation)]
 pub enum LogEvent {
     SketchDiscarded(usize),
     DistinctPairs(usize),
     DuplicatesDiscarded(usize),
     GeneratedPairs(usize),
-    ReceivedHashes(usize),
+    /// The number of received hashes during bucketing. This is a proxy for the load measure
+    ReceivedHashes(usize, usize),
     /// Hash values generated for best level by the adaptive algorithm at level, across all repetitions
     AdaptiveBestGenerated(usize, usize),
     /// Hash values generated for current levels by the adaptive algorithm at level, across all repetitions
@@ -166,7 +187,7 @@ pub struct ExecutionSummary {
     distinct_pairs: usize,
     duplicates_discarded: usize,
     generated_pairs: usize,
-    received_hashes: usize,
+    received_hashes: HashMap<usize, usize>,
     adaptive_best: HashMap<usize, usize>,
     adaptive_current: HashMap<usize, usize>,
 }
@@ -182,7 +203,7 @@ impl ExecutionSummary {
             distinct_pairs: self.distinct_pairs,
             duplicates_discarded: self.duplicates_discarded,
             generated_pairs: self.generated_pairs,
-            received_hashes: self.received_hashes,
+            received_hashes: Self::map_to_vec(&self.received_hashes),
             adaptive_best: Self::map_to_vec(&self.adaptive_best),
             adaptive_current: Self::map_to_vec(&self.adaptive_current),
         }
@@ -202,8 +223,8 @@ impl ExecutionSummary {
             LogEvent::GeneratedPairs(count) => {
                 self.generated_pairs += count;
             }
-            LogEvent::ReceivedHashes(count) => {
-                self.received_hashes += count;
+            LogEvent::ReceivedHashes(step, count) => {
+                *self.received_hashes.entry(step).or_insert(0usize) += count;
             }
             LogEvent::AdaptiveBestGenerated(level, count) => {
                 *self.adaptive_best.entry(level).or_insert(0usize) += count;
@@ -221,7 +242,7 @@ pub struct FrozenExecutionSummary {
     pub distinct_pairs: usize,
     pub duplicates_discarded: usize,
     pub generated_pairs: usize,
-    pub received_hashes: usize,
+    pub received_hashes: Vec<(usize, usize)>,
     pub adaptive_best: Vec<(usize, usize)>,
     pub adaptive_current: Vec<(usize, usize)>,
 }
@@ -236,8 +257,10 @@ impl FrozenExecutionSummary {
     }
 
     pub fn sum(&self, other: &Self) -> Self {
+        let mut received_hashes = Self::sum_vecs(&self.received_hashes, &other.received_hashes);
         let mut adaptive_best = Self::sum_vecs(&self.adaptive_best, &other.adaptive_best);
         let mut adaptive_current = Self::sum_vecs(&self.adaptive_current, &other.adaptive_current);
+        received_hashes.sort();
         adaptive_best.sort();
         adaptive_current.sort();
         FrozenExecutionSummary {
@@ -245,7 +268,7 @@ impl FrozenExecutionSummary {
             distinct_pairs: self.distinct_pairs + other.distinct_pairs,
             duplicates_discarded: self.duplicates_discarded + other.duplicates_discarded,
             generated_pairs: self.generated_pairs + other.generated_pairs,
-            received_hashes: self.received_hashes + other.received_hashes,
+            received_hashes,
             adaptive_best,
             adaptive_current,
         }
@@ -258,10 +281,15 @@ impl FrozenExecutionSummary {
                 "sketch_discarded" => self.sketch_discarded,
                 "distinct_pairs" => self.distinct_pairs,
                 "duplicates_discarded" => self.duplicates_discarded,
-                "generated_pairs" => self.generated_pairs,
-                "received_hashes" => self.received_hashes
+                "generated_pairs" => self.generated_pairs
             ),
         );
+        for (step, rec_hashes) in self.received_hashes.iter() {
+            experiment.append(
+                "step_counters",
+                row!("step" => *step, "kind" => "received_hashes", "count" => *rec_hashes),
+            );
+        }
         for (level, best_c) in self.adaptive_best.iter() {
             let current_c = self
                 .adaptive_current

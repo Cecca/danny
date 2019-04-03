@@ -143,7 +143,7 @@ where
 impl<G, T, H, K> BucketStream<G, T, H, K> for Stream<G, (H, K)>
 where
     G: Scope<Timestamp = T>,
-    T: Timestamp + Succ,
+    T: Timestamp + Succ + ToStepId,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
@@ -181,9 +181,12 @@ where
                             t.time(),
                             d.iter()
                         );
-                        let rep_entry = buckets.entry(t.retain()).or_insert_with(HashMap::new);
                         let mut data = d.replace(Vec::new());
-                        log_event!(logger, LogEvent::ReceivedHashes(data.len()));
+                        log_event!(
+                            logger,
+                            LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
+                        );
+                        let rep_entry = buckets.entry(t.retain()).or_insert_with(HashMap::new);
                         for (h, k) in data.drain(..) {
                             let bucket = rep_entry
                                 .entry(h)
@@ -197,9 +200,12 @@ where
                             t.time(),
                             d.iter()
                         );
-                        let rep_entry = buckets.entry(t.retain()).or_insert_with(HashMap::new);
                         let mut data = d.replace(Vec::new());
-                        log_event!(logger, LogEvent::ReceivedHashes(data.len()));
+                        log_event!(
+                            logger,
+                            LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
+                        );
+                        let rep_entry = buckets.entry(t.retain()).or_insert_with(HashMap::new);
                         for (h, k) in data.drain(..) {
                             let bucket = rep_entry
                                 .entry(h)
