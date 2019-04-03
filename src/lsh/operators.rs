@@ -505,9 +505,9 @@ pub trait AdaptiveOutputGeneration {
         P: Push<timely::communication::Message<timely::dataflow::channels::Message<T, (H, K)>>>;
 }
 
-pub struct OutputAll {}
-pub struct OutputBest {}
-pub struct OutputCurrent {}
+pub struct OutputAll;
+pub struct OutputBest;
+pub struct OutputCurrent;
 
 impl AdaptiveOutputGeneration for OutputAll {
     #[allow(clippy::too_many_arguments)]
@@ -571,15 +571,16 @@ impl AdaptiveOutputGeneration for OutputBest {
         P: Push<timely::communication::Message<timely::dataflow::channels::Message<T, (H, K)>>>,
     {
         let mut session_best = output_best.session(&capability_best);
-        let mut session_current = output_current.session(&capability_current);
+        let mut cnt = 0;
         for (key, v) in vectors.into_iter() {
-            let this_best_level = best_levels[key]; //.get(key).unwrap();
+            let this_best_level = best_levels[key];
             if current_level == this_best_level {
                 let h = multilevel_hasher.hash(v, current_level, current_repetition);
                 session_best.give((h.clone(), key.clone()));
-                session_current.give((h.clone(), key.clone()));
+                cnt += 1;
             }
         }
+        info!("Output {} hashed values for level {}", cnt, current_level);
     }
 }
 
@@ -605,7 +606,6 @@ impl AdaptiveOutputGeneration for OutputCurrent {
         F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
         P: Push<timely::communication::Message<timely::dataflow::channels::Message<T, (H, K)>>>,
     {
-        let mut session_best = output_best.session(&capability_best);
         let mut session_current = output_current.session(&capability_current);
         for (key, v) in vectors.into_iter() {
             let h = multilevel_hasher.hash(v, current_level, current_repetition);
@@ -741,7 +741,7 @@ where
                         current_repetition += 1;
                         if current_repetition >= current_max_repetitions {
                             current_level += 1;
-                            done = current_level >= max_level;
+                            done = current_level > max_level;
                             if !done {
                                 current_repetition = 0;
                                 current_max_repetitions =
