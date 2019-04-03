@@ -539,8 +539,9 @@ impl AdaptiveOutputGeneration for OutputAll {
             if current_level == this_best_level {
                 let h = multilevel_hasher.hash(v, current_level, current_repetition);
                 session_best.give((h.clone(), key.clone()));
-                session_current.give((h.clone(), key.clone()));
-            } else if current_level < this_best_level {
+            } else if current_level <= this_best_level {
+                // Note that we use the <= because we want also to emit the points for
+                // which this is the best level on the "current" output
                 let h = multilevel_hasher.hash(v, current_level, current_repetition);
                 session_current.give((h, key.clone()));
             }
