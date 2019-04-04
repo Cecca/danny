@@ -190,7 +190,7 @@ where
                         for (h, k) in data.drain(..) {
                             let bucket = rep_entry
                                 .entry(h)
-                                .or_insert_with(|| (Vec::new(), Vec::new()));
+                                .or_insert_with(|| (Vec::with_capacity(4096), Vec::with_capacity(4096)));
                             bucket.0.push(k);
                         }
                     });
@@ -209,7 +209,7 @@ where
                         for (h, k) in data.drain(..) {
                             let bucket = rep_entry
                                 .entry(h)
-                                .or_insert_with(|| (Vec::new(), Vec::new()));
+                                .or_insert_with(|| (Vec::with_capacity(4096), Vec::with_capacity(4096)));
                             bucket.1.push(k);
                         }
                     });
