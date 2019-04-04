@@ -695,6 +695,10 @@ where
 
         let mut min_level: Option<usize> = None;
         let mut best_levels: HashMap<K, usize> = HashMap::new();
+        // We start from the 0-th level, even though the minimum level might be higher. 
+        // This is to synchronize the left and right generators. They might have different
+        // minimum levels, and this is the simplest way to ensure that they both are always in the
+        // same round. Performance-wise it doesn't hurt much to run through some empty levels.
         let mut current_level = 0;
         let mut current_repetition = 0;
         let mut current_max_repetitions = 0;
@@ -713,7 +717,6 @@ where
                 assert!(min_level.is_none());
                 assert!(data.len() == 1);
                 min_level.replace(data[0]);
-                current_level = 1; //data[0];
                 current_max_repetitions = multilevel_hasher_2.repetitions_at_level(current_level);
             });
             best_levels_input.for_each(|_t, data| {
