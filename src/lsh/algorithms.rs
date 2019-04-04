@@ -255,6 +255,7 @@ where
                 )
                 .exchange(|_| 0) // Bring all the counts to the first worker
                 .leave()
+                .stream_sum()
                 .inspect(move |_| {
                     cnt += 1;
                     if index == 0 {

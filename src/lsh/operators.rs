@@ -734,6 +734,7 @@ where
         let mut other_levels_capability = Some(capabilities.pop().unwrap());
         let mut best_levels_capability = Some(capabilities.pop().unwrap());
 
+        let mut rep_start = Instant::now();
         let mut min_level: Option<usize> = None;
         let mut best_levels: HashMap<K, usize> = HashMap::new();
         // We start from the starting level of the hasher, even though the minimum level might be higher. 
@@ -779,14 +780,16 @@ where
                     if !throttling_probe.less_than(best_levels_capability.time()) {
                         if worker == 0 {
                             info!(
-                                "Level {}/{} repetition {}/{} (current memory {})",
+                                "Level {}/{} repetition {}/{} (current memory {}, previous iter: {:?})",
                                 current_level,
                                 max_level,
                                 current_repetition,
                                 current_max_repetitions,
-                                proc_mem!()
+                                proc_mem!(),
+                                Instant::now() - rep_start
                             );
                         }
+                        rep_start = Instant::now();
                         if current_level >= min_level {
                             let start = Instant::now();
                             let (emitted_best, emitted_current) = output_strategy.output_pairs(
