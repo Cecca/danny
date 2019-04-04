@@ -735,7 +735,7 @@ where
 
         let mut min_level: Option<usize> = None;
         let mut best_levels: HashMap<K, usize> = HashMap::new();
-        // We start from the 0-th level, even though the minimum level might be higher. 
+        // We start from the first level, even though the minimum level might be higher. 
         // This is to synchronize the left and right generators. They might have different
         // minimum levels, and this is the simplest way to ensure that they both are always in the
         // same round. Performance-wise it doesn't hurt much to run through some empty levels.
