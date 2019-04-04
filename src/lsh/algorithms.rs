@@ -185,11 +185,6 @@ where
     let bloom_fpp = config.get_bloom_fpp();
     let bloom_elements = config.get_bloom_elements();
 
-    let bloom_filter_before_shuffle = Arc::new(AtomicBloomFilter::<(u32, u32)>::new(
-        4usize.gb_to_bits(),
-        5,
-        rng.clone(),
-    ));
     let bloom_filter = Arc::new(AtomicBloomFilter::<(u32, u32)>::new(
         4usize.gb_to_bits(),
         5,
@@ -200,7 +195,6 @@ where
         let global_left = Arc::clone(&global_left);
         let global_right = Arc::clone(&global_right);
         let bloom_filter = Arc::clone(&bloom_filter);
-        let bloom_filter_before_shuffle = Arc::clone(&bloom_filter_before_shuffle);
         let hash_collection_builder = hash_collection_builder.clone();
         let mut rng = rng.clone();
         let execution_summary = init_event_logging(&worker);
@@ -216,7 +210,6 @@ where
 
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
             let bloom_filter = Arc::clone(&bloom_filter);
-            let bloom_filter_before_shuffle = Arc::clone(&bloom_filter_before_shuffle);
             let mut outer = scope.clone();
             outer.scoped::<Product<u32, u32>, _, _>("inner-dataflow", |inner| {
                 let mut probe = ProbeHandle::new();
@@ -248,7 +241,6 @@ where
                         sketcher_pair,
                         probe.clone(),
                         batch_size,
-                        Arc::clone(&bloom_filter_before_shuffle),
                         &mut rng,
                     ),
                 };
@@ -329,7 +321,6 @@ fn generate_candidates_global_k<'a, K, D, G, T1, T2, F, H, S, SV, R, B>(
     sketcher_pair: Option<(S, SketchPredicate<SV>)>,
     probe: ProbeHandle<T1>,
     batch_size: usize,
-    bloom_filter: Arc<AtomicBloomFilter<(K, K)>>,
     rng: &mut R,
 ) -> Stream<ChildScope<'a, G, T2>, (K, K)>
 where
@@ -413,12 +404,7 @@ where
                 probe.clone(),
             )
             .enter(inner_scope);
-            left_hashes.bucket_pred(
-                &right_hashes,
-                move |pair| !bloom_filter.test_and_insert(pair),
-                |pair| pair,
-                batch_size,
-            )
+            left_hashes.bucket(&right_hashes, batch_size)
         }
     }
 }
