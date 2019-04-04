@@ -245,6 +245,7 @@ where
                     ),
                 };
 
+                let mut cnt = 0;
                 candidates_filter_count(
                     candidates,
                     Arc::clone(&global_left),
@@ -254,6 +255,12 @@ where
                 )
                 .exchange(|_| 0) // Bring all the counts to the first worker
                 .leave()
+                .inspect(move |_| {
+                    cnt += 1;
+                    if index == 0 {
+                        info!("Counts pushed into the output channel: {}", cnt);
+                    }
+                })
                 .probe_with(&mut probe)
                 .capture_into(output_send_ch);
 
