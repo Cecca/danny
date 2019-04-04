@@ -514,6 +514,7 @@ pub trait AdaptiveOutputGeneration {
 
 pub struct OutputAll;
 pub struct OutputBest;
+pub struct OutputJustBest;
 pub struct OutputCurrent;
 
 impl AdaptiveOutputGeneration for OutputAll {
@@ -556,6 +557,45 @@ impl AdaptiveOutputGeneration for OutputAll {
             }
         }
         (cnt_best, cnt_current)
+    }
+}
+
+impl AdaptiveOutputGeneration for OutputJustBest {
+    #[allow(clippy::too_many_arguments)]
+    fn output_pairs<'a, I, T, K, D, H, F, P>(
+        &self,
+        vectors: I,
+        current_level: usize,
+        current_repetition: usize,
+        multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
+        best_levels: &HashMap<K, usize>,
+        output_best: &mut OutputHandle<'a, T, (H, K), P>,
+        output_current: &mut OutputHandle<'a, T, (H, K), P>,
+        capability_best: &mut Capability<T>,
+        capability_current: &mut Capability<T>,
+    ) -> (usize, usize)
+    where
+        I: IntoIterator<Item = &'a (K, D)>,
+        K: ExchangeData + Hash + Eq,
+        D: ExchangeData + Debug,
+        T: Timestamp,
+        H: ExchangeData + Debug + Eq + Hash,
+        F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
+        P: Push<timely::communication::Message<timely::dataflow::channels::Message<T, (H, K)>>>,
+    {
+        let mut session_best = output_best.session(&capability_best);
+        let mut session_current = output_current.session(&capability_current);
+        let mut cnt = 0;
+        for (key, v) in vectors.into_iter() {
+            let this_best_level = best_levels[key];
+            if current_level == this_best_level {
+                let h = multilevel_hasher.hash(v, current_level, current_repetition);
+                session_best.give((h.clone(), key.clone()));
+                session_current.give((h.clone(), key.clone()));
+                cnt += 1;
+            }
+        }
+        (cnt, cnt)
     }
 }
 
