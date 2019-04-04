@@ -788,7 +788,6 @@ where
                             );
                         }
                         if current_level >= min_level {
-                            info!("Here");
                             let start = Instant::now();
                             let (emitted_best, emitted_current) = output_strategy.output_pairs(
                                 vecs.iter_stripe(&matrix, direction, worker),
@@ -801,7 +800,6 @@ where
                                 best_levels_capability,
                                 other_levels_capability,
                             );
-                            info!("There");
                             log_event!(
                                 logger,
                                 LogEvent::AdaptiveBestGenerated(current_level, emitted_best)
