@@ -231,12 +231,10 @@ where
                         // Emit some output pairs
                         let mut session = output.session(time);
                         let mut cnt = 0;
-                        for (l, r) in generator.filter(|p| pred(p)).take(1) {
+                        for (l, r) in generator.filter(|p| pred(p)).take(batch_size) {
                             session.give((result(l), result(r)));
                             cnt += 1;
                         }
-                        generator.count();
-                        assert!(generator.done());
                         log_event!(logger, LogEvent::GeneratedPairs(cnt));
                         time.downgrade(&time.time().succ());
                     }
