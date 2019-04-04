@@ -739,7 +739,7 @@ where
         // This is to synchronize the left and right generators. They might have different
         // minimum levels, and this is the simplest way to ensure that they both are always in the
         // same round. Performance-wise it doesn't hurt much to run through some empty levels.
-        let mut current_level = 0;
+        let mut current_level = 1;
         let mut current_repetition = 0;
         let mut current_max_repetitions = 0;
         let mut done = false;
