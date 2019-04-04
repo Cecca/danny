@@ -185,6 +185,11 @@ where
     let bloom_fpp = config.get_bloom_fpp();
     let bloom_elements = config.get_bloom_elements();
 
+    let bloom_filter_before_shuffle = Arc::new(AtomicBloomFilter::<(u32, u32)>::new(
+        4usize.gb_to_bits(),
+        5,
+        rng.clone(),
+    ));
     let bloom_filter = Arc::new(AtomicBloomFilter::<(u32, u32)>::new(
         4usize.gb_to_bits(),
         5,
@@ -195,6 +200,7 @@ where
         let global_left = Arc::clone(&global_left);
         let global_right = Arc::clone(&global_right);
         let bloom_filter = Arc::clone(&bloom_filter);
+        let bloom_filter_before_shuffle = Arc::clone(&bloom_filter_before_shuffle);
         let hash_collection_builder = hash_collection_builder.clone();
         let mut rng = rng.clone();
         let execution_summary = init_event_logging(&worker);
@@ -210,6 +216,7 @@ where
 
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
             let bloom_filter = Arc::clone(&bloom_filter);
+            let bloom_filter_before_shuffle = Arc::clone(&bloom_filter_before_shuffle);
             let mut outer = scope.clone();
             outer.scoped::<Product<u32, u32>, _, _>("inner-dataflow", |inner| {
                 let mut probe = ProbeHandle::new();
@@ -250,6 +257,7 @@ where
                     Arc::clone(&global_left),
                     Arc::clone(&global_right),
                     sim_pred,
+                    Arc::clone(&bloom_filter_before_shuffle),
                     Arc::clone(&bloom_filter),
                 )
                 .exchange(|_| 0) // Bring all the counts to the first worker
@@ -492,6 +500,7 @@ fn candidates_filter_count<G, T, K, D, F>(
     global_left: Arc<ChunkedDataset<K, D>>,
     global_right: Arc<ChunkedDataset<K, D>>,
     sim_pred: F,
+    bloom_filter_before_shuffle: Arc<AtomicBloomFilter<(K, K)>>,
     bloom_filter: Arc<AtomicBloomFilter<(K, K)>>,
 ) -> Stream<G, u64>
 where
@@ -505,6 +514,7 @@ where
     let matrix = MatrixDescription::for_workers(peers as usize);
 
     candidates
+        .approximate_distinct_atomic(Arc::clone(&bloom_filter_before_shuffle))
         .exchange(move |pair| {
             let row = pair.0.route() % u64::from(matrix.rows);
             let col = pair.1.route() % u64::from(matrix.columns);
