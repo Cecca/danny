@@ -713,7 +713,7 @@ where
                 assert!(min_level.is_none());
                 assert!(data.len() == 1);
                 min_level.replace(data[0]);
-                current_level = data[0];
+                current_level = 1; //data[0];
                 current_max_repetitions = multilevel_hasher_2.repetitions_at_level(current_level);
             });
             best_levels_input.for_each(|_t, data| {
@@ -722,11 +722,14 @@ where
                     best_levels.insert(key, level);
                 }
             });
-            if let Some(_min_level) = min_level {
+            if let Some(min_level) = min_level {
                 if let Some(best_levels_capability) = best_levels_capability.as_mut() {
                     let other_levels_capability = other_levels_capability.as_mut().expect(
                         "At this point I would have expected this capability to be not none",
                     );
+                    assert!(best_levels_capability.time() == other_levels_capability.time(), 
+                        "The two capabilities should track the same time, instead we have {:?} != {:?}", 
+                        best_levels_capability.time(), other_levels_capability.time());
                     // Both capabilities are tracking the same time, so we check just one.
                     // We use two separate capabilities because they have to be associated to different outputs
                     if !throttling_probe.less_than(best_levels_capability.time()) {
@@ -741,30 +744,32 @@ where
                             );
                         }
                         let start = Instant::now();
-                        let (emitted_best, emitted_current) = output_strategy.output_pairs(
-                            vecs.iter_stripe(&matrix, direction, worker),
-                            current_level,
-                            current_repetition,
-                            Arc::clone(&multilevel_hasher_2),
-                            &best_levels,
-                            &mut output_best_levels,
-                            &mut output_other_levels,
-                            best_levels_capability,
-                            other_levels_capability,
-                        );
-                        log_event!(
-                            logger,
-                            LogEvent::AdaptiveBestGenerated(current_level, emitted_best)
-                        );
-                        log_event!(
-                            logger,
-                            LogEvent::AdaptiveCurrentGenerated(current_level, emitted_current)
-                        );
-                        debug!(
-                            "Emitted all pairs in {:?} (current memory {})",
-                            Instant::now() - start,
-                            proc_mem!()
-                        );
+                        if current_level >= min_level {
+                            let (emitted_best, emitted_current) = output_strategy.output_pairs(
+                                vecs.iter_stripe(&matrix, direction, worker),
+                                current_level,
+                                current_repetition,
+                                Arc::clone(&multilevel_hasher_2),
+                                &best_levels,
+                                &mut output_best_levels,
+                                &mut output_other_levels,
+                                best_levels_capability,
+                                other_levels_capability,
+                            );
+                            log_event!(
+                                logger,
+                                LogEvent::AdaptiveBestGenerated(current_level, emitted_best)
+                            );
+                            log_event!(
+                                logger,
+                                LogEvent::AdaptiveCurrentGenerated(current_level, emitted_current)
+                            );
+                            debug!(
+                                "Emitted all pairs in {:?} (current memory {})",
+                                Instant::now() - start,
+                                proc_mem!()
+                            );
+                        }
                         best_levels_capability.downgrade(&best_levels_capability.time().succ());
                         other_levels_capability.downgrade(&other_levels_capability.time().succ());
                         current_repetition += 1;
