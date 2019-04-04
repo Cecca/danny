@@ -813,7 +813,8 @@ where
                             );
                             if worker == 0 {
                                 info!(
-                                    "Emitted all hashed values in {:?}",
+                                    "Emitted all {} + {} hashed values in {:?}",
+                                    emitted_best, emitted_current,
                                     Instant::now() - start
                                 );
                             }
