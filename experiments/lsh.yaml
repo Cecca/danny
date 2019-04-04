@@ -5,6 +5,23 @@ environment:
   DANNY_BASELINES_PATH: "/mnt/fast_storage/users/mcec/baselines.csv"
 experiments:
 
+  - name: Glove adaptive one shot
+    description: Debug configuration
+    tags:
+      - glove
+      - cosine
+      - debug
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --algorithm: fixed-lsh
+      --range: [0.6]
+      --measure: cosine
+      --adaptive-k: "10,16"
+    arguments:
+      - ["{{ dataset('Glove-6B-100') }}", "{{ dataset('Glove-6B-100') }}"]
+
   - name: Glove no sketch
     tags:
       - glove
