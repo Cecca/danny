@@ -474,6 +474,7 @@ where
         F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
         R: Rng + SeedableRng + Send + Clone + ?Sized + 'static,
     {
+        let logger = scope.danny_logger();
         let worker = scope.index() as u64;
         let multilevel_hasher = multilevel_hasher;
         source(scope, "collisions-stream", move |cap| {
@@ -483,6 +484,7 @@ where
             let mut rng = rng;
             move |output| {
                 if let Some(cap) = cap.take() {
+                    let _pg = ProfileGuard::new(logger.clone(), 0, 0, "best_k_estimation");
                     let mut session = output.session(&cap);
                     let p = n as f64 / vecs.stripe_len(&matrix, direction, worker) as f64;
                     let weight: usize = (1.0 / p).ceil() as usize;
@@ -537,6 +539,7 @@ where
         F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
     {
         let worker = collisions_stream.scope().index() as u64;
+        let logger = collisions_stream.scope().danny_logger();
         collisions_stream.unary_frontier(Pipeline, "best-level-finder", move |_, _| {
             let vecs = Arc::clone(&global_vecs);
             let mut collisions = HashMap::new();
@@ -560,6 +563,15 @@ where
                 for (time, counts) in collisions.iter_mut() {
                     if !input.frontier().less_equal(time) {
                         let end_receiving = Instant::now();
+                        log_event!(
+                            logger,
+                            LogEvent::Profile(
+                                0,
+                                0,
+                                "receive_simulated_collisions".to_owned(),
+                                end_receiving - start_receiving.unwrap()
+                            )
+                        );
                         debug!(
                             "Time to receive {} simulated collisions {:?} (memory {:?})",
                             counts.len(),
@@ -567,6 +579,7 @@ where
                             proc_mem!()
                         );
                         debug!("Finding best level for each and every vector");
+                        let _pg = ProfileGuard::new(logger.clone(), 0, 0, "best_k_estimation");
                         let start_estimation = Instant::now();
                         let estimator =
                             BestLevelEstimator::from_counts(&multilevel_hasher, &counts, balance);
@@ -584,10 +597,6 @@ where
                             end_estimation - start_estimation,
                             level_stats
                         );
-                        debug!(
-                        "Found best level for each and every vector, clearing counts (memory {})",
-                        proc_mem!()
-                    );
                         counts.clear();
                     }
                 }

@@ -166,9 +166,9 @@ pub struct ProfileGuard {
 }
 
 impl ProfileGuard {
-    pub fn new(logger: Logger<LogEvent>, step: usize, depth: u8, name: &str) -> Self {
+    pub fn new(logger: Option<Logger<LogEvent>>, step: usize, depth: u8, name: &str) -> Self {
         Self {
-            logger,
+            logger: logger.unwrap(),
             step,
             depth,
             name: name.to_owned(),

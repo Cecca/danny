@@ -274,10 +274,10 @@ where
         // worker.step_while(|| probe.less_than(&(repetitions as u32)));
         worker.step_while(|| probe.with_frontier(|f| !f.is_empty()));
 
-        info!(
-            "Execution summary for worker {}: {:?}",
-            index, execution_summary
-        );
+        // info!(
+        //     "Execution summary for worker {}: {:?}",
+        //     index, execution_summary
+        // );
         collect_execution_summaries(execution_summary, send_exec_summary.clone(), &mut worker);
     })
     .expect("Problems with the dataflow");
@@ -311,7 +311,7 @@ where
             fraction_distinct, global_summary.distinct_pairs, potential_pairs
         );
         info!("Precision: {}", precision);
-        // info!("Global summary \n{:#?}", global_summary);
+        info!("Global summary \n{:#?}", global_summary);
 
         count as usize
     } else {
@@ -504,13 +504,14 @@ fn candidates_filter_count<G, T, K, D, F>(
 ) -> Stream<G, u64>
 where
     G: Scope<Timestamp = T>,
-    T: Timestamp + Succ,
+    T: Timestamp + Succ + ToStepId,
     K: Data + Route + Sync + Send + Clone + Abomonation + Debug + Hash,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
 {
     let peers = candidates.scope().peers();
     let matrix = MatrixDescription::for_workers(peers as usize);
+    let logger = candidates.scope().danny_logger();
 
     candidates
         .exchange(move |pair| {
@@ -524,6 +525,12 @@ where
                 ProgressLogger::new(Duration::from_secs(60), "comparisons".to_owned(), None);
             move |input, output| {
                 input.for_each(|t, d| {
+                    let _pg = ProfileGuard::new(
+                        logger.clone(),
+                        t.time().to_step_id(),
+                        1,
+                        "distance_computation",
+                    );
                     let mut data = d.replace(Vec::new());
                     let count = data
                         .drain(..)

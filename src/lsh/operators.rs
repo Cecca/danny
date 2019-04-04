@@ -176,6 +176,8 @@ where
                 let mut pred = pred;
                 move |left_in, right_in, output| {
                     left_in.for_each(|t, d| {
+                        let _pg = ProfileGuard::new(
+                                logger.clone(), t.time().to_step_id(), 1, "bucket_receive");
                         debug!(
                             "Received batch of left messages for time {:?}:\n\t{:?}",
                             t.time(),
@@ -195,6 +197,8 @@ where
                         }
                     });
                     right_in.for_each(|t, d| {
+                        let _pg = ProfileGuard::new(
+                                logger.clone(), t.time().to_step_id(), 1, "bucket_receive");
                         debug!(
                             "Received batch of right messages for time {:?}:\n\t{:?}",
                             t.time(),
@@ -228,6 +232,8 @@ where
                         generators.push((time.clone(), generator));
                     }
                     for (time, generator) in generators.iter_mut() {
+                        let _pg = ProfileGuard::new(
+                                logger.clone(), time.time().to_step_id(), 1, "candidate_emission");
                         // Emit some output pairs
                         let mut session = output.session(time);
                         let mut cnt = 0;
@@ -685,7 +691,7 @@ pub fn source_hashed_adaptive<G, T, K, D, F, H, R, OS>(
 ) -> (Stream<G, (H, K)>, Stream<G, (H, K)>)
 where
     G: Scope<Timestamp = T>,
-    T: Timestamp + Succ,
+    T: Timestamp + Succ + ToStepId,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
@@ -789,8 +795,12 @@ where
                                 Instant::now() - rep_start
                             );
                         }
+                        log_event!(logger, LogEvent::Profile(
+                            best_levels_capability.time().to_step_id(), 0, "repetition".to_owned(), Instant::now() - rep_start));
                         rep_start = Instant::now();
                         if current_level >= min_level {
+                            let _pg = ProfileGuard::new(
+                                logger.clone(), best_levels_capability.time().to_step_id(), 1, "hash_generation");
                             let start = Instant::now();
                             let (emitted_best, emitted_current) = output_strategy.output_pairs(
                                 vecs.iter_stripe(&matrix, direction, worker),

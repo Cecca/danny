@@ -412,9 +412,10 @@ where
     fn approximate_distinct_atomic(&self, filter: Arc<AtomicBloomFilter<D>>) -> Stream<G, D>;
 }
 
-impl<G, D> ApproximateDistinct<G, D> for Stream<G, D>
+impl<G, T, D> ApproximateDistinct<G, D> for Stream<G, D>
 where
-    G: Scope,
+    G: Scope<Timestamp = T>,
+    T: Timestamp + ToStepId,
     D: Data + Hash,
 {
     fn approximate_distinct_atomic(&self, filter: Arc<AtomicBloomFilter<D>>) -> Stream<G, D> {
@@ -427,6 +428,12 @@ where
         self.unary(PipelinePact, "approximate-distinct-atomic", move |_, _| {
             move |input, output| {
                 input.for_each(|t, d| {
+                    let _pg = ProfileGuard::new(
+                        logger.clone(),
+                        t.time().to_step_id(),
+                        1,
+                        "distinct_atomic",
+                    );
                     let mut data = d.replace(Vec::new());
                     let mut cnt = 0;
                     let mut received = 0;
@@ -563,16 +570,20 @@ where
     fn stream_sum(&self) -> Stream<G, D>;
 }
 
-impl<G, D> StreamSum<G, D> for Stream<G, D>
+impl<G, T, D> StreamSum<G, D> for Stream<G, D>
 where
-    G: Scope,
+    G: Scope<Timestamp=T>,
+    T: Timestamp + ToStepId,
     D: Add<Output = D> + std::iter::Sum + Data + Copy,
 {
     fn stream_sum(&self) -> Stream<G, D> {
         let mut sums: HashMap<Capability<G::Timestamp>, Option<D>> = HashMap::new();
+        let logger = self.scope().danny_logger();
         self.unary_frontier(PipelinePact, "stream-count", move |_, _| {
             move |input, output| {
                 input.for_each(|t, d| {
+                    let _pg =
+                        ProfileGuard::new(logger.clone(), t.time().to_step_id(), 1, "stream_sum");
                     let mut data = d.replace(Vec::new());
                     let local_sum: D = data.drain(..).sum();
                     sums.entry(t.retain())
