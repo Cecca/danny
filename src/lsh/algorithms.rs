@@ -415,7 +415,7 @@ where
             .enter(inner_scope);
             left_hashes.bucket_pred(
                 &right_hashes,
-                move |pair| bloom_filter.test_and_insert(pair),
+                move |pair| !bloom_filter.test_and_insert(pair),
                 |pair| pair,
                 batch_size,
             )
