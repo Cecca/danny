@@ -699,6 +699,7 @@ where
     let multilevel_hasher_2 = Arc::clone(&multilevel_hasher);
     let global_vecs_2 = Arc::clone(&global_vecs);
     let logger = scope.danny_logger();
+    let starting_level = multilevel_hasher.min_level();
 
     let collisions = BestLevelEstimator::stream_collisions(
         scope,
@@ -735,11 +736,11 @@ where
 
         let mut min_level: Option<usize> = None;
         let mut best_levels: HashMap<K, usize> = HashMap::new();
-        // We start from the first level, even though the minimum level might be higher. 
+        // We start from the starting level of the hasher, even though the minimum level might be higher. 
         // This is to synchronize the left and right generators. They might have different
         // minimum levels, and this is the simplest way to ensure that they both are always in the
         // same round. Performance-wise it doesn't hurt much to run through some empty levels.
-        let mut current_level = 1;
+        let mut current_level = starting_level;
         let mut current_repetition = 0;
         let mut current_max_repetitions = 0;
         let mut done = false;
@@ -787,6 +788,7 @@ where
                             );
                         }
                         if current_level >= min_level {
+                            info!("Here");
                             let start = Instant::now();
                             let (emitted_best, emitted_current) = output_strategy.output_pairs(
                                 vecs.iter_stripe(&matrix, direction, worker),
@@ -799,6 +801,7 @@ where
                                 best_levels_capability,
                                 other_levels_capability,
                             );
+                            info!("There");
                             log_event!(
                                 logger,
                                 LogEvent::AdaptiveBestGenerated(current_level, emitted_best)

@@ -404,6 +404,10 @@ where
         *self.hashers.keys().max().unwrap()
     }
 
+    pub fn min_level(&self) -> usize {
+        *self.hashers.keys().min().unwrap()
+    }
+
     pub fn repetitions_at_level(&self, level: usize) -> usize {
         self.hashers[&level].repetitions()
     }
