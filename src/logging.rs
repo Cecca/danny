@@ -4,7 +4,10 @@ use env_logger::Builder;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
+use std::hash::Hash;
 use std::io::{Read, Write};
+use std::ops::Drop;
+use std::ops::{Add, AddAssign};
 use std::process;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
@@ -154,6 +157,38 @@ where
     }
 }
 
+pub struct ProfileGuard {
+    logger: Logger<LogEvent>,
+    step: usize,
+    depth: u8,
+    name: String,
+    start: Instant,
+}
+
+impl ProfileGuard {
+    pub fn new(logger: Logger<LogEvent>, step: usize, depth: u8, name: &str) -> Self {
+        Self {
+            logger,
+            step,
+            depth,
+            name: name.to_owned(),
+            start: Instant::now(),
+        }
+    }
+}
+
+impl Drop for ProfileGuard {
+    fn drop(&mut self) {
+        let end = Instant::now();
+        self.logger.log(LogEvent::Profile(
+            self.step,
+            self.depth,
+            self.name.clone(),
+            end - self.start,
+        ));
+    }
+}
+
 #[derive(Debug, Clone, Abomonation)]
 pub enum LogEvent {
     SketchDiscarded(usize),
@@ -166,6 +201,8 @@ pub enum LogEvent {
     AdaptiveBestGenerated(usize, usize),
     /// Hash values generated for current levels by the adaptive algorithm at level, across all repetitions
     AdaptiveCurrentGenerated(usize, usize),
+    /// Profiling event, with (step, depth, name, duration)
+    Profile(usize, u8, String, Duration),
 }
 
 pub trait AsDannyLogger {
@@ -190,11 +227,12 @@ pub struct ExecutionSummary {
     received_hashes: HashMap<usize, usize>,
     adaptive_best: HashMap<usize, usize>,
     adaptive_current: HashMap<usize, usize>,
+    profile: HashMap<(usize, u8, String), Duration>,
 }
 
 impl ExecutionSummary {
-    fn map_to_vec(m: &HashMap<usize, usize>) -> Vec<(usize, usize)> {
-        m.iter().map(|(k, v)| (*k, *v)).collect()
+    fn map_to_vec<K: Clone + Eq + Hash, V: Clone>(m: &HashMap<K, V>) -> Vec<(K, V)> {
+        m.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
     }
 
     pub fn freeze(&self) -> FrozenExecutionSummary {
@@ -206,6 +244,7 @@ impl ExecutionSummary {
             received_hashes: Self::map_to_vec(&self.received_hashes),
             adaptive_best: Self::map_to_vec(&self.adaptive_best),
             adaptive_current: Self::map_to_vec(&self.adaptive_current),
+            profile: Self::map_to_vec(&self.profile),
         }
     }
 
@@ -232,6 +271,12 @@ impl ExecutionSummary {
             LogEvent::AdaptiveCurrentGenerated(level, count) => {
                 *self.adaptive_current.entry(level).or_insert(0usize) += count;
             }
+            LogEvent::Profile(step, depth, name, duration) => {
+                *self
+                    .profile
+                    .entry((step, depth, name))
+                    .or_insert_with(Duration::default) += duration;
+            }
         }
     }
 }
@@ -245,24 +290,31 @@ pub struct FrozenExecutionSummary {
     pub received_hashes: Vec<(usize, usize)>,
     pub adaptive_best: Vec<(usize, usize)>,
     pub adaptive_current: Vec<(usize, usize)>,
+    pub profile: Vec<((usize, u8, String), Duration)>,
 }
 
 impl FrozenExecutionSummary {
-    fn sum_vecs(a: &Vec<(usize, usize)>, b: &Vec<(usize, usize)>) -> Vec<(usize, usize)> {
-        let mut data: HashMap<usize, usize> = a.iter().cloned().collect();
+    fn sum_vecs<K, V>(a: &Vec<(K, V)>, b: &Vec<(K, V)>) -> Vec<(K, V)>
+    where
+        K: Ord + Clone + Hash + Eq,
+        V: Add + AddAssign + Clone + Default,
+    {
+        let mut data: HashMap<K, V> = a.iter().cloned().collect();
         for (k, v) in b.iter() {
-            *data.entry(*k).or_insert(0usize) += v;
+            *data.entry(k.clone()).or_insert_with(V::default) += v.clone();
         }
-        data.iter().map(|(k, v)| (*k, *v)).collect()
+        data.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
     }
 
     pub fn sum(&self, other: &Self) -> Self {
         let mut received_hashes = Self::sum_vecs(&self.received_hashes, &other.received_hashes);
         let mut adaptive_best = Self::sum_vecs(&self.adaptive_best, &other.adaptive_best);
         let mut adaptive_current = Self::sum_vecs(&self.adaptive_current, &other.adaptive_current);
+        let mut profile = Self::sum_vecs(&self.profile, &other.profile);
         received_hashes.sort();
         adaptive_best.sort();
         adaptive_current.sort();
+        profile.sort();
         FrozenExecutionSummary {
             sketch_discarded: self.sketch_discarded + other.sketch_discarded,
             distinct_pairs: self.distinct_pairs + other.distinct_pairs,
@@ -271,6 +323,7 @@ impl FrozenExecutionSummary {
             received_hashes,
             adaptive_best,
             adaptive_current,
+            profile,
         }
     }
 
@@ -304,6 +357,17 @@ impl FrozenExecutionSummary {
             experiment.append(
                 "adaptive_counters",
                 row!("level" => *level, "kind" => "current", "count" => current_c),
+            );
+        }
+        for ((step, depth, name), duration) in self.profile.iter() {
+            experiment.append(
+                "profile",
+                row!(
+                    "step" => *step,
+                    "depth" => *depth,
+                    "name" => name.clone(),
+                    "duration" => duration.as_millis() as u64
+                ),
             );
         }
     }
