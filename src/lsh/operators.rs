@@ -544,7 +544,7 @@ impl AdaptiveOutputGeneration for OutputAll {
         let mut session_current = output_current.session(&capability_current);
         let mut cnt_best = 0;
         let mut cnt_current = 0;
-        for (key, v) in vectors.into_iter() {
+        for (key, v) in vectors.into_iter().take(1) {
             let this_best_level = best_levels[key];
             if current_level <= this_best_level {
                 let h = multilevel_hasher.hash(v, current_level, current_repetition);
