@@ -680,7 +680,9 @@ where
         balance,
     );
     // Find the minimum among the levels
-    let min_level = best_levels.broadcasted_min();
+    let min_level = best_levels
+        .broadcasted_min()
+        .inspect(|m| info!("Min level is {}", m));
 
     let mut builder = OperatorBuilder::new("adaptive-source".to_owned(), best_levels.scope());
     let mut input_best_levels = builder.new_input(&best_levels, Pipeline);
