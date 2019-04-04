@@ -786,8 +786,8 @@ where
                                 proc_mem!()
                             );
                         }
-                        let start = Instant::now();
                         if current_level >= min_level {
+                            let start = Instant::now();
                             let (emitted_best, emitted_current) = output_strategy.output_pairs(
                                 vecs.iter_stripe(&matrix, direction, worker),
                                 current_level,
@@ -807,11 +807,12 @@ where
                                 logger,
                                 LogEvent::AdaptiveCurrentGenerated(current_level, emitted_current)
                             );
-                            debug!(
-                                "Emitted all pairs in {:?} (current memory {})",
-                                Instant::now() - start,
-                                proc_mem!()
-                            );
+                            if worker == 0 {
+                                info!(
+                                    "Emitted all hashed values in {:?}",
+                                    Instant::now() - start
+                                );
+                            }
                         }
                         best_levels_capability.downgrade(&best_levels_capability.time().succ());
                         other_levels_capability.downgrade(&other_levels_capability.time().succ());
