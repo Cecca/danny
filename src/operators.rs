@@ -419,6 +419,11 @@ where
 {
     fn approximate_distinct_atomic(&self, filter: Arc<AtomicBloomFilter<D>>) -> Stream<G, D> {
         let logger = self.scope().danny_logger();
+        let mut pl = ProgressLogger::new(
+            std::time::Duration::from_secs(60),
+            "candidates".to_owned(),
+            None,
+        );
         self.unary(PipelinePact, "approximate-distinct-atomic", move |_, _| {
             move |input, output| {
                 input.for_each(|t, d| {
@@ -432,7 +437,7 @@ where
                             cnt += 1;
                         }
                     }
-                    // pl.add(received as u64);
+                    pl.add(received as u64);
                     log_event!(logger, LogEvent::DistinctPairs(cnt));
                     log_event!(logger, LogEvent::DuplicatesDiscarded(received - cnt));
                     debug!(
