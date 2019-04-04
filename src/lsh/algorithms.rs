@@ -505,8 +505,11 @@ where
     let matrix = MatrixDescription::for_workers(peers as usize);
 
     candidates
-        .pair_route(matrix)
-        .map(|pair| pair.1)
+        .exchange(move |pair| {
+            let row = pair.0.route() % u64::from(matrix.rows);
+            let col = pair.1.route() % u64::from(matrix.columns);
+            matrix.row_major(row as u8, col as u8)
+        })
         .approximate_distinct_atomic(Arc::clone(&bloom_filter))
         .unary(PipelinePact, "count-matching", move |_, _| {
             let mut pl =
