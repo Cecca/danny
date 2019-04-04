@@ -248,6 +248,7 @@ where
                         sketcher_pair,
                         probe.clone(),
                         batch_size,
+                        Arc::clone(&bloom_filter_before_shuffle),
                         &mut rng,
                     ),
                 };
@@ -257,7 +258,6 @@ where
                     Arc::clone(&global_left),
                     Arc::clone(&global_right),
                     sim_pred,
-                    Arc::clone(&bloom_filter_before_shuffle),
                     Arc::clone(&bloom_filter),
                 )
                 .exchange(|_| 0) // Bring all the counts to the first worker
@@ -329,6 +329,7 @@ fn generate_candidates_global_k<'a, K, D, G, T1, T2, F, H, S, SV, R, B>(
     sketcher_pair: Option<(S, SketchPredicate<SV>)>,
     probe: ProbeHandle<T1>,
     batch_size: usize,
+    bloom_filter: Arc<AtomicBloomFilter<(K, K)>>,
     rng: &mut R,
 ) -> Stream<ChildScope<'a, G, T2>, (K, K)>
 where
@@ -412,7 +413,12 @@ where
                 probe.clone(),
             )
             .enter(inner_scope);
-            left_hashes.bucket(&right_hashes, batch_size)
+            left_hashes.bucket_pred(
+                &right_hashes,
+                move |pair| bloom_filter.test_and_insert(pair),
+                |pair| pair,
+                batch_size,
+            )
         }
     }
 }
@@ -500,7 +506,6 @@ fn candidates_filter_count<G, T, K, D, F>(
     global_left: Arc<ChunkedDataset<K, D>>,
     global_right: Arc<ChunkedDataset<K, D>>,
     sim_pred: F,
-    bloom_filter_before_shuffle: Arc<AtomicBloomFilter<(K, K)>>,
     bloom_filter: Arc<AtomicBloomFilter<(K, K)>>,
 ) -> Stream<G, u64>
 where
@@ -514,7 +519,6 @@ where
     let matrix = MatrixDescription::for_workers(peers as usize);
 
     candidates
-        .approximate_distinct_atomic(Arc::clone(&bloom_filter_before_shuffle))
         .exchange(move |pair| {
             let row = pair.0.route() % u64::from(matrix.rows);
             let col = pair.1.route() % u64::from(matrix.columns);
