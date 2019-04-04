@@ -187,7 +187,7 @@ where
 
     let bloom_filter = Arc::new(AtomicBloomFilter::<(u32, u32)>::new(
         4usize.gb_to_bits(),
-        5,
+        2,
         rng.clone(),
     ));
 
