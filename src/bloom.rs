@@ -170,22 +170,21 @@ impl<T: Hash> AtomicBloomFilter<T> {
     }
 
     pub fn test_and_insert(&self, x: &T) -> bool {
-        true
-        // let word_length = size_of::<usize>() * 8;
-        // let mut word_selector = self.word_selector;
-        // x.hash(&mut word_selector);
-        // let word_idx = word_selector.finish() as usize % self.bits.len();
-        // let mut word = 0usize;
-        // for h in self.hashers.iter() {
-        //     let mut hasher = *h;
-        //     x.hash(&mut hasher);
-        //     let bit_idx = hasher.finish() as usize % word_length;
-        //     word |= 1 << bit_idx;
-        // }
-        // // Atomically insert the bits in the relevant word
-        // let previous = self.bits[word_idx].fetch_or(word, Ordering::Relaxed);
-        // // Check if *all* the bits were set before this insertion
-        // previous & word == word
+        let word_length = size_of::<usize>() * 8;
+        let mut word_selector = self.word_selector;
+        x.hash(&mut word_selector);
+        let word_idx = word_selector.finish() as usize % self.bits.len();
+        let mut word = 0usize;
+        for h in self.hashers.iter() {
+            let mut hasher = *h;
+            x.hash(&mut hasher);
+            let bit_idx = hasher.finish() as usize % word_length;
+            word |= 1 << bit_idx;
+        }
+        // Atomically insert the bits in the relevant word
+        let previous = self.bits[word_idx].fetch_or(word, Ordering::Relaxed);
+        // Check if *all* the bits were set before this insertion
+        previous & word == word
     }
 }
 
