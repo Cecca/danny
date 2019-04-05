@@ -4,7 +4,7 @@ use siphasher::sip::SipHasher;
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::mem::size_of;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub struct BloomFilter<T> {
     num_bits: usize,
@@ -137,7 +137,7 @@ impl ToBits for usize {
 pub struct AtomicBloomFilter<T> {
     num_bits: usize,
     k: usize,
-    bits: Vec<AtomicUsize>,
+    bits: Vec<AtomicU64>,
     word_selector: SipHasher,
     hashers: Vec<SipHasher>,
     _marker: std::marker::PhantomData<T>,
@@ -145,13 +145,12 @@ pub struct AtomicBloomFilter<T> {
 
 impl<T: Hash> AtomicBloomFilter<T> {
     pub fn new<R: Rng>(num_bits: usize, k: usize, mut rng: R) -> Self {
-        let word_length = size_of::<usize>() * 8;
-        assert!(k < word_length / 2);
-        let num_words = (num_bits as f64 / word_length as f64).ceil() as usize;
+        assert!(k < 64 / 2);
+        let num_words = (num_bits as f64 / 64 as f64).ceil() as usize;
         let mut bits = Vec::with_capacity(num_words);
         let mut hashers = Vec::with_capacity(k);
         for _ in 0..num_words {
-            bits.push(AtomicUsize::new(0));
+            bits.push(AtomicU64::new(0));
         }
         for _ in 0..k {
             let h = SipHasher::new_with_keys(rng.next_u64(), rng.next_u64());
@@ -170,15 +169,14 @@ impl<T: Hash> AtomicBloomFilter<T> {
     }
 
     pub fn test_and_insert(&self, x: &T) -> bool {
-        let word_length = size_of::<usize>() * 8;
         let mut word_selector = self.word_selector;
         x.hash(&mut word_selector);
         let word_idx = word_selector.finish() as usize % self.bits.len();
-        let mut word = 0usize;
+        let mut word = 0u64;
         for h in self.hashers.iter() {
             let mut hasher = *h;
             x.hash(&mut hasher);
-            let bit_idx = hasher.finish() as usize % word_length;
+            let bit_idx = hasher.finish() as usize % 64;
             word |= 1 << bit_idx;
         }
         // Atomically insert the bits in the relevant word
