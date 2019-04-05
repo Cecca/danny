@@ -406,7 +406,7 @@ where
 pub trait ApproximateDistinct<G, K>
 where
     G: Scope,
-    K: Data + Hash,
+    K: Data + Hash + Into<u64> + Copy,
 {
     // fn approximate_distinct(&self, expected_elements: usize, fpp: f64, seed: u64) -> Stream<G, D>;
     fn approximate_distinct_atomic(&self, filter: Arc<AtomicBloomFilter<K>>) -> Stream<G, (K, K)>;
@@ -416,7 +416,7 @@ impl<G, T, K> ApproximateDistinct<G, K> for Stream<G, (K, K)>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + ToStepId,
-    K: Data + Hash,
+    K: Data + Hash + Into<u64> + Copy,
 {
     fn approximate_distinct_atomic(&self, filter: Arc<AtomicBloomFilter<K>>) -> Stream<G, (K, K)> {
         let logger = self.scope().danny_logger();

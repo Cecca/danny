@@ -505,7 +505,7 @@ fn candidates_filter_count<G, T, K, D, F>(
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId,
-    K: Data + Route + Sync + Send + Clone + Abomonation + Debug + Hash,
+    K: Data + Route + Sync + Send + Clone + Abomonation + Debug + Hash + Into<u64> + Copy,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
 {

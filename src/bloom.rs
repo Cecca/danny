@@ -134,29 +134,56 @@ impl ToBits for usize {
     }
 }
 
-pub struct AtomicBloomFilter<T> {
+struct MultiplyShiftPairHash {
+    alpha1: u64,
+    alpha2: u64,
+    beta1: u64,
+    beta2: u64,
+}
+
+impl MultiplyShiftPairHash {
+    pub fn new<R: Rng>(rng: &mut R) -> Self {
+        Self {
+            alpha1: rng.next_u64(),
+            alpha2: rng.next_u64(),
+            beta1: rng.next_u64(),
+            beta2: rng.next_u64(),
+        }
+    }
+
+    pub fn hash(&self, x: u64, y: u64) -> u64 {
+        let first = self.alpha1.wrapping_mul(x).wrapping_add(self.beta1);
+        let second = self.alpha2.wrapping_mul(y).wrapping_add(self.beta2);
+        first.wrapping_add(second) >> 32
+    }
+}
+
+pub struct AtomicBloomFilter<K>
+where
+    K: Into<u64> + Copy,
+{
     num_bits: usize,
     k: usize,
     bits: Vec<AtomicU64>,
-    word_selector: SipHasher,
-    hashers: Vec<SipHasher>,
-    _marker: std::marker::PhantomData<T>,
+    word_selector: MultiplyShiftPairHash,
+    hashers: Vec<MultiplyShiftPairHash>,
+    _phantom: std::marker::PhantomData<K>,
 }
 
-impl<K: Hash> AtomicBloomFilter<K> {
+impl<K: Into<u64> + Copy> AtomicBloomFilter<K> {
     pub fn new<R: Rng>(num_bits: usize, k: usize, mut rng: R) -> Self {
         assert!(k < 64 / 2);
-        let num_words = (num_bits as f64 / 64 as f64).ceil() as usize;
+        let num_words = (num_bits as f64 / 64_f64).ceil() as usize;
         let mut bits = Vec::with_capacity(num_words);
         let mut hashers = Vec::with_capacity(k);
         for _ in 0..num_words {
             bits.push(AtomicU64::new(0));
         }
         for _ in 0..k {
-            let h = SipHasher::new_with_keys(rng.next_u64(), rng.next_u64());
+            let h = MultiplyShiftPairHash::new(&mut rng);
             hashers.push(h);
         }
-        let word_selector = SipHasher::new_with_keys(rng.next_u64(), rng.next_u64());
+        let word_selector = MultiplyShiftPairHash::new(&mut rng);
 
         AtomicBloomFilter {
             num_bits,
@@ -164,19 +191,17 @@ impl<K: Hash> AtomicBloomFilter<K> {
             bits,
             word_selector,
             hashers,
-            _marker: std::marker::PhantomData,
+            _phantom: std::marker::PhantomData,
         }
     }
 
     pub fn test_and_insert(&self, x: &(K, K)) -> bool {
-        let mut word_selector = self.word_selector;
-        x.hash(&mut word_selector);
-        let word_idx = word_selector.finish() as usize % self.bits.len();
+        let x1: u64 = x.0.into();
+        let x2: u64 = x.1.into();
+        let word_idx = self.word_selector.hash(x1, x2) as usize % self.bits.len();
         let mut word = 0u64;
         for h in self.hashers.iter() {
-            let mut hasher = *h;
-            x.hash(&mut hasher);
-            let bit_idx = hasher.finish() as usize % 64;
+            let bit_idx = h.hash(x1, x2) % 64;
             word |= 1 << bit_idx;
         }
         // Atomically insert the bits in the relevant word
@@ -186,7 +211,7 @@ impl<K: Hash> AtomicBloomFilter<K> {
     }
 }
 
-impl<T: Hash> Debug for AtomicBloomFilter<T> {
+impl<T: Into<u64> + Copy> Debug for AtomicBloomFilter<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
         write!(
             f,
