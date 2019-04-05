@@ -445,8 +445,11 @@ where
                         }
                     }
                     pl.add(received as u64);
-                    log_event!(logger, LogEvent::DistinctPairs(cnt));
-                    log_event!(logger, LogEvent::DuplicatesDiscarded(received - cnt));
+                    log_event!(logger, LogEvent::DistinctPairs(t.time().to_step_id(), cnt));
+                    log_event!(
+                        logger,
+                        LogEvent::DuplicatesDiscarded(t.time().to_step_id(), received - cnt)
+                    );
                     debug!(
                         "Filtered {} elements out of {} received",
                         received - cnt,
@@ -480,8 +483,11 @@ where
                             cnt += 1;
                         }
                     }
-                    log_event!(logger, LogEvent::DistinctPairs(cnt));
-                    log_event!(logger, LogEvent::DuplicatesDiscarded(received - cnt));
+                    log_event!(logger, LogEvent::DistinctPairs(t.time().to_step_id(), cnt));
+                    log_event!(
+                        logger,
+                        LogEvent::DuplicatesDiscarded(t.time().to_step_id(), received - cnt)
+                    );
                     debug!(
                         "Filtered {} elements out of {} received",
                         received - cnt,
@@ -572,7 +578,7 @@ where
 
 impl<G, T, D> StreamSum<G, D> for Stream<G, D>
 where
-    G: Scope<Timestamp=T>,
+    G: Scope<Timestamp = T>,
     T: Timestamp + ToStepId,
     D: Add<Output = D> + std::iter::Sum + Data + Copy,
 {

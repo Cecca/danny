@@ -191,10 +191,10 @@ impl Drop for ProfileGuard {
 
 #[derive(Debug, Clone, Abomonation)]
 pub enum LogEvent {
-    SketchDiscarded(usize),
-    DistinctPairs(usize),
-    DuplicatesDiscarded(usize),
-    GeneratedPairs(usize),
+    SketchDiscarded(usize, usize),
+    DistinctPairs(usize, usize),
+    DuplicatesDiscarded(usize, usize),
+    GeneratedPairs(usize, usize),
     /// The number of received hashes during bucketing. This is a proxy for the load measure
     ReceivedHashes(usize, usize),
     /// Hash values generated for best level by the adaptive algorithm at level, across all repetitions
@@ -220,10 +220,10 @@ where
 
 #[derive(Debug, Default)]
 pub struct ExecutionSummary {
-    sketch_discarded: usize,
-    distinct_pairs: usize,
-    duplicates_discarded: usize,
-    generated_pairs: usize,
+    sketch_discarded: HashMap<usize, usize>,
+    distinct_pairs: HashMap<usize, usize>,
+    duplicates_discarded: HashMap<usize, usize>,
+    generated_pairs: HashMap<usize, usize>,
     received_hashes: HashMap<usize, usize>,
     adaptive_best: HashMap<usize, usize>,
     adaptive_current: HashMap<usize, usize>,
@@ -237,10 +237,10 @@ impl ExecutionSummary {
 
     pub fn freeze(&self) -> FrozenExecutionSummary {
         FrozenExecutionSummary {
-            sketch_discarded: self.sketch_discarded,
-            distinct_pairs: self.distinct_pairs,
-            duplicates_discarded: self.duplicates_discarded,
-            generated_pairs: self.generated_pairs,
+            sketch_discarded: Self::map_to_vec(&self.sketch_discarded),
+            distinct_pairs: Self::map_to_vec(&self.distinct_pairs),
+            duplicates_discarded: Self::map_to_vec(&self.duplicates_discarded),
+            generated_pairs: Self::map_to_vec(&self.generated_pairs),
             received_hashes: Self::map_to_vec(&self.received_hashes),
             adaptive_best: Self::map_to_vec(&self.adaptive_best),
             adaptive_current: Self::map_to_vec(&self.adaptive_current),
@@ -250,17 +250,17 @@ impl ExecutionSummary {
 
     pub fn add(&mut self, event: LogEvent) {
         match event {
-            LogEvent::SketchDiscarded(count) => {
-                self.sketch_discarded += count;
+            LogEvent::SketchDiscarded(step, count) => {
+                *self.sketch_discarded.entry(step).or_insert(0usize) += count;
             }
-            LogEvent::DistinctPairs(count) => {
-                self.distinct_pairs += count;
+            LogEvent::DistinctPairs(step, count) => {
+                *self.distinct_pairs.entry(step).or_insert(0usize) += count;
             }
-            LogEvent::DuplicatesDiscarded(count) => {
-                self.duplicates_discarded += count;
+            LogEvent::DuplicatesDiscarded(step, count) => {
+                *self.duplicates_discarded.entry(step).or_insert(0usize) += count;
             }
-            LogEvent::GeneratedPairs(count) => {
-                self.generated_pairs += count;
+            LogEvent::GeneratedPairs(step, count) => {
+                *self.generated_pairs.entry(step).or_insert(0usize) += count;
             }
             LogEvent::ReceivedHashes(step, count) => {
                 *self.received_hashes.entry(step).or_insert(0usize) += count;
@@ -283,14 +283,26 @@ impl ExecutionSummary {
 
 #[derive(Debug, Abomonation, Clone, Default)]
 pub struct FrozenExecutionSummary {
-    pub sketch_discarded: usize,
-    pub distinct_pairs: usize,
-    pub duplicates_discarded: usize,
-    pub generated_pairs: usize,
+    pub sketch_discarded: Vec<(usize, usize)>,
+    pub distinct_pairs: Vec<(usize, usize)>,
+    pub duplicates_discarded: Vec<(usize, usize)>,
+    pub generated_pairs: Vec<(usize, usize)>,
     pub received_hashes: Vec<(usize, usize)>,
     pub adaptive_best: Vec<(usize, usize)>,
     pub adaptive_current: Vec<(usize, usize)>,
     pub profile: Vec<((usize, u8, String), Duration)>,
+}
+
+/// Abstracts boilerplate code in dumping tables to the experiment
+macro_rules! append_step_counter {
+    ( $self: ident, $experiment: ident, $step:expr, $name:ident ) => {
+        $self.$name.iter().find(|(s, _)| s == $step).map(|(_, count)| {
+            $experiment.append(
+                "step_counters",
+                row!("step" => *$step, "kind" => stringify!($name), "count" => *count),
+            );
+        });
+    };
 }
 
 impl FrozenExecutionSummary {
@@ -307,19 +319,28 @@ impl FrozenExecutionSummary {
     }
 
     pub fn sum(&self, other: &Self) -> Self {
+        let mut sketch_discarded = Self::sum_vecs(&self.sketch_discarded, &other.sketch_discarded);
+        let mut distinct_pairs = Self::sum_vecs(&self.distinct_pairs, &other.distinct_pairs);
+        let mut duplicates_discarded =
+            Self::sum_vecs(&self.duplicates_discarded, &other.duplicates_discarded);
+        let mut generated_pairs = Self::sum_vecs(&self.generated_pairs, &other.generated_pairs);
         let mut received_hashes = Self::sum_vecs(&self.received_hashes, &other.received_hashes);
         let mut adaptive_best = Self::sum_vecs(&self.adaptive_best, &other.adaptive_best);
         let mut adaptive_current = Self::sum_vecs(&self.adaptive_current, &other.adaptive_current);
         let mut profile = Self::sum_vecs(&self.profile, &other.profile);
+        sketch_discarded.sort();
+        distinct_pairs.sort();
+        duplicates_discarded.sort();
+        generated_pairs.sort();
         received_hashes.sort();
         adaptive_best.sort();
         adaptive_current.sort();
         profile.sort();
         FrozenExecutionSummary {
-            sketch_discarded: self.sketch_discarded + other.sketch_discarded,
-            distinct_pairs: self.distinct_pairs + other.distinct_pairs,
-            duplicates_discarded: self.duplicates_discarded + other.duplicates_discarded,
-            generated_pairs: self.generated_pairs + other.generated_pairs,
+            sketch_discarded,
+            distinct_pairs,
+            duplicates_discarded,
+            generated_pairs,
             received_hashes,
             adaptive_best,
             adaptive_current,
@@ -328,20 +349,25 @@ impl FrozenExecutionSummary {
     }
 
     pub fn add_to_experiment(&self, experiment: &mut Experiment) {
-        experiment.append(
-            "aggregated_counters",
-            row!(
-                "sketch_discarded" => self.sketch_discarded,
-                "distinct_pairs" => self.distinct_pairs,
-                "duplicates_discarded" => self.duplicates_discarded,
-                "generated_pairs" => self.generated_pairs
-            ),
-        );
+        // experiment.append(
+        //     "aggregated_counters",
+        //     row!(
+        //         "sketch_discarded" => self.sketch_discarded,
+        //         "distinct_pairs" => self.distinct_pairs,
+        //         "duplicates_discarded" => self.duplicates_discarded,
+        //         "generated_pairs" => self.generated_pairs
+        //     ),
+        // );
         for (step, rec_hashes) in self.received_hashes.iter() {
-            experiment.append(
-                "step_counters",
-                row!("step" => *step, "kind" => "received_hashes", "count" => *rec_hashes),
-            );
+            // experiment.append(
+            //     "step_counters",
+            //     row!("step" => *step, "kind" => "received_hashes", "count" => *rec_hashes),
+            // );
+            append_step_counter!(self, experiment, step, received_hashes);
+            append_step_counter!(self, experiment, step, sketch_discarded);
+            append_step_counter!(self, experiment, step, distinct_pairs);
+            append_step_counter!(self, experiment, step, duplicates_discarded);
+            append_step_counter!(self, experiment, step, generated_pairs);
         }
         for (level, best_c) in self.adaptive_best.iter() {
             let current_c = self

@@ -241,7 +241,7 @@ where
                             session.give((result(l), result(r)));
                             cnt += 1;
                         }
-                        log_event!(logger, LogEvent::GeneratedPairs(cnt));
+                        log_event!(logger, LogEvent::GeneratedPairs(time.time().to_step_id(), cnt));
                         time.downgrade(&time.time().succ());
                     }
 
@@ -266,7 +266,7 @@ where
 impl<G, T, K, V> FilterSketches<G, T, K, V> for Stream<G, ((V, K), (V, K))>
 where
     G: Scope<Timestamp = T>,
-    T: Timestamp + Succ,
+    T: Timestamp + Succ + ToStepId,
     K: Data + Sync + Send + Clone + Abomonation + Debug,
     V: SketchEstimate + Data + Debug + Send + Sync + Abomonation + Clone + BitBasedSketch,
 {
@@ -274,9 +274,9 @@ where
         let logger = self.scope().danny_logger();
         self.unary(Pipeline, "sketch filtering", move |_, _| {
             move |input, output| {
-                let mut discarded = 0;
-                let mut cnt = 0;
                 input.for_each(|t, data| {
+                    let mut discarded = 0;
+                    let mut cnt = 0;
                     let t = t.retain();
                     let mut session = output.session(&t);
                     let mut data = data.replace(Vec::new());
@@ -288,8 +288,8 @@ where
                             discarded += 1;
                         }
                     }
+                    log_event!(logger, LogEvent::SketchDiscarded(t.time().to_step_id(), discarded));
                 });
-                log_event!(logger, LogEvent::SketchDiscarded(discarded));
             }
         })
     }
