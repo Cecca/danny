@@ -209,64 +209,57 @@ where
         let sketcher_pair = sketcher_pair.clone();
 
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
-            let bloom_filter = Arc::clone(&bloom_filter);
-            let mut outer = scope.clone();
-            outer.scoped::<Product<u32, u32>, _, _>("inner-dataflow", |inner| {
-                let mut probe = ProbeHandle::new();
-                let sketcher_pair = sketcher_pair;
+            let mut probe = ProbeHandle::new();
+            let sketcher_pair = sketcher_pair;
 
-                let matrix = MatrixDescription::for_workers(peers as usize);
-
-                let candidates = match k {
-                    ParamK::Adaptive(min_k, max_k) => generate_candidates_adaptive(
-                        Arc::clone(&global_left),
-                        Arc::clone(&global_right),
-                        min_k,
-                        max_k,
-                        estimator_samples,
-                        cost_balance,
-                        &inner,
-                        hash_collection_builder,
-                        sketcher_pair,
-                        probe.clone(),
-                        batch_size,
-                        &mut rng,
-                    ),
-                    k => generate_candidates_global_k(
-                        Arc::clone(&global_left),
-                        Arc::clone(&global_right),
-                        k,
-                        &inner,
-                        hash_collection_builder,
-                        sketcher_pair,
-                        probe.clone(),
-                        batch_size,
-                        &mut rng,
-                    ),
-                };
-
-                let mut cnt = 0;
-                candidates_filter_count(
-                    candidates,
+            let candidates = match k {
+                ParamK::Adaptive(min_k, max_k) => generate_candidates_adaptive(
                     Arc::clone(&global_left),
                     Arc::clone(&global_right),
-                    sim_pred,
-                    Arc::clone(&bloom_filter),
-                )
-                .exchange(|_| 0) // Bring all the counts to the first worker
-                .leave()
-                .stream_sum()
-                .inspect(move |_| {
-                    cnt += 1;
-                    if index == 0 {
-                        info!("Counts pushed into the output channel: {}", cnt);
-                    }
-                })
-                .probe_with(&mut probe)
-                .capture_into(output_send_ch);
+                    min_k,
+                    max_k,
+                    estimator_samples,
+                    cost_balance,
+                    scope.clone(),
+                    hash_collection_builder,
+                    sketcher_pair,
+                    probe.clone(),
+                    batch_size,
+                    &mut rng,
+                ),
+                k => generate_candidates_global_k(
+                    Arc::clone(&global_left),
+                    Arc::clone(&global_right),
+                    k,
+                    scope.clone(),
+                    hash_collection_builder,
+                    sketcher_pair,
+                    probe.clone(),
+                    batch_size,
+                    &mut rng,
+                ),
+            };
 
-                probe
+            let mut cnt = 0;
+            candidates_filter_count(
+                candidates,
+                Arc::clone(&global_left),
+                Arc::clone(&global_right),
+                sim_pred,
+                Arc::clone(&bloom_filter),
+            )
+            .exchange(|_| 0) // Bring all the counts to the first worker
+            .stream_sum()
+            .inspect(move |_| {
+                cnt += 1;
+                if index == 0 {
+                    info!("Counts pushed into the output channel: {}", cnt);
+                }
             })
+            .probe_with(&mut probe)
+            .capture_into(output_send_ch);
+
+            probe
         });
 
         // Do the stepping even though it's not strictly needed: we use it to wait for the dataflow
@@ -320,23 +313,22 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-fn generate_candidates_global_k<'a, K, D, G, T1, T2, F, H, S, SV, R, B>(
+fn generate_candidates_global_k<'a, K, D, G, T, F, H, S, SV, R, B>(
     left: Arc<ChunkedDataset<K, D>>,
     right: Arc<ChunkedDataset<K, D>>,
     k: ParamK,
-    inner_scope: &ChildScope<'a, G, T2>,
+    scope: G,
     hash_collection_builder: B,
     sketcher_pair: Option<(S, SketchPredicate<SV>)>,
-    probe: ProbeHandle<T1>,
+    probe: ProbeHandle<T>,
     batch_size: usize,
     rng: &mut R,
-) -> Stream<ChildScope<'a, G, T2>, (K, K)>
+) -> Stream<G, (K, K)>
 where
     K: Data + Sync + Send + Clone + Abomonation + Debug + Route + Hash + Eq,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
-    G: Scope<Timestamp = T1>,
-    T1: Timestamp + Succ + ToStepId,
-    T2: Timestamp + Succ + Refines<T1> + ToStepId,
+    G: Scope<Timestamp = T>,
+    T: Timestamp + Succ + ToStepId,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
     H: Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash + Ord,
     S: Sketcher<Input = D, Output = SV> + Send + Sync + Clone + 'static,
@@ -344,7 +336,7 @@ where
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
     B: Fn(usize, &mut R) -> LSHCollection<F, H> + Sized + Send + Sync + Clone + 'static,
 {
-    let peers = inner_scope.peers();
+    let peers = scope.peers();
     let matrix = MatrixDescription::for_workers(peers as usize);
 
     let hash_fn = match k {
@@ -370,48 +362,44 @@ where
     match sketcher_pair {
         Some((sketcher, sketch_predicate)) => {
             let left_hashes = source_hashed_sketched(
-                &inner_scope.parent,
+                &scope,
                 Arc::clone(&left),
                 hash_fn.clone(),
                 sketcher.clone(),
                 matrix,
                 MatrixDirection::Rows,
                 probe.clone(),
-            )
-            .enter(inner_scope);
+            );
             let right_hashes = source_hashed_sketched(
-                &inner_scope.parent,
+                &scope,
                 Arc::clone(&right),
                 hash_fn.clone(),
                 sketcher.clone(),
                 matrix,
                 MatrixDirection::Rows,
                 probe.clone(),
-            )
-            .enter(inner_scope);
+            );
             left_hashes
                 .bucket(&right_hashes, batch_size)
                 .filter_sketches(sketch_predicate)
         }
         None => {
             let left_hashes = source_hashed(
-                &inner_scope.parent,
+                &scope,
                 Arc::clone(&left),
                 hash_fn.clone(),
                 matrix,
                 MatrixDirection::Rows,
                 probe.clone(),
-            )
-            .enter(inner_scope);
+            );
             let right_hashes = source_hashed(
-                &inner_scope.parent,
+                &scope,
                 Arc::clone(&right),
                 hash_fn.clone(),
                 matrix,
                 MatrixDirection::Columns,
                 probe.clone(),
-            )
-            .enter(inner_scope);
+            );
             left_hashes.bucket(&right_hashes, batch_size)
         }
     }
@@ -419,26 +407,25 @@ where
 
 #[allow(dead_code)]
 #[allow(clippy::too_many_arguments)]
-fn generate_candidates_adaptive<'a, K, D, G, T1, T2, F, H, S, SV, R, B>(
+fn generate_candidates_adaptive<'a, K, D, G, T, F, H, S, SV, R, B>(
     left: Arc<ChunkedDataset<K, D>>,
     right: Arc<ChunkedDataset<K, D>>,
     min_k: usize,
     max_k: usize,
     sample_size: usize,
     cost_balance: f64,
-    inner_scope: &ChildScope<'a, G, T2>,
+    scope: G,
     hash_collection_builder: B,
     sketcher_pair: Option<(S, SketchPredicate<SV>)>,
-    probe: ProbeHandle<T1>,
+    probe: ProbeHandle<T>,
     batch_size: usize,
     rng: &mut R,
-) -> Stream<ChildScope<'a, G, T2>, (K, K)>
+) -> Stream<G, (K, K)>
 where
     K: Data + Sync + Send + Clone + Abomonation + Debug + Route + Hash + Eq,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
-    G: Scope<Timestamp = T1>,
-    T1: Timestamp + Succ + ToStepId,
-    T2: Timestamp + Succ + Refines<T1> + ToStepId,
+    G: Scope<Timestamp = T>,
+    T: Timestamp + Succ + ToStepId,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
     H: Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash + Ord,
     S: Sketcher<Input = D, Output = SV> + Send + Sync + Clone + 'static,
@@ -446,7 +433,7 @@ where
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
     B: Fn(usize, &mut R) -> LSHCollection<F, H> + Sized + Send + Sync + Clone + 'static,
 {
-    let peers = inner_scope.peers();
+    let peers = scope.peers();
     let matrix = MatrixDescription::for_workers(peers as usize);
 
     let multihash = Arc::new(MultilevelHasher::new(
@@ -460,7 +447,7 @@ where
         Some((sketcher, sketch_predicate)) => unimplemented!(),
         None => {
             let (left_hashes_best, left_hashes_other) = source_hashed_adaptive(
-                &inner_scope.parent,
+                &scope,
                 Arc::clone(&left),
                 Arc::clone(&multihash),
                 OutputAll,
@@ -472,7 +459,7 @@ where
                 rng.clone(),
             );
             let (right_hashes_best, right_hashes_other) = source_hashed_adaptive(
-                &inner_scope.parent,
+                &scope,
                 Arc::clone(&right),
                 Arc::clone(&multihash),
                 OutputAll,
@@ -484,12 +471,8 @@ where
                 rng.clone(),
             );
             // unimplemented!()
-            let stream_a = left_hashes_best
-                .enter(&inner_scope)
-                .bucket(&right_hashes_other.enter(&inner_scope), batch_size);
-            let stream_b = left_hashes_other
-                .enter(&inner_scope)
-                .bucket(&right_hashes_best.enter(&inner_scope), batch_size);
+            let stream_a = left_hashes_best.bucket(&right_hashes_other, batch_size);
+            let stream_b = left_hashes_other.bucket(&right_hashes_best, batch_size);
             stream_a.concat(&stream_b)
         }
     }

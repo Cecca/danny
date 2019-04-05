@@ -242,7 +242,6 @@ where
                             cnt += 1;
                         }
                         log_event!(logger, LogEvent::GeneratedPairs(time.time().to_step_id(), cnt));
-                        time.downgrade(&time.time().succ());
                     }
 
                     // Cleanup exhausted generators
