@@ -168,8 +168,6 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let batch_size = config.get_batch_size();
-
     let left_path = left_path.clone();
     let right_path = right_path.clone();
     let left_path_final = left_path.clone();
@@ -223,7 +221,6 @@ where
                     hash_collection_builder,
                     sketcher_pair,
                     probe.clone(),
-                    batch_size,
                     &mut rng,
                 ),
                 k => generate_candidates_global_k(
@@ -234,7 +231,6 @@ where
                     hash_collection_builder,
                     sketcher_pair,
                     probe.clone(),
-                    batch_size,
                     &mut rng,
                 ),
             };
@@ -312,7 +308,6 @@ fn generate_candidates_global_k<'a, K, D, G, T, F, H, S, SV, R, B>(
     hash_collection_builder: B,
     sketcher_pair: Option<(S, SketchPredicate<SV>)>,
     probe: ProbeHandle<T>,
-    batch_size: usize,
     rng: &mut R,
 ) -> Stream<G, (K, K)>
 where
@@ -371,7 +366,7 @@ where
                 probe.clone(),
             );
             left_hashes
-                .bucket(&right_hashes, batch_size)
+                .bucket(&right_hashes)
                 .filter_sketches(sketch_predicate)
         }
         None => {
@@ -391,7 +386,7 @@ where
                 MatrixDirection::Columns,
                 probe.clone(),
             );
-            left_hashes.bucket(&right_hashes, batch_size)
+            left_hashes.bucket(&right_hashes)
         }
     }
 }
@@ -409,7 +404,6 @@ fn generate_candidates_adaptive<'a, K, D, G, T, F, H, S, SV, R, B>(
     hash_collection_builder: B,
     sketcher_pair: Option<(S, SketchPredicate<SV>)>,
     probe: ProbeHandle<T>,
-    batch_size: usize,
     rng: &mut R,
 ) -> Stream<G, (K, K)>
 where
@@ -462,8 +456,8 @@ where
                 rng.clone(),
             );
             // unimplemented!()
-            let stream_a = left_hashes_best.bucket(&right_hashes_other, batch_size);
-            let stream_b = left_hashes_other.bucket(&right_hashes_best, batch_size);
+            let stream_a = left_hashes_best.bucket(&right_hashes_other);
+            let stream_b = left_hashes_other.bucket(&right_hashes_best);
             stream_a.concat(&stream_b)
         }
     }

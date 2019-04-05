@@ -35,8 +35,6 @@ pub struct Config {
     estimator_samples: usize,
     #[serde(default = "Config::default_cost_balance")]
     cost_balance: f64,
-    #[serde(default = "Config::default_batch_size")]
-    batch_size: usize,
     #[serde(default = "Config::default_bloom_elements")]
     bloom_elements: usize,
     #[serde(default = "Config::default_bloom_fpp")]
@@ -60,7 +58,6 @@ impl Config {
                                      estimate the best k value
             DANNY_COST_BALANCE In the adaptive algorithm, a number less than 1 gives more weight
                                to the collisions, a number larger than 1 penalizes the repetitions
-            DANNY_BATCH_SIZE   The number of candidate pairs generated at a time
             DANNY_BLOOM_ELEMENTS   Number of elements expected in the bloom filters (power of two)
             DANNY_BLOOM_FPP    False positive rate of the bloom filter
         "
@@ -75,10 +72,6 @@ impl Config {
 
     fn default_estimator_samples() -> usize {
         100
-    }
-
-    fn default_batch_size() -> usize {
-        1_000_000
     }
 
     fn default_bloom_elements() -> usize {
@@ -151,10 +144,6 @@ impl Config {
 
     pub fn get_cost_balance(&self) -> f64 {
         self.cost_balance
-    }
-
-    pub fn get_batch_size(&self) -> usize {
-        self.batch_size
     }
 
     pub fn get_timely_builder(&self) -> (Vec<GenericBuilder>, Box<dyn Any + 'static>) {

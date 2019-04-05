@@ -126,13 +126,12 @@ where
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
-    fn bucket(&self, right: &Stream<G, (H, K)>, batch_size: usize) -> Stream<G, (K, K)>;
+    fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)>;
     fn bucket_pred<P, R, O>(
         &self,
         right: &Stream<G, (H, K)>,
         pred: P,
         result: R,
-        batch_size: usize,
     ) -> Stream<G, (O, O)>
     where
         O: Data,
@@ -147,8 +146,8 @@ where
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
-    fn bucket(&self, right: &Stream<G, (H, K)>, batch_size: usize) -> Stream<G, (K, K)> {
-        self.bucket_pred(right, |_| true, |k| k, batch_size)
+    fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)> {
+        self.bucket_pred(right, |_| true, |k| k)
     }
 
     fn bucket_pred<P, R, O>(
@@ -156,7 +155,6 @@ where
         right: &Stream<G, (H, K)>,
         pred: P,
         result: R,
-        batch_size: usize,
     ) -> Stream<G, (O, O)>
     where
         O: Data,

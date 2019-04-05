@@ -31,7 +31,6 @@ impl Experiment {
             .tag("sketch_epsilon", config.get_sketch_epsilon())
             .tag("estimator_samples", config.get_estimator_samples())
             .tag("cost_balance", config.get_cost_balance())
-            .tag("batch_size", config.get_batch_size())
             .tag("measure", cmdline.measure.clone())
             .tag("threshold", cmdline.threshold)
             .tag("left_path", cmdline.left_path.clone())
