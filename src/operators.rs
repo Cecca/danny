@@ -12,6 +12,7 @@ use std::ops::Add;
 use std::ops::Deref;
 use std::rc::Rc;
 use std::sync::Arc;
+use timely::dataflow::channels::pact::ParallelizationContract;
 use timely::dataflow::channels::pact::Pipeline as PipelinePact;
 use timely::dataflow::operators::capture::event::{Event, EventPusher};
 use timely::dataflow::operators::*;
@@ -20,6 +21,7 @@ use timely::dataflow::Stream;
 use timely::order::Product;
 use timely::progress::Timestamp;
 use timely::Data;
+use timely::ExchangeData;
 
 pub trait Succ
 where
@@ -406,26 +408,38 @@ where
 pub trait ApproximateDistinct<G, K>
 where
     G: Scope,
-    K: Data + Hash + Into<u64> + Copy,
+    K: ExchangeData + Hash + Into<u64> + Copy,
 {
-    // fn approximate_distinct(&self, expected_elements: usize, fpp: f64, seed: u64) -> Stream<G, D>;
-    fn approximate_distinct_atomic(&self, filter: Arc<AtomicBloomFilter<K>>) -> Stream<G, (K, K)>;
+    fn approximate_distinct_atomic<P>(
+        &self,
+        pact: P,
+        filter: Arc<AtomicBloomFilter<K>>,
+    ) -> Stream<G, (K, K)>
+    where
+        P: ParallelizationContract<G::Timestamp, (K, K)>;
 }
 
 impl<G, T, K> ApproximateDistinct<G, K> for Stream<G, (K, K)>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + ToStepId,
-    K: Data + Hash + Into<u64> + Copy,
+    K: ExchangeData + Hash + Into<u64> + Copy,
 {
-    fn approximate_distinct_atomic(&self, filter: Arc<AtomicBloomFilter<K>>) -> Stream<G, (K, K)> {
+    fn approximate_distinct_atomic<P>(
+        &self,
+        pact: P,
+        filter: Arc<AtomicBloomFilter<K>>,
+    ) -> Stream<G, (K, K)>
+    where
+        P: ParallelizationContract<G::Timestamp, (K, K)>,
+    {
         let logger = self.scope().danny_logger();
         let mut pl = ProgressLogger::new(
             std::time::Duration::from_secs(60),
             "candidates".to_owned(),
             None,
         );
-        self.unary(PipelinePact, "approximate-distinct-atomic", move |_, _| {
+        self.unary(pact, "approximate-distinct-atomic", move |_, _| {
             move |input, output| {
                 input.for_each(|t, d| {
                     let _pg = ProfileGuard::new(
@@ -459,45 +473,6 @@ where
             }
         })
     }
-    // fn approximate_distinct(&self, expected_elements: usize, fpp: f64, seed: u64) -> Stream<G, D> {
-    //     let mut rng = XorShiftRng::seed_from_u64(seed);
-    //     info!("Memory before creating bloom filter data {}", proc_mem!());
-    //     let mut filter = BloomFilter::<D>::new(expected_elements, fpp, &mut rng);
-    //     info!(
-    //         "Initialized {:?} (overall memory used {})",
-    //         filter,
-    //         proc_mem!()
-    //     );
-    //     let logger = self.scope().danny_logger();
-    //     self.unary(PipelinePact, "approximate-distinct", move |_, _| {
-    //         move |input, output| {
-    //             input.for_each(|t, d| {
-    //                 let mut data = d.replace(Vec::new());
-    //                 let mut cnt = 0;
-    //                 let mut received = 0;
-    //                 for v in data.drain(..) {
-    //                     received += 1;
-    //                     if !filter.contains(&v) {
-    //                         filter.insert(&v);
-    //                         output.session(&t).give(v);
-    //                         cnt += 1;
-    //                     }
-    //                 }
-    //                 log_event!(logger, LogEvent::DistinctPairs(t.time().to_step_id(), cnt));
-    //                 log_event!(
-    //                     logger,
-    //                     LogEvent::DuplicatesDiscarded(t.time().to_step_id(), received - cnt)
-    //                 );
-    //                 debug!(
-    //                     "Filtered {} elements out of {} received",
-    //                     received - cnt,
-    //                     received
-    //                 );
-    //                 filter.assert_size();
-    //             });
-    //         }
-    //     })
-    // }
 }
 
 pub trait BroadcastedMin<G>

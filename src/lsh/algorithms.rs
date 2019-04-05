@@ -26,6 +26,7 @@ use std::thread;
 use std::time::Duration;
 use std::time::Instant;
 use timely::communication::allocator::Allocate;
+use timely::dataflow::channels::pact::Exchange as ExchangePact;
 use timely::dataflow::channels::pact::Pipeline as PipelinePact;
 use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
 use timely::dataflow::operators::*;
@@ -497,12 +498,19 @@ where
     let logger = candidates.scope().danny_logger();
 
     candidates
-        .exchange(move |pair| {
-            let row = pair.0.route() % u64::from(matrix.rows);
-            let col = pair.1.route() % u64::from(matrix.columns);
-            matrix.row_major(row as u8, col as u8)
-        })
-        .approximate_distinct_atomic(Arc::clone(&bloom_filter))
+        // .exchange(move |pair| {
+        //     let row = pair.0.route() % u64::from(matrix.rows);
+        //     let col = pair.1.route() % u64::from(matrix.columns);
+        //     matrix.row_major(row as u8, col as u8)
+        // })
+        .approximate_distinct_atomic(
+            ExchangePact::new(move |pair: &(K, K)| {
+                let row = pair.0.route() % u64::from(matrix.rows);
+                let col = pair.1.route() % u64::from(matrix.columns);
+                matrix.row_major(row as u8, col as u8)
+            }),
+            Arc::clone(&bloom_filter),
+        )
         .unary(PipelinePact, "count-matching", move |_, _| {
             let mut pl =
                 ProgressLogger::new(Duration::from_secs(60), "comparisons".to_owned(), None);
