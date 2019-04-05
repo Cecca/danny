@@ -204,8 +204,6 @@ where
             .expect("Cannot get lock on output channel")
             .clone();
         let sim_pred = sim_pred.clone();
-        let index = worker.index();
-        let peers = worker.peers() as u64;
 
         let sketcher_pair = sketcher_pair.clone();
 
@@ -241,7 +239,6 @@ where
                 ),
             };
 
-            let mut cnt = 0;
             candidates_filter_count(
                 candidates,
                 Arc::clone(&global_left),
@@ -250,13 +247,6 @@ where
                 Arc::clone(&bloom_filter),
             )
             .exchange(|_| 0) // Bring all the counts to the first worker
-            .stream_sum()
-            .inspect(move |_| {
-                cnt += 1;
-                if index == 0 {
-                    info!("Counts pushed into the output channel: {}", cnt);
-                }
-            })
             .probe_with(&mut probe)
             .capture_into(output_send_ch);
 
@@ -498,11 +488,6 @@ where
     let logger = candidates.scope().danny_logger();
 
     candidates
-        // .exchange(move |pair| {
-        //     let row = pair.0.route() % u64::from(matrix.rows);
-        //     let col = pair.1.route() % u64::from(matrix.columns);
-        //     matrix.row_major(row as u8, col as u8)
-        // })
         .approximate_distinct_atomic(
             ExchangePact::new(move |pair: &(K, K)| {
                 let row = pair.0.route() % u64::from(matrix.rows);
