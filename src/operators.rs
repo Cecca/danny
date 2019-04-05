@@ -403,22 +403,22 @@ where
     }
 }
 
-pub trait ApproximateDistinct<G, D>
+pub trait ApproximateDistinct<G, K>
 where
     G: Scope,
-    D: Data + Hash,
+    K: Data + Hash,
 {
-    fn approximate_distinct(&self, expected_elements: usize, fpp: f64, seed: u64) -> Stream<G, D>;
-    fn approximate_distinct_atomic(&self, filter: Arc<AtomicBloomFilter<D>>) -> Stream<G, D>;
+    // fn approximate_distinct(&self, expected_elements: usize, fpp: f64, seed: u64) -> Stream<G, D>;
+    fn approximate_distinct_atomic(&self, filter: Arc<AtomicBloomFilter<K>>) -> Stream<G, (K, K)>;
 }
 
-impl<G, T, D> ApproximateDistinct<G, D> for Stream<G, D>
+impl<G, T, K> ApproximateDistinct<G, K> for Stream<G, (K, K)>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + ToStepId,
-    D: Data + Hash,
+    K: Data + Hash,
 {
-    fn approximate_distinct_atomic(&self, filter: Arc<AtomicBloomFilter<D>>) -> Stream<G, D> {
+    fn approximate_distinct_atomic(&self, filter: Arc<AtomicBloomFilter<K>>) -> Stream<G, (K, K)> {
         let logger = self.scope().danny_logger();
         let mut pl = ProgressLogger::new(
             std::time::Duration::from_secs(60),
@@ -459,45 +459,45 @@ where
             }
         })
     }
-    fn approximate_distinct(&self, expected_elements: usize, fpp: f64, seed: u64) -> Stream<G, D> {
-        let mut rng = XorShiftRng::seed_from_u64(seed);
-        info!("Memory before creating bloom filter data {}", proc_mem!());
-        let mut filter = BloomFilter::<D>::new(expected_elements, fpp, &mut rng);
-        info!(
-            "Initialized {:?} (overall memory used {})",
-            filter,
-            proc_mem!()
-        );
-        let logger = self.scope().danny_logger();
-        self.unary(PipelinePact, "approximate-distinct", move |_, _| {
-            move |input, output| {
-                input.for_each(|t, d| {
-                    let mut data = d.replace(Vec::new());
-                    let mut cnt = 0;
-                    let mut received = 0;
-                    for v in data.drain(..) {
-                        received += 1;
-                        if !filter.contains(&v) {
-                            filter.insert(&v);
-                            output.session(&t).give(v);
-                            cnt += 1;
-                        }
-                    }
-                    log_event!(logger, LogEvent::DistinctPairs(t.time().to_step_id(), cnt));
-                    log_event!(
-                        logger,
-                        LogEvent::DuplicatesDiscarded(t.time().to_step_id(), received - cnt)
-                    );
-                    debug!(
-                        "Filtered {} elements out of {} received",
-                        received - cnt,
-                        received
-                    );
-                    filter.assert_size();
-                });
-            }
-        })
-    }
+    // fn approximate_distinct(&self, expected_elements: usize, fpp: f64, seed: u64) -> Stream<G, D> {
+    //     let mut rng = XorShiftRng::seed_from_u64(seed);
+    //     info!("Memory before creating bloom filter data {}", proc_mem!());
+    //     let mut filter = BloomFilter::<D>::new(expected_elements, fpp, &mut rng);
+    //     info!(
+    //         "Initialized {:?} (overall memory used {})",
+    //         filter,
+    //         proc_mem!()
+    //     );
+    //     let logger = self.scope().danny_logger();
+    //     self.unary(PipelinePact, "approximate-distinct", move |_, _| {
+    //         move |input, output| {
+    //             input.for_each(|t, d| {
+    //                 let mut data = d.replace(Vec::new());
+    //                 let mut cnt = 0;
+    //                 let mut received = 0;
+    //                 for v in data.drain(..) {
+    //                     received += 1;
+    //                     if !filter.contains(&v) {
+    //                         filter.insert(&v);
+    //                         output.session(&t).give(v);
+    //                         cnt += 1;
+    //                     }
+    //                 }
+    //                 log_event!(logger, LogEvent::DistinctPairs(t.time().to_step_id(), cnt));
+    //                 log_event!(
+    //                     logger,
+    //                     LogEvent::DuplicatesDiscarded(t.time().to_step_id(), received - cnt)
+    //                 );
+    //                 debug!(
+    //                     "Filtered {} elements out of {} received",
+    //                     received - cnt,
+    //                     received
+    //                 );
+    //                 filter.assert_size();
+    //             });
+    //         }
+    //     })
+    // }
 }
 
 pub trait BroadcastedMin<G>

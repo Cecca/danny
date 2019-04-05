@@ -143,7 +143,7 @@ pub struct AtomicBloomFilter<T> {
     _marker: std::marker::PhantomData<T>,
 }
 
-impl<T: Hash> AtomicBloomFilter<T> {
+impl<K: Hash> AtomicBloomFilter<K> {
     pub fn new<R: Rng>(num_bits: usize, k: usize, mut rng: R) -> Self {
         assert!(k < 64 / 2);
         let num_words = (num_bits as f64 / 64 as f64).ceil() as usize;
@@ -168,7 +168,7 @@ impl<T: Hash> AtomicBloomFilter<T> {
         }
     }
 
-    pub fn test_and_insert(&self, x: &T) -> bool {
+    pub fn test_and_insert(&self, x: &(K, K)) -> bool {
         let mut word_selector = self.word_selector;
         x.hash(&mut word_selector);
         let word_idx = word_selector.finish() as usize % self.bits.len();
@@ -202,6 +202,7 @@ mod test {
     use rand::RngCore;
     use rand::SeedableRng;
     use rand_xorshift::XorShiftRng;
+    use std::sync::atomic::AtomicUsize;
     use std::sync::{Arc, Barrier};
     use std::thread;
 
@@ -219,7 +220,7 @@ mod test {
         for _ in 0..n_threads {
             let bloom = bloom.clone();
             let barrier = barrier.clone();
-            let false_positives = false_positives.clone();
+            let false_positives = Arc::clone(&false_positives);
             let mut part_elems = Vec::new();
             for _ in 0..(elements / n_threads) {
                 let x = rng.next_u64();
@@ -230,7 +231,8 @@ mod test {
             let handle = thread::spawn(move || {
                 barrier.wait();
                 for x in part_elems.iter() {
-                    let already_in = bloom.test_and_insert(x);
+                    let x = (*x, *x);
+                    let already_in = bloom.test_and_insert(&x);
                     if already_in {
                         false_positives.fetch_add(1, Ordering::Relaxed);
                     }
@@ -245,10 +247,11 @@ mod test {
         let mut check = BloomFilter::new(elements, 0.03, &mut rng);
         let mut check_false_positives = 0;
         for x in elems.iter() {
-            if check.contains(x) {
+            let x = (*x, *x);
+            if check.contains(&x) {
                 check_false_positives += 1;
             }
-            check.insert(x);
+            check.insert(&x);
         }
         assert!(
             false_positives.load(Ordering::Relaxed)
@@ -256,7 +259,8 @@ mod test {
         );
 
         for x in elems.iter() {
-            let already_in = bloom.test_and_insert(x);
+            let x = (*x, *x);
+            let already_in = bloom.test_and_insert(&x);
             assert!(already_in, "The element should be already in");
         }
     }
@@ -274,18 +278,20 @@ mod test {
 
         let mut false_positives = 0;
         for x in elems.iter() {
-            let already_in = bloom.test_and_insert(x);
+            let x = (*x, *x);
+            let already_in = bloom.test_and_insert(&x);
             if already_in {
-                println!("False positive! {}", x);
+                println!("False positive! {:?}", x);
                 false_positives += 1;
             }
         }
         let mut check_false_positives = 0;
         for x in elems.iter() {
-            if check.contains(x) {
+            let x = (*x, *x);
+            if check.contains(&x) {
                 check_false_positives += 1;
             }
-            check.insert(x);
+            check.insert(&x);
         }
 
         println!(
@@ -294,7 +300,8 @@ mod test {
         );
         assert!(false_positives <= 1 + (1.5 * check_false_positives as f64).ceil() as usize);
         for x in elems.iter() {
-            let already_in = bloom.test_and_insert(x);
+            let x = (*x, *x);
+            let already_in = bloom.test_and_insert(&x);
             assert!(already_in, "The element should be already in");
         }
     }
@@ -310,10 +317,11 @@ mod test {
 
         let mut false_positives = 0;
         for x in elems.iter() {
-            if bloom.contains(x) {
+            let x = (*x, *x);
+            if bloom.contains(&x) {
                 false_positives += 1;
             }
-            bloom.insert(x);
+            bloom.insert(&x);
         }
 
         let fpp = bloom.fpp();
@@ -324,7 +332,8 @@ mod test {
         );
         assert!(actual_fpp <= fpp);
         for x in elems.iter() {
-            let already_in = bloom.contains(x);
+            let x = (*x, *x);
+            let already_in = bloom.contains(&x);
             assert!(already_in, "The element should be already in");
         }
     }

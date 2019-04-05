@@ -185,7 +185,7 @@ where
     let bloom_fpp = config.get_bloom_fpp();
     let bloom_elements = config.get_bloom_elements();
 
-    let bloom_filter = Arc::new(AtomicBloomFilter::<(u32, u32)>::new(
+    let bloom_filter = Arc::new(AtomicBloomFilter::<u32>::new(
         4usize.gb_to_bits(),
         5,
         rng.clone(),
@@ -500,7 +500,7 @@ fn candidates_filter_count<G, T, K, D, F>(
     global_left: Arc<ChunkedDataset<K, D>>,
     global_right: Arc<ChunkedDataset<K, D>>,
     sim_pred: F,
-    bloom_filter: Arc<AtomicBloomFilter<(K, K)>>,
+    bloom_filter: Arc<AtomicBloomFilter<K>>,
 ) -> Stream<G, u64>
 where
     G: Scope<Timestamp = T>,
