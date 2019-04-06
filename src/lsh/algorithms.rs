@@ -326,7 +326,7 @@ where
     let peers = scope.peers();
     let matrix = MatrixDescription::for_workers(peers as usize);
     let bloom_filter = Arc::new(AtomicBloomFilter::<K>::new(
-        1usize.gb_to_bits(),
+        1usize.mb_to_bits(),
         5,
         rng.clone(),
     ));
