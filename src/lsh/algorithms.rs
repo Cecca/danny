@@ -387,7 +387,7 @@ where
                 MatrixDirection::Columns,
                 probe.clone(),
             );
-            left_hashes.bucket_pred(&right_hashes)
+            left_hashes.bucket(&right_hashes)
         }
     }
 }
