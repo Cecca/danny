@@ -9,7 +9,7 @@ use std::io::{Read, Write};
 use std::ops::Drop;
 use std::ops::{Add, AddAssign};
 use std::process;
-use std::sync::atomic::{AtomicUsize, Ordering};
+
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -21,7 +21,7 @@ use timely::logging::Logger;
 use timely::worker::{AsWorker, Worker};
 
 // This is the place to hook into if we want to use syslog
-pub fn init_logging(_conf: &Config) -> () {
+pub fn init_logging(_conf: &Config) {
     let hostname = get_hostname();
     let start = Instant::now();
     Builder::from_default_env()
@@ -84,7 +84,7 @@ pub fn get_total_process_memory() -> Option<usize> {
 macro_rules! proc_mem {
     () => {
         get_total_process_memory()
-            .map(|m| m.to_space_string())
+            .map(ToSpaceString::to_space_string)
             .unwrap_or("--".to_owned());
     };
 }
@@ -306,7 +306,7 @@ macro_rules! append_step_counter {
 }
 
 impl FrozenExecutionSummary {
-    fn sum_vecs<K, V>(a: &Vec<(K, V)>, b: &Vec<(K, V)>) -> Vec<(K, V)>
+    fn sum_vecs<K, V>(a: &[(K, V)], b: &[(K, V)]) -> Vec<(K, V)>
     where
         K: Ord + Clone + Hash + Eq,
         V: Add + AddAssign + Clone + Default,
@@ -358,7 +358,7 @@ impl FrozenExecutionSummary {
         //         "generated_pairs" => self.generated_pairs
         //     ),
         // );
-        for (step, rec_hashes) in self.received_hashes.iter() {
+        for (step, _rec_hashes) in self.received_hashes.iter() {
             // experiment.append(
             //     "step_counters",
             //     row!("step" => *step, "kind" => "received_hashes", "count" => *rec_hashes),
@@ -435,7 +435,7 @@ impl ProgressLogger {
         let now = Instant::now();
         if now - self.last > self.interval {
             let elapsed = now - self.start;
-            let elapsed = elapsed.as_secs() as f64 + elapsed.subsec_millis() as f64 / 1000.0;
+            let elapsed = elapsed.as_secs() as f64 + f64::from(elapsed.subsec_millis()) / 1000.0;
             let throughput = self.count as f64 / elapsed;
             match self.expected {
                 Some(expected) => {
@@ -468,7 +468,7 @@ impl ProgressLogger {
     pub fn done(self) {
         let now = Instant::now();
         let elapsed = now - self.start;
-        let elapsed = elapsed.as_secs() as f64 + elapsed.subsec_millis() as f64 / 1000.0;
+        let elapsed = elapsed.as_secs() as f64 + f64::from(elapsed.subsec_millis()) / 1000.0;
         let throughput = self.count as f64 / elapsed;
         info!(
             "Completed {:?} :: {} {} :: {} {}/sec",

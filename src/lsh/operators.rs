@@ -1,40 +1,35 @@
-
-use crate::config::Config;
 use crate::dataset::*;
-use crate::experiment::Experiment;
-use crate::io::*;
-use crate::logging::init_event_logging;
+
 use crate::logging::*;
 use crate::lsh::functions::*;
-use crate::measure::InnerProduct;
+
 use crate::operators::Route;
 use crate::operators::*;
 use crate::sketch::*;
-use crate::types::*;
+
 use abomonation::Abomonation;
-use rand::distributions::{Distribution, Normal, Uniform};
+
 use rand::{Rng, SeedableRng};
-use serde::de::Deserialize;
+
 use std::clone::Clone;
-use std::collections::hash_map::Drain;
-use std::collections::{BTreeMap, HashMap, HashSet};
+
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::sync::mpsc::{channel, Sender};
-use std::sync::{Arc, Barrier, Mutex, RwLock};
-use std::thread;
+
+use std::sync::Arc;
+
 use std::time::Instant;
 use timely::communication::Push;
 use timely::dataflow::channels::pact::{Exchange as ExchangePact, Pipeline};
-use timely::dataflow::channels::Bundle;
-use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
+
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::dataflow::operators::generic::source;
-use timely::dataflow::operators::generic::{FrontieredInputHandle, InputHandle, OutputHandle};
+use timely::dataflow::operators::generic::{FrontieredInputHandle, OutputHandle};
 use timely::dataflow::operators::Capability;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
-use timely::order::Product;
+
 use timely::progress::Timestamp;
 use timely::Data;
 use timely::ExchangeData;
@@ -128,11 +123,7 @@ where
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)>;
-    fn bucket_pred<P>(
-        &self,
-        right: &Stream<G, (H, K)>,
-        pre: P
-    ) -> Stream<G, (K, K)>
+    fn bucket_pred<P>(&self, right: &Stream<G, (H, K)>, pre: P) -> Stream<G, (K, K)>
     where
         P: FnMut(&(K, K)) -> bool + 'static;
 }
@@ -145,14 +136,11 @@ where
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)> {
-        self.bucket_pred(right, |_| true) 
+        self.bucket_pred(right, |_| true)
     }
 
-    fn bucket_pred<P>(
-        &self,
-        right: &Stream<G, (H, K)>,
-        pred: P,
-    ) -> Stream<G, (K, K)>
+    #[allow(clippy::explicit_counter_loop)]
+    fn bucket_pred<P>(&self, right: &Stream<G, (H, K)>, pred: P) -> Stream<G, (K, K)>
     where
         P: FnMut(&(K, K)) -> bool + 'static,
     {
@@ -170,7 +158,11 @@ where
                 move |left_in, right_in, output| {
                     left_in.for_each(|t, d| {
                         let _pg = ProfileGuard::new(
-                                logger.clone(), t.time().to_step_id(), 1, "bucket_receive");
+                            logger.clone(),
+                            t.time().to_step_id(),
+                            1,
+                            "bucket_receive",
+                        );
                         debug!(
                             "Received batch of left messages for time {:?}:\n\t{:?}",
                             t.time(),
@@ -183,15 +175,19 @@ where
                         );
                         let rep_entry = buckets.entry(t.retain()).or_insert_with(HashMap::new);
                         for (h, k) in data.drain(..) {
-                            let bucket = rep_entry
-                                .entry(h)
-                                .or_insert_with(|| (Vec::with_capacity(4096), Vec::with_capacity(4096)));
+                            let bucket = rep_entry.entry(h).or_insert_with(|| {
+                                (Vec::with_capacity(4096), Vec::with_capacity(4096))
+                            });
                             bucket.0.push(k);
                         }
                     });
                     right_in.for_each(|t, d| {
                         let _pg = ProfileGuard::new(
-                                logger.clone(), t.time().to_step_id(), 1, "bucket_receive");
+                            logger.clone(),
+                            t.time().to_step_id(),
+                            1,
+                            "bucket_receive",
+                        );
                         debug!(
                             "Received batch of right messages for time {:?}:\n\t{:?}",
                             t.time(),
@@ -204,9 +200,9 @@ where
                         );
                         let rep_entry = buckets.entry(t.retain()).or_insert_with(HashMap::new);
                         for (h, k) in data.drain(..) {
-                            let bucket = rep_entry
-                                .entry(h)
-                                .or_insert_with(|| (Vec::with_capacity(4096), Vec::with_capacity(4096)));
+                            let bucket = rep_entry.entry(h).or_insert_with(|| {
+                                (Vec::with_capacity(4096), Vec::with_capacity(4096))
+                            });
                             bucket.1.push(k);
                         }
                     });
@@ -226,7 +222,11 @@ where
                     }
                     for (time, generator) in generators.iter_mut() {
                         let _pg = ProfileGuard::new(
-                                logger.clone(), time.time().to_step_id(), 1, "candidate_emission");
+                            logger.clone(),
+                            time.time().to_step_id(),
+                            1,
+                            "candidate_emission",
+                        );
                         // Emit some output pairs
                         let mut session = output.session(time);
                         let mut cnt = 0;
@@ -234,7 +234,10 @@ where
                             session.give(pair);
                             cnt += 1;
                         }
-                        log_event!(logger, LogEvent::GeneratedPairs(time.time().to_step_id(), cnt));
+                        log_event!(
+                            logger,
+                            LogEvent::GeneratedPairs(time.time().to_step_id(), cnt)
+                        );
                     }
 
                     // Cleanup exhausted generators
@@ -268,19 +271,20 @@ where
             move |input, output| {
                 input.for_each(|t, data| {
                     let mut discarded = 0;
-                    let mut cnt = 0;
                     let t = t.retain();
                     let mut session = output.session(&t);
                     let mut data = data.replace(Vec::new());
                     for (p1, p2) in data.drain(..) {
                         if sketch_predicate.eval(&p1.0, &p2.0) {
-                            cnt += 1;
                             session.give((p1.1, p2.1));
                         } else {
                             discarded += 1;
                         }
                     }
-                    log_event!(logger, LogEvent::SketchDiscarded(t.time().to_step_id(), discarded));
+                    log_event!(
+                        logger,
+                        LogEvent::SketchDiscarded(t.time().to_step_id(), discarded)
+                    );
                 });
             }
         })
@@ -317,7 +321,7 @@ where
                         info!("Repetition {}", current_repetition);
                     }
                     let mut session = output.session(&cap);
-                    for (k, v) in vecs.iter_stripe(&matrix, direction, worker) {
+                    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
                         let h = hash_fns.hash(v, current_repetition as usize);
                         session.give((h, k.clone()));
                     }
@@ -363,7 +367,7 @@ where
     let mut sketches: HashMap<K, V> = HashMap::new();
     info!("Computing sketches");
     let start_sketch = Instant::now();
-    for (k, v) in vecs.iter_stripe(&matrix, direction, worker) {
+    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
         let s = sketcher.sketch(v);
         sketches.insert(k.clone(), s);
     }
@@ -380,7 +384,7 @@ where
                         info!("Repetition {} with sketches", current_repetition,);
                     }
                     let mut session = output.session(&cap);
-                    for (k, v) in vecs.iter_stripe(&matrix, direction, worker) {
+                    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
                         let h = hash_fns.hash(v, current_repetition as usize);
                         let s = sketches.get(k).expect("Missing sketch");
                         session.give((h, (s.clone(), k.clone())));
@@ -402,9 +406,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::measure::*;
-    use rand::rngs::StdRng;
-    use rand::SeedableRng;
 
     #[test]
     fn test_pair_iterator() {
@@ -415,7 +416,7 @@ mod tests {
         buckets.insert(3, (vec![3, 4], vec![30]));
 
         let mut expected = HashSet::new();
-        for (k, (lks, rks)) in buckets.iter() {
+        for (_k, (lks, rks)) in buckets.iter() {
             for lk in lks.iter() {
                 for rk in rks.iter() {
                     expected.insert((lk.clone(), rk.clone()));
@@ -467,9 +468,9 @@ where
             let mut done = false;
             if let Some(cap) = cap.as_mut() {
                 let mut session = output.session(&cap);
-                let p = n as f64 / vecs.stripe_len(&matrix, direction, worker) as f64;
+                let p = n as f64 / vecs.stripe_len(matrix, direction, worker) as f64;
                 info!("Sampling with probability {}", p);
-                for (k, v) in vecs.iter_stripe(&matrix, direction, worker) {
+                for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
                     if rng.gen_bool(p) {
                         session.give((k.clone(), v.clone()));
                     }
@@ -607,9 +608,9 @@ impl AdaptiveOutputGeneration for OutputBest {
         multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
         best_levels: &HashMap<K, usize>,
         output_best: &mut OutputHandle<'a, T, (H, K), P>,
-        output_current: &mut OutputHandle<'a, T, (H, K), P>,
+        _output_current: &mut OutputHandle<'a, T, (H, K), P>,
         capability_best: &mut Capability<T>,
-        capability_current: &mut Capability<T>,
+        _capability_current: &mut Capability<T>,
     ) -> (usize, usize)
     where
         I: IntoIterator<Item = &'a (K, D)>,
@@ -642,10 +643,10 @@ impl AdaptiveOutputGeneration for OutputCurrent {
         current_level: usize,
         current_repetition: usize,
         multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
-        best_levels: &HashMap<K, usize>,
-        output_best: &mut OutputHandle<'a, T, (H, K), P>,
+        _best_levels: &HashMap<K, usize>,
+        _output_best: &mut OutputHandle<'a, T, (H, K), P>,
         output_current: &mut OutputHandle<'a, T, (H, K), P>,
-        capability_best: &mut Capability<T>,
+        _capability_best: &mut Capability<T>,
         capability_current: &mut Capability<T>,
     ) -> (usize, usize)
     where
@@ -668,7 +669,7 @@ impl AdaptiveOutputGeneration for OutputCurrent {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn source_hashed_adaptive<G, T, K, D, F, H, R, OS>(
     scope: &G,
     global_vecs: Arc<ChunkedDataset<K, D>>,
@@ -770,7 +771,7 @@ where
                     let other_levels_capability = other_levels_capability.as_mut().expect(
                         "At this point I would have expected this capability to be not none",
                     );
-                    assert!(best_levels_capability.time() == other_levels_capability.time(), 
+                    assert!(best_levels_capability.time() == other_levels_capability.time(),
                         "The two capabilities should track the same time, instead we have {:?} != {:?}", 
                         best_levels_capability.time(), other_levels_capability.time());
                     // Both capabilities are tracking the same time, so we check just one.
@@ -795,7 +796,7 @@ where
                                 logger.clone(), best_levels_capability.time().to_step_id(), 1, "hash_generation");
                             let start = Instant::now();
                             let (emitted_best, emitted_current) = output_strategy.output_pairs(
-                                vecs.iter_stripe(&matrix, direction, worker),
+                                vecs.iter_stripe(matrix, direction, worker),
                                 current_level,
                                 current_repetition,
                                 Arc::clone(&multilevel_hasher_2),

@@ -1,38 +1,34 @@
-use crate::config::Config;
 use crate::dataset::*;
-use crate::experiment::Experiment;
-use crate::io::*;
-use crate::logging::init_event_logging;
+
 use crate::logging::*;
-use crate::lsh::operators::collect_sample;
+
 use crate::measure::InnerProduct;
 use crate::operators::Route;
 use crate::operators::*;
-use crate::sketch::*;
+
 use crate::types::*;
 use abomonation::Abomonation;
 use rand::distributions::{Distribution, Normal, Uniform};
 use rand::{Rng, SeedableRng};
-use serde::de::Deserialize;
+
 use std::clone::Clone;
-use std::collections::BTreeMap;
-use std::collections::{HashMap, HashSet};
+
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::sync::mpsc::{channel, Sender};
-use std::sync::{Arc, Barrier, Mutex, RwLock};
+
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Instant;
-use timely::communication::allocator::Allocate;
-use timely::dataflow::channels::pact::{Exchange as ExchangePact, Pipeline};
+use timely::dataflow::channels::pact::Pipeline;
 use timely::dataflow::operators::aggregation::Aggregate;
-use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
+
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
-use timely::order::Product;
+
 use timely::progress::Timestamp;
-use timely::worker::Worker;
+
 use timely::Data;
 
 pub trait LSHFunction {
@@ -63,7 +59,7 @@ where
     F: LSHFunction<Output = H> + Clone,
     H: Clone,
 {
-    pub fn for_each_hash<L>(&self, v: &F::Input, mut logic: L) -> ()
+    pub fn for_each_hash<L>(&self, v: &F::Input, mut logic: L)
     where
         L: FnMut(usize, F::Output),
     {
@@ -154,7 +150,7 @@ impl LSHFunction for Hyperplane {
             if InnerProduct::inner_product(plane, v) >= 0_f64 {
                 h = (h << 1) | 1;
             } else {
-                h = h << 1;
+                h <<= 1;
             }
         }
         h
@@ -175,6 +171,7 @@ pub struct TabulatedHasher {
 }
 
 impl TabulatedHasher {
+    #[allow(clippy::needless_range_loop)]
     pub fn new<R>(rng: &mut R) -> TabulatedHasher
     where
         R: Rng + ?Sized,
@@ -286,7 +283,7 @@ impl LSHFunction for MinHash {
             let min_w = v
                 .words()
                 .iter()
-                .map(|w| (alpha.wrapping_mul(*w as u64)).wrapping_add(*beta) >> 32)
+                .map(|w| (alpha.wrapping_mul(u64::from(*w))).wrapping_add(*beta) >> 32)
                 .min()
                 .expect("No minimum");
             h = h.wrapping_add(coeff.wrapping_mul(min_w));
@@ -486,11 +483,11 @@ where
                 if let Some(cap) = cap.take() {
                     let _pg = ProfileGuard::new(logger.clone(), 0, 0, "best_k_estimation");
                     let mut session = output.session(&cap);
-                    let p = n as f64 / vecs.stripe_len(&matrix, direction, worker) as f64;
+                    let p = n as f64 / vecs.stripe_len(matrix, direction, worker) as f64;
                     let weight: usize = (1.0 / p).ceil() as usize;
                     info!("Sampling with probability {} from each block", p);
                     let mut accumulator = HashMap::new();
-                    for (_, v) in vecs.iter_stripe(&matrix, direction, worker) {
+                    for (_, v) in vecs.iter_stripe(matrix, direction, worker) {
                         if rng.gen_bool(p) {
                             for (level, hasher) in multilevel_hasher.hashers.iter() {
                                 for repetition in 0..multilevel_hasher.repetitions_at_level(*level)
@@ -586,7 +583,7 @@ where
                         debug!("Built estimator (total mem {})", proc_mem!(),);
                         let mut session = output.session(&time);
                         let mut level_stats = HashMap::new();
-                        for (key, v) in vecs.iter_stripe(&matrix, direction, worker) {
+                        for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
                             let best_level = estimator.get_best_level(&multilevel_hasher, v);
                             session.give((key.clone(), best_level));
                             *level_stats.entry(best_level).or_insert(0usize) += 1;
@@ -637,10 +634,7 @@ where
                 .iter()
                 .map(|buckets_map| buckets_map.values().sum::<usize>())
                 .sum::<usize>();
-            let overall_buckets = repetitions
-                .iter()
-                .map(|buckets_map| buckets_map.len())
-                .sum::<usize>();
+            let overall_buckets = repetitions.iter().map(HashMap::len).sum::<usize>();
             res.push_str(&format!(
                 " ({}): {} [{}]",
                 level,

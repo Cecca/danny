@@ -27,8 +27,7 @@ where
     F: Fn(&P, &P) -> f64,
 {
     let mut res = vec![0.0_f64; left.len()];
-    let mut i = 0;
-    for l in left.iter() {
+    for (i, l) in left.iter().enumerate() {
         let mut m = std::f64::INFINITY;
         for r in right.iter() {
             let d = similarity(l, r);
@@ -37,7 +36,6 @@ where
             }
         }
         res[i] = m;
-        i += 1;
     }
     res
 }
@@ -73,7 +71,7 @@ where
 {
     fn new(k: usize) -> TopK<T> {
         TopK {
-            k: k,
+            k,
             elems: BTreeSet::new(),
         }
     }
@@ -105,8 +103,7 @@ where
     F: Fn(&P, &P) -> f64,
 {
     let mut res = vec![0.0_f64; left.len()];
-    let mut i = 0;
-    for l in left.iter() {
+    for (i, l) in left.iter().enumerate() {
         let mut topk = TopK::new(k);
         for r in right.iter() {
             let d = WrappedFloat::new(similarity(l, r));
@@ -115,7 +112,6 @@ where
         let mut it = topk.elems.iter();
         let ratio = it.next().expect("problems").f / it.last().unwrap().f;
         res[i] = ratio;
-        i += 1;
     }
     res
 }

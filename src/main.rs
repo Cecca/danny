@@ -10,7 +10,7 @@ use danny::experiment::Experiment;
 use danny::io::*;
 use danny::logging::*;
 use danny::lsh;
-use danny::lsh::LSHFunction;
+
 use danny::measure::*;
 use danny::sketch::*;
 use danny::types::*;
@@ -114,7 +114,7 @@ fn main() {
     };
     let end = std::time::Instant::now();
     let total_time_d = end - start;
-    let total_time = total_time_d.as_secs() * 1000 + total_time_d.subsec_millis() as u64;
+    let total_time = total_time_d.as_secs() * 1000 + u64::from(total_time_d.subsec_millis());
     if config.is_master() {
         let baselines = Baselines::new(&config);
         let recall = baselines

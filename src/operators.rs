@@ -1,15 +1,14 @@
 use crate::bloom::*;
 use crate::logging::*;
 use abomonation::Abomonation;
-use rand::SeedableRng;
-use rand_xorshift::XorShiftRng;
+
 use std::cell::Ref;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Add;
-use std::ops::Deref;
+
 use std::rc::Rc;
 use std::sync::Arc;
 use timely::dataflow::channels::pact::ParallelizationContract;
@@ -91,7 +90,7 @@ impl Route for i32 {
 impl Route for u32 {
     #[inline(always)]
     fn route(&self) -> u64 {
-        *self as u64
+        u64::from(*self)
     }
 }
 
@@ -104,6 +103,7 @@ impl Route for u64 {
 
 impl Route for Vec<bool> {
     #[inline(always)]
+    #[allow(clippy::cast_lossless)]
     fn route(&self) -> u64 {
         assert!(
             self.len() < 64,
@@ -111,7 +111,7 @@ impl Route for Vec<bool> {
         );
         let mut h = 0u64;
         for b in self.iter() {
-            h = h << 1;
+            h <<= 1;
             if *b {
                 h += 1;
             }
@@ -130,15 +130,17 @@ impl<D> Route for (u64, D) {
 impl<D> Route for (u32, D) {
     #[inline(always)]
     fn route(&self) -> u64 {
-        self.0 as u64
+        u64::from(self.0)
     }
 }
 
+// TODO: Remove this trait completely
 pub trait PairRoute<G, K>
 where
     K: Data + Abomonation + Sync + Send + Clone + Route,
     G: Scope,
 {
+    #[allow(clippy::type_complexity)]
     fn pair_route(&self, matrix_description: MatrixDescription) -> Stream<G, ((u8, u8), (K, K))>;
 }
 
@@ -147,10 +149,11 @@ where
     K: Data + Abomonation + Sync + Send + Clone + Route,
     G: Scope,
 {
+    #[allow(clippy::type_complexity)]
     fn pair_route(&self, matrix_description: MatrixDescription) -> Stream<G, ((u8, u8), (K, K))> {
         self.map(move |pair| {
-            let row = pair.0.route() % matrix_description.rows as u64;
-            let col = pair.1.route() % matrix_description.columns as u64;
+            let row = pair.0.route() % u64::from(matrix_description.rows);
+            let col = pair.1.route() % u64::from(matrix_description.columns);
             ((row as u8, col as u8), pair)
         })
         .exchange(move |tuple| matrix_description.row_major((tuple.0).0, (tuple.0).1))
@@ -182,29 +185,29 @@ impl MatrixDescription {
         }
     }
 
-    pub fn row_major(&self, i: u8, j: u8) -> u64 {
-        i as u64 * self.columns as u64 + j as u64
+    pub fn row_major(self, i: u8, j: u8) -> u64 {
+        u64::from(i) * u64::from(self.columns) + u64::from(j)
     }
 
-    pub fn row_major_to_pair(&self, idx: u64) -> (u8, u8) {
-        let i = idx / self.columns as u64;
-        let j = idx % self.columns as u64;
+    pub fn row_major_to_pair(self, idx: u64) -> (u8, u8) {
+        let i = idx / u64::from(self.columns);
+        let j = idx % u64::from(self.columns);
         (i as u8, j as u8)
     }
 
-    pub fn worker_for<R: Route>(&self, l: R, r: R) -> u64 {
-        let row = l.route() % self.rows as u64;
-        let col = r.route() % self.columns as u64;
+    pub fn worker_for<R: Route>(self, l: R, r: R) -> u64 {
+        let row = l.route() % u64::from(self.rows);
+        let col = r.route() % u64::from(self.columns);
         self.row_major(row as u8, col as u8)
     }
 
     pub fn strip_partitioner(
-        &self,
+        self,
         num_workers: u64,
         direction: MatrixDirection,
     ) -> StripMatrixPartitioner {
         StripMatrixPartitioner {
-            matrix: self.clone(),
+            matrix: self,
             num_workers,
             direction,
         }
@@ -227,13 +230,13 @@ impl StripMatrixPartitioner {
         match self.direction {
             MatrixDirection::Columns => {
                 strip
-                    == self.matrix.rows as u64 * (w % self.matrix.columns as u64)
-                        + (w / self.matrix.columns as u64)
+                    == u64::from(self.matrix.rows) * (w % u64::from(self.matrix.columns))
+                        + (w / u64::from(self.matrix.columns))
             }
             MatrixDirection::Rows => {
                 strip
-                    == self.matrix.columns as u64 * (w % self.matrix.rows as u64)
-                        + (w / self.matrix.rows as u64)
+                    == u64::from(self.matrix.columns) * (w % u64::from(self.matrix.rows))
+                        + (w / u64::from(self.matrix.rows))
             }
         }
     }
@@ -274,13 +277,13 @@ where
                     for (k, v) in data.drain(..) {
                         match direction {
                             MatrixDirection::Rows => {
-                                let col = (k.route() % matrix_description.columns as u64) as u8;
+                                let col = (k.route() % u64::from(matrix_description.columns)) as u8;
                                 for row in 0..matrix_description.rows {
                                     session.give(((row, col), k.clone(), v.clone()));
                                 }
                             }
                             MatrixDirection::Columns => {
-                                let row = (k.route() % matrix_description.rows as u64) as u8;
+                                let row = (k.route() % u64::from(matrix_description.rows)) as u8;
                                 for col in 0..matrix_description.columns {
                                     session.give(((row, col), k.clone(), v.clone()));
                                 }
@@ -350,16 +353,16 @@ where
                 move |left_in, right_in, output| {
                     left_in.for_each(|t, data| {
                         let mut data = data.replace(Vec::new());
-                        let inner = left_stash.entry(t.retain()).or_insert(HashMap::new());
+                        let inner = left_stash.entry(t.retain()).or_insert_with(HashMap::new);
                         for (p, k, v) in data.drain(..) {
-                            inner.entry(p).or_insert(Vec::new()).push((k, v));
+                            inner.entry(p).or_insert_with(Vec::new).push((k, v));
                         }
                     });
                     right_in.for_each(|t, data| {
                         let mut data = data.replace(Vec::new());
-                        let inner = right_stash.entry(t.retain()).or_insert(HashMap::new());
+                        let inner = right_stash.entry(t.retain()).or_insert_with(HashMap::new);
                         for (p, k, v) in data.drain(..) {
-                            inner.entry(p).or_insert(Vec::new()).push((k, v));
+                            inner.entry(p).or_insert_with(Vec::new).push((k, v));
                         }
                     });
                     let frontiers = &[left_in.frontier(), right_in.frontier()];
@@ -397,8 +400,8 @@ where
                         }
                     }
 
-                    left_stash.retain(|_, data| data.len() > 0);
-                    right_stash.retain(|_, data| data.len() > 0);
+                    left_stash.retain(|_, data| !data.is_empty());
+                    right_stash.retain(|_, data| !data.is_empty());
                 }
             },
         )
@@ -528,7 +531,7 @@ where
                     counts
                         .entry(t.retain())
                         .and_modify(|e| *e = e.map(|c| c + d.len() as u64))
-                        .or_insert(Some(d.len() as u64));
+                        .or_insert_with(|| Some(d.len() as u64));
                 });
 
                 for (time, cnt) in counts.iter_mut() {
@@ -584,6 +587,7 @@ where
     }
 }
 
+#[derive(Default)]
 pub struct LocalData<D> {
     local_data: Rc<RefCell<Vec<D>>>,
 }

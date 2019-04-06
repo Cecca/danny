@@ -66,6 +66,7 @@ pub trait SketchEstimate {
 }
 
 impl SketchEstimate for SimHashValue {
+    #[allow(clippy::cast_lossless)]
     fn estimate(a: &SimHashValue, b: &SimHashValue) -> f64 {
         let p = a
             .bits
@@ -91,6 +92,7 @@ impl BitBasedSketch for SimHashValue {
 }
 
 impl SketchEstimate for OneBitMinHashValue {
+    #[allow(clippy::cast_lossless)]
     fn estimate(a: &OneBitMinHashValue, b: &OneBitMinHashValue) -> f64 {
         let p = a
             .bits
@@ -165,7 +167,7 @@ impl Sketcher for LongSimHash {
             if InnerProduct::inner_product(plane, v) >= 0_f64 {
                 part = (part << 1) | 1;
             } else {
-                part = part << 1;
+                part <<= 1;
             }
         }
         if sketch.len() != num_elems {

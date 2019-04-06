@@ -95,7 +95,7 @@ impl Config {
     }
 
     fn default_seed() -> u64 {
-        98768473876234
+        98_768_473_876_234
     }
 
     fn default_sketch_epsilon() -> f64 {
@@ -119,9 +119,9 @@ impl Config {
     }
 
     pub fn master_hostname(&self) -> Option<String> {
-        if self.hosts.len() > 0 {
+        if !self.hosts.is_empty() {
             let hn = self.hosts[0]
-                .split(":")
+                .split(':')
                 .next()
                 .expect("Can't split the host string");
             Some(hn.to_owned())
@@ -195,7 +195,7 @@ impl Config {
     }
 
     pub fn get_total_workers(&self) -> usize {
-        if self.hosts.len() == 0 {
+        if self.hosts.is_empty() {
             self.threads
         } else {
             self.hosts.len() * self.threads
@@ -222,9 +222,9 @@ impl ParamK {
     pub fn to_string(&self) -> String {
         match self {
             // TODO: report the actual k
-            ParamK::Max(k) => "Max(k)".to_owned(),
-            ParamK::Exact(k) => "Exact(k)".to_owned(),
-            ParamK::Adaptive(min_, max_k) => "Adaptive(k)".to_owned(),
+            ParamK::Max(_k) => "Max(k)".to_owned(),
+            ParamK::Exact(_k) => "Exact(k)".to_owned(),
+            ParamK::Adaptive(_min_, _max_k) => "Adaptive(k)".to_owned(),
         }
     }
 }
@@ -288,8 +288,8 @@ impl CmdlineConfig {
             })
             .or_else(|| {
                 matches.value_of("ADAPTIVE_K").map(|adaptive_k_str| {
-                    if adaptive_k_str.contains(",") {
-                        let mut tokens = adaptive_k_str.split(",");
+                    if adaptive_k_str.contains(',') {
+                        let mut tokens = adaptive_k_str.split(',');
                         let min_k = tokens
                             .next()
                             .unwrap()

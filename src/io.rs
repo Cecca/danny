@@ -2,22 +2,19 @@ extern crate bincode;
 
 use crate::config::*;
 use crate::dataset::*;
-#[macro_use]
 use crate::logging::*;
 use crate::operators::*;
 use crate::types::*;
 use serde::de::Deserialize;
 use serde::ser::Serialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs::create_dir;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::path::PathBuf;
-use std::sync::mpsc::{channel, Sender};
-use std::sync::{Arc, Barrier, Mutex, RwLock};
-use std::thread;
-use std::time::Instant;
+use std::sync::mpsc::channel;
+use std::sync::{Arc, Mutex};
 
 pub trait ReadBinaryFile
 where
@@ -77,7 +74,7 @@ where
             loop {
                 let res: bincode::Result<(u32, T)> = bincode::deserialize_from(&mut buf_reader);
                 match res {
-                    Ok((i, element)) => fun(i as u64, element),
+                    Ok((i, element)) => fun(u64::from(i), element),
                     Err(_) => {
                         break;
                     }
@@ -100,7 +97,7 @@ where
             loop {
                 let res: bincode::Result<(u32, T)> = bincode::deserialize_from(&mut buf_reader);
                 match res {
-                    Ok((i, element)) => cnt += 1,
+                    Ok((_i, _element)) => cnt += 1,
                     Err(_) => {
                         break;
                     }
@@ -215,21 +212,21 @@ pub trait ReadDataFile
 where
     Self: std::marker::Sized,
 {
-    fn from_file<F>(path: &PathBuf, mut fun: F) -> ()
+    fn from_file<F>(path: &PathBuf, mut fun: F)
     where
         F: FnMut(Self) -> (),
     {
         Self::from_file_with_count(path, |_, d| fun(d));
     }
 
-    fn from_file_with_count<F>(path: &PathBuf, fun: F) -> ()
+    fn from_file_with_count<F>(path: &PathBuf, fun: F)
     where
         F: FnMut(u64, Self) -> (),
     {
         Self::from_file_partially(path, |_| true, fun);
     }
 
-    fn from_file_partially<P, F>(path: &PathBuf, pred: P, mut fun: F) -> ()
+    fn from_file_partially<P, F>(path: &PathBuf, pred: P, mut fun: F)
     where
         P: Fn(u64) -> bool,
         F: FnMut(u64, Self) -> (),
@@ -278,7 +275,7 @@ impl ReadDataFile for VectorWithNorm {
             .skip(1)
             .map(|s| {
                 s.parse::<f32>()
-                    .expect(&format!("Error parsing floating point number `{}`", s))
+                    .unwrap_or_else(|_| panic!("Error parsing floating point number `{}`", s))
             })
             .collect();
         Some(VectorWithNorm::new(data))
@@ -287,7 +284,7 @@ impl ReadDataFile for VectorWithNorm {
 
 impl ReadDataFile for UnitNormVector {
     fn from_line(line: &str) -> Option<Self> {
-        VectorWithNorm::from_line(line).map(|v| v.into())
+        VectorWithNorm::from_line(line).map(Into::into)
     }
 }
 
@@ -302,7 +299,7 @@ impl ReadDataFile for BagOfWords {
         let data: Vec<u32> = tokens
             .map(|s| {
                 s.parse::<u32>()
-                    .expect(&format!("Error parsing floating point number `{}`", s))
+                    .unwrap_or_else(|_| panic!("Error parsing floating point number `{}`", s))
             })
             .collect();
         if data.is_empty() {
@@ -313,9 +310,10 @@ impl ReadDataFile for BagOfWords {
     }
 }
 
+#[allow(clippy::type_complexity)]
 pub fn load_vectors<D>(
-    left_path_main: String,
-    right_path_main: String,
+    left_path_main: &str,
+    right_path_main: &str,
     config: &Config,
 ) -> (Arc<ChunkedDataset<u32, D>>, Arc<ChunkedDataset<u32, D>>)
 where
@@ -325,7 +323,7 @@ where
     let (send_coords, recv_coords) = channel();
     let send_coords = Arc::new(Mutex::new(send_coords));
 
-    timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
+    timely::execute::execute_from(timely_builder.0, timely_builder.1, move |worker| {
         let index = worker.index();
         let peers = worker.peers() as u64;
         let send_coords = send_coords.lock().unwrap().clone();

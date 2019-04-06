@@ -13,27 +13,25 @@ use crate::sketch::*;
 use abomonation::Abomonation;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
-use std::cell::RefCell;
+
 use std::clone::Clone;
-use std::collections::{HashMap, HashSet};
+
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::ops::Deref;
-use std::rc::Rc;
+
 use std::sync::mpsc::channel;
-use std::sync::{Arc, Barrier, Mutex, RwLock};
-use std::thread;
+use std::sync::{Arc, Mutex};
+
 use std::time::Duration;
-use std::time::Instant;
+
 use timely::communication::allocator::Allocate;
 use timely::dataflow::channels::pact::Exchange as ExchangePact;
 use timely::dataflow::channels::pact::Pipeline as PipelinePact;
 use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
 use timely::dataflow::operators::*;
-use timely::dataflow::scopes::Child as ChildScope;
+
 use timely::dataflow::*;
-use timely::order::Product;
-use timely::progress::timestamp::Refines;
+
 use timely::progress::timestamp::Timestamp;
 use timely::worker::Worker;
 use timely::Data;
@@ -140,8 +138,8 @@ where
 
 #[allow(clippy::too_many_arguments)]
 pub fn fixed_param_lsh<D, F, H, O, S, V, B, R>(
-    left_path: &String,
-    right_path: &String,
+    left_path: &str,
+    right_path: &str,
     k: ParamK,
     hash_collection_builder: B,
     sketcher_pair: Option<(S, SketchPredicate<V>)>,
@@ -169,21 +167,16 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let left_path = left_path.clone();
-    let right_path = right_path.clone();
-    let left_path_final = left_path.clone();
-    let right_path_final = right_path.clone();
-
     let hash_collection_builder = hash_collection_builder.clone();
     let rng = rng.clone();
 
-    let (global_left, global_right) = load_vectors(left_path.clone(), right_path.clone(), &config);
+    let (global_left, global_right) = load_vectors(left_path, right_path, &config);
 
     let estimator_samples = config.get_estimator_samples();
     let cost_balance = config.get_cost_balance();
     // FIXME: Change to bloom_bits and bloom_k
-    let bloom_fpp = config.get_bloom_fpp();
-    let bloom_elements = config.get_bloom_elements();
+    let _bloom_fpp = config.get_bloom_fpp();
+    let _bloom_elements = config.get_bloom_elements();
 
     let bloom_filter = Arc::new(AtomicBloomFilter::<u32>::new(
         4usize.gb_to_bits(),
@@ -283,8 +276,8 @@ where
             .sum();
 
         // let precision = count as f64 / global_summary.distinct_pairs as f64;
-        let potential_pairs =
-            D::num_elements(left_path_final.into()) * D::num_elements(right_path_final.into());
+        // let _potential_pairs =
+        //     D::num_elements(left_path.into()) * D::num_elements(right_path.into());
         // let fraction_distinct = global_summary.distinct_pairs as f64 / potential_pairs as f64;
         global_summary.add_to_experiment(experiment);
         // info!(
@@ -301,7 +294,7 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-fn generate_candidates_global_k<'a, K, D, G, T, F, H, S, SV, R, B>(
+fn generate_candidates_global_k<K, D, G, T, F, H, S, SV, R, B>(
     left: Arc<ChunkedDataset<K, D>>,
     right: Arc<ChunkedDataset<K, D>>,
     k: ParamK,
@@ -328,7 +321,7 @@ where
 
     let hash_fn = match k {
         ParamK::Exact(k) => hash_collection_builder(k, rng),
-        ParamK::Max(max_k) => {
+        ParamK::Max(_max_k) => {
             unimplemented!("I have to change the datatype accepted by the estimate function")
             // let best_k = estimate_best_k_from_sample(
             //     worker,
@@ -394,7 +387,7 @@ where
 
 #[allow(dead_code)]
 #[allow(clippy::too_many_arguments)]
-fn generate_candidates_adaptive<'a, K, D, G, T, F, H, S, SV, R, B>(
+fn generate_candidates_adaptive<K, D, G, T, F, H, S, SV, R, B>(
     left: Arc<ChunkedDataset<K, D>>,
     right: Arc<ChunkedDataset<K, D>>,
     min_k: usize,
@@ -430,7 +423,7 @@ where
     ));
 
     match sketcher_pair {
-        Some((sketcher, sketch_predicate)) => unimplemented!(),
+        Some((_sketcher, _sketch_predicate)) => unimplemented!(),
         None => {
             let (left_hashes_best, left_hashes_other) = source_hashed_adaptive(
                 &scope,

@@ -14,9 +14,10 @@ pub trait InnerProduct {
 }
 
 impl InnerProduct for Vec<f32> {
+    #[allow(clippy::cast_lossless)]
     fn inner_product(a: &Vec<f32>, b: &Vec<f32>) -> f64 {
-        let mut ac = a.chunks_exact(8);
-        let mut bc = b.chunks_exact(8);
+        let ac = a.chunks_exact(8);
+        let bc = b.chunks_exact(8);
         let rem = ac
             .remainder()
             .iter()
@@ -31,6 +32,8 @@ impl InnerProduct for Vec<f32> {
             .sum() as f64;
         part + rem
     }
+
+    #[allow(clippy::cast_lossless)]
     fn norm_2(a: &Vec<f32>) -> f64 {
         let squared_sum: f64 = a.iter().map(|a| a * a).sum::<f32>() as f64;
         squared_sum.sqrt()

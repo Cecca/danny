@@ -111,12 +111,16 @@ impl BagOfWords {
         self.words.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn jaccard_predicate(r: &Self, s: &Self, sim: f64) -> bool {
         let t_unrounded = sim * (r.len() + s.len()) as f64 / (1.0 + sim);
         let t_rounded = t_unrounded.round();
         // The rounding below with the comparison with EPS is needed to counter the
         // floating point errors introduced by the division
-        let t = if (t_rounded - t_unrounded).abs() < 0.00000000000001 {
+        let t = if (t_rounded - t_unrounded).abs() < 0.000_000_000_000_01 {
             t_rounded
         } else {
             t_unrounded
@@ -127,7 +131,7 @@ impl BagOfWords {
         let mut maxr = r.len();
         let mut maxs = s.len();
 
-        while maxr as f64 >= t && maxs as f64 >= t && (olap as f64) < t {
+        while maxr as f64 >= t && maxs as f64 >= t && f64::from(olap) < t {
             if r.words[pr] == s.words[ps] {
                 pr += 1;
                 ps += 1;
@@ -140,7 +144,7 @@ impl BagOfWords {
                 maxs -= 1;
             }
         }
-        olap as f64 >= t
+        f64::from(olap) >= t
     }
 }
 

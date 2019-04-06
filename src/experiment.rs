@@ -13,6 +13,12 @@ pub struct Experiment {
     tables: HashMap<String, Vec<HashMap<String, Value>>>,
 }
 
+impl Default for Experiment {
+    fn default() -> Experiment {
+        Experiment::new()
+    }
+}
+
 impl Experiment {
     pub fn new() -> Experiment {
         let date = Utc::now().to_rfc3339();
@@ -39,18 +45,16 @@ impl Experiment {
             .tag("git_revision", version::short_sha())
             .tag("git_commit_date", version::commit_date());
         let experiment = if cmdline.k.is_some() {
-            let k_str = cmdline.k.clone().unwrap().to_string().clone();
+            let k_str = cmdline.k.unwrap().to_string().clone();
             experiment.tag("k", k_str)
         } else {
             experiment
         };
-        let experiment = if cmdline.sketch_bits.is_some() {
+        if cmdline.sketch_bits.is_some() {
             experiment.tag("sketch_bits", cmdline.get_sketch_bits())
         } else {
             experiment
-        };
-
-        experiment
+        }
     }
 
     pub fn tag<T>(mut self, name: &str, value: T) -> Self
@@ -71,7 +75,7 @@ impl Experiment {
     pub fn append(&mut self, table: &str, row: HashMap<String, Value>) {
         self.tables
             .entry(table.to_owned())
-            .or_insert(Vec::new())
+            .or_insert_with(Vec::new)
             .push(row);
     }
 
@@ -86,7 +90,7 @@ impl Experiment {
             .expect("Error opening file");
         file.write_all(json_str.as_bytes())
             .expect("Error writing data");
-        file.write(b"\n").expect("Error writing final newline");
+        file.write_all(b"\n").expect("Error writing final newline");
         info!("Results file written");
     }
 }

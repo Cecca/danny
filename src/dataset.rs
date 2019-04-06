@@ -27,12 +27,16 @@ where
     }
 
     pub fn len(&self) -> usize {
-        self.chunks.iter().map(|c| c.len()).sum()
+        self.chunks.iter().map(Vec::len).sum()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn stripe_len(
         &self,
-        matrix: &MatrixDescription,
+        matrix: MatrixDescription,
         direction: MatrixDirection,
         worker: u64,
     ) -> usize {
@@ -69,9 +73,9 @@ where
         self.chunks.iter().flat_map(|c| c.iter())
     }
 
-    pub fn iter_stripe<'a>(
-        &'a self,
-        matrix: &MatrixDescription,
+    pub fn iter_stripe(
+        &self,
+        matrix: MatrixDescription,
         direction: MatrixDirection,
         worker: u64,
     ) -> impl Iterator<Item = &(K, V)> {

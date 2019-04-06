@@ -3,13 +3,13 @@ extern crate criterion;
 extern crate danny;
 
 use criterion::Criterion;
+use danny::bloom::*;
 use danny::lsh::functions::*;
 use danny::measure::InnerProduct;
 use danny::types::UnitNormVector;
+use rand::RngCore;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
-use rand::RngCore;
-use danny::bloom::*;
 
 fn bench_inner_product(c: &mut Criterion) {
     c.bench_function("inner product 300 dimensions", |bencher| {
@@ -40,7 +40,7 @@ fn bench_hyperplane(c: &mut Criterion) {
     });
 }
 
-fn bench_bloom(c: &mut Criterion){
+fn bench_bloom(c: &mut Criterion) {
     let k = 5;
     let bits = 6_695_021_038;
     let elements = 100_000;
@@ -53,7 +53,8 @@ fn bench_bloom(c: &mut Criterion){
         }
         bencher.iter(|| {
             for x in elems.iter() {
-                let already_in = bloom.test_and_insert(x);
+                let x = (*x, *x);
+                let _already_in = bloom.test_and_insert(&x);
             }
         });
     });
@@ -67,7 +68,8 @@ fn bench_bloom(c: &mut Criterion){
         }
         bencher.iter(|| {
             for x in elems.iter() {
-                bloom.insert(x);
+                let x = (*x, *x);
+                bloom.insert(&x);
             }
         });
     });
