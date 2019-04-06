@@ -684,6 +684,11 @@ where
             if work < min_work {
                 min_work = work;
                 best_level = *idx;
+            } else {
+                // We stop as soon as the cost starts to increase. This might be too early,
+                // since in later iterations we might have even lower estimated costs.
+                // Nonetheless, doing like this is way more efficient.
+                break;
             }
         }
         best_level
