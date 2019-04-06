@@ -1,3 +1,4 @@
+
 use crate::config::Config;
 use crate::dataset::*;
 use crate::experiment::Experiment;
@@ -119,6 +120,21 @@ impl<H: Hash + Eq + Clone + Ord, K: Clone> Iterator for PairGenerator<H, K> {
     }
 }
 
+/// This type is used only as a placeholder when we want to pass None to BucketPredicate
+struct DummyPredicate;
+impl<K> std::ops::FnOnce<(&(K, K),)> for DummyPredicate {
+    type Output = bool;
+    extern "rust-call" fn call_once(mut self, args: (&(K, K),)) -> bool {
+        unimplemented!()
+    }
+}
+impl<K> std::ops::FnMut<(&(K, K),)> for DummyPredicate {
+    extern "rust-call" fn call_mut(&mut self, args: (&(K, K),)) -> bool {
+        unimplemented!()
+    }
+}
+
+
 pub trait BucketStream<G, T, H, K>
 where
     G: Scope<Timestamp = T>,
@@ -127,16 +143,13 @@ where
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)>;
-    fn bucket_pred<P, R, O>(
+    fn bucket_pred<P>(
         &self,
         right: &Stream<G, (H, K)>,
-        pred: P,
-        result: R,
-    ) -> Stream<G, (O, O)>
+        pre: Option<P>
+    ) -> Stream<G, (K, K)>
     where
-        O: Data,
-        P: FnMut(&(K, K)) -> bool + 'static,
-        R: Fn(K) -> O + 'static;
+        P: FnMut(&(K, K)) -> bool + 'static;
 }
 
 impl<G, T, H, K> BucketStream<G, T, H, K> for Stream<G, (H, K)>
@@ -147,19 +160,16 @@ where
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)> {
-        self.bucket_pred(right, |_| true, |k| k)
+        self.bucket_pred::<DummyPredicate>(right, None) 
     }
 
-    fn bucket_pred<P, R, O>(
+    fn bucket_pred<P>(
         &self,
         right: &Stream<G, (H, K)>,
-        pred: P,
-        result: R,
-    ) -> Stream<G, (O, O)>
+        pred: Option<P>,
+    ) -> Stream<G, (K, K)>
     where
-        O: Data,
         P: FnMut(&(K, K)) -> bool + 'static,
-        R: Fn(K) -> O + 'static,
     {
         let mut buckets = HashMap::new();
         let mut generators = Vec::new();
@@ -235,9 +245,18 @@ where
                         // Emit some output pairs
                         let mut session = output.session(time);
                         let mut cnt = 0;
-                        for (l, r) in generator.filter(|p| pred(p)) {
-                            session.give((result(l), result(r)));
-                            cnt += 1;
+                        if let Some(pred) = &mut pred {
+                            for pair in generator {
+                                if pred(&pair) {
+                                    session.give(pair);
+                                    cnt += 1;
+                                }
+                            }
+                        } else {
+                            for (l, r) in generator {
+                                session.give((l,r));
+                                cnt += 1;
+                            }
                         }
                         log_event!(logger, LogEvent::GeneratedPairs(time.time().to_step_id(), cnt));
                     }
