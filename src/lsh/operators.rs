@@ -120,21 +120,6 @@ impl<H: Hash + Eq + Clone + Ord, K: Clone> Iterator for PairGenerator<H, K> {
     }
 }
 
-/// This type is used only as a placeholder when we want to pass None to BucketPredicate
-struct DummyPredicate;
-impl<K> std::ops::FnOnce<(&(K, K),)> for DummyPredicate {
-    type Output = bool;
-    extern "rust-call" fn call_once(mut self, args: (&(K, K),)) -> bool {
-        unimplemented!()
-    }
-}
-impl<K> std::ops::FnMut<(&(K, K),)> for DummyPredicate {
-    extern "rust-call" fn call_mut(&mut self, args: (&(K, K),)) -> bool {
-        unimplemented!()
-    }
-}
-
-
 pub trait BucketStream<G, T, H, K>
 where
     G: Scope<Timestamp = T>,
@@ -146,7 +131,7 @@ where
     fn bucket_pred<P>(
         &self,
         right: &Stream<G, (H, K)>,
-        pre: Option<P>
+        pre: P
     ) -> Stream<G, (K, K)>
     where
         P: FnMut(&(K, K)) -> bool + 'static;
@@ -160,13 +145,13 @@ where
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)> {
-        self.bucket_pred::<DummyPredicate>(right, None) 
+        self.bucket_pred(right, |_| true) 
     }
 
     fn bucket_pred<P>(
         &self,
         right: &Stream<G, (H, K)>,
-        pred: Option<P>,
+        pred: P,
     ) -> Stream<G, (K, K)>
     where
         P: FnMut(&(K, K)) -> bool + 'static,
@@ -245,16 +230,9 @@ where
                         // Emit some output pairs
                         let mut session = output.session(time);
                         let mut cnt = 0;
-                        if let Some(pred) = &mut pred {
-                            for pair in generator {
-                                if pred(&pair) {
-                                    session.give(pair);
-                                    cnt += 1;
-                                }
-                            }
-                        } else {
-                            for (l, r) in generator {
-                                session.give((l,r));
+                        for pair in generator {
+                            if pred(&pair) {
+                                session.give(pair);
                                 cnt += 1;
                             }
                         }
