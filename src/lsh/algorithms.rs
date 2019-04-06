@@ -37,6 +37,7 @@ use timely::progress::timestamp::Refines;
 use timely::progress::timestamp::Timestamp;
 use timely::worker::Worker;
 use timely::Data;
+use timely::ExchangeData;
 
 #[allow(dead_code)]
 #[allow(clippy::too_many_arguments)]
@@ -311,7 +312,7 @@ fn generate_candidates_global_k<'a, K, D, G, T, F, H, S, SV, R, B>(
     rng: &mut R,
 ) -> Stream<G, (K, K)>
 where
-    K: Data + Sync + Send + Clone + Abomonation + Debug + Route + Hash + Eq,
+    K: ExchangeData + Debug + Route + Hash + Eq + Copy + Into<u64>,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId,
@@ -324,6 +325,11 @@ where
 {
     let peers = scope.peers();
     let matrix = MatrixDescription::for_workers(peers as usize);
+    let bloom_filter = Arc::new(AtomicBloomFilter::<K>::new(
+        1usize.gb_to_bits(),
+        5,
+        rng.clone(),
+    ));
 
     let hash_fn = match k {
         ParamK::Exact(k) => hash_collection_builder(k, rng),
@@ -386,7 +392,9 @@ where
                 MatrixDirection::Columns,
                 probe.clone(),
             );
-            left_hashes.bucket(&right_hashes)
+            left_hashes.bucket_pred(&right_hashes, move |pair| {
+                !bloom_filter.test_and_insert(pair)
+            })
         }
     }
 }
