@@ -325,11 +325,6 @@ where
 {
     let peers = scope.peers();
     let matrix = MatrixDescription::for_workers(peers as usize);
-    let bloom_filter = Arc::new(AtomicBloomFilter::<K>::new(
-        1usize.mb_to_bits(),
-        5,
-        rng.clone(),
-    ));
 
     let hash_fn = match k {
         ParamK::Exact(k) => hash_collection_builder(k, rng),
@@ -392,9 +387,7 @@ where
                 MatrixDirection::Columns,
                 probe.clone(),
             );
-            left_hashes.bucket_pred(&right_hashes, move |pair| {
-                !bloom_filter.test_and_insert(pair)
-            })
+            left_hashes.bucket_pred(&right_hashes)
         }
     }
 }
