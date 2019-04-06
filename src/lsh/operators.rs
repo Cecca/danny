@@ -230,11 +230,9 @@ where
                         // Emit some output pairs
                         let mut session = output.session(time);
                         let mut cnt = 0;
-                        for pair in generator {
-                            if pred(&pair) {
-                                session.give(pair);
-                                cnt += 1;
-                            }
+                        for pair in generator.filter(&mut pred) {
+                            session.give(pair);
+                            cnt += 1;
                         }
                         log_event!(logger, LogEvent::GeneratedPairs(time.time().to_step_id(), cnt));
                     }
