@@ -30,7 +30,7 @@ fn main() {
     let threshold = args.threshold;
     let start = std::time::Instant::now();
     let count = match args.algorithm.as_ref() {
-        "fixed-lsh" => match args.measure.as_ref() {
+        "lsh" => match args.measure.as_ref() {
             "cosine" => {
                 let k = args.k.expect("K is needed on the command line");
                 let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
