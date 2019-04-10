@@ -213,7 +213,6 @@ impl Config {
 
 #[derive(Debug, Clone, Copy)]
 pub enum ParamK {
-    Max(usize),
     Exact(usize),
     Adaptive(usize, usize),
 }
@@ -221,10 +220,8 @@ pub enum ParamK {
 impl ParamK {
     pub fn to_string(&self) -> String {
         match self {
-            // TODO: report the actual k
-            ParamK::Max(_k) => "Max(k)".to_owned(),
-            ParamK::Exact(_k) => "Exact(k)".to_owned(),
-            ParamK::Adaptive(_min_, _max_k) => "Adaptive(k)".to_owned(),
+            ParamK::Exact(k) => format!("Exact({})", k),
+            ParamK::Adaptive(min_k, max_k) => format!("Adaptive({},{})", min_k, max_k),
         }
     }
 }
@@ -248,7 +245,6 @@ impl CmdlineConfig {
             (@arg ALGORITHM: -a --algorithm +takes_value "The algorithm to be used: (fixed-lsh, all-2-all)")
             (@arg MEASURE: -m --measure +required +takes_value "The similarity measure to be used")
             (@arg K: -k +takes_value "The number of concatenations of the hash function")
-            (@arg MAX_K: --("max-k") +takes_value "The max number of concatenations of the hash function: auto sets it. Overridden by -k")
             (@arg ADAPTIVE_K: --("adaptive-k") +takes_value "The max number of concatenations of the hash function in the adaptive algorithm: auto sets it. Overridden by -k")
             (@arg THRESHOLD: -r --range +required +takes_value "The similarity threshold")
             (@arg BITS: --("sketch-bits") +takes_value "The number of bits to use for sketching")
@@ -307,14 +303,6 @@ impl CmdlineConfig {
                             .expect("k should be an unsigned integer");
                         ParamK::Adaptive(0, _k)
                     }
-                })
-            })
-            .or_else(|| {
-                matches.value_of("MAX_K").map(|max_k_str| {
-                    let _k = max_k_str
-                        .parse::<usize>()
-                        .expect("k should be an unsigned integer");
-                    ParamK::Max(_k)
                 })
             });
         let sketch_bits = matches.value_of("BITS").map(|bits_str| {

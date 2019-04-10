@@ -24,7 +24,6 @@ use std::sync::{Arc, Mutex};
 
 use std::time::Duration;
 
-use timely::communication::allocator::Allocate;
 use timely::dataflow::channels::pact::Exchange as ExchangePact;
 use timely::dataflow::channels::pact::Pipeline as PipelinePact;
 use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
@@ -33,108 +32,8 @@ use timely::dataflow::operators::*;
 use timely::dataflow::*;
 
 use timely::progress::timestamp::Timestamp;
-use timely::worker::Worker;
 use timely::Data;
 use timely::ExchangeData;
-
-#[allow(dead_code)]
-#[allow(clippy::too_many_arguments)]
-fn estimate_best_k_from_sample<A, K, D, F, H, B, R>(
-    worker: &mut Worker<A>,
-    global_left: Arc<ChunkedDataset<K, D>>,
-    global_right: Arc<ChunkedDataset<K, D>>,
-    n: usize,
-    max_k: usize,
-    builder: B,
-    rng: R,
-) -> usize
-where
-    A: Allocate,
-    D: Clone + Data + Debug + Abomonation + Send + Sync,
-    K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
-    H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,
-    F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
-    B: Fn(usize, &mut R) -> LSHCollection<F, H>,
-    R: Rng + SeedableRng + Send + Clone + ?Sized + 'static,
-{
-    let peers = worker.peers();
-    let global_left = Arc::clone(&global_left);
-    let global_right = Arc::clone(&global_right);
-
-    let left_local = LocalData::new();
-    let right_local = LocalData::new();
-    let left_local_2 = left_local.clone();
-    let right_local_2 = right_local.clone();
-
-    let mut rng_2 = rng.clone();
-    let rng = Arc::new(Mutex::new(rng));
-    let rng = Arc::clone(&rng);
-    let rng = rng.lock().unwrap().clone();
-    let probe = worker.dataflow::<u32, _, _>(move |scope| {
-        let mut p1 = ProbeHandle::new();
-        let mut p2 = p1.clone();
-        let matrix = MatrixDescription::for_workers(peers as usize);
-        info!("Collecting samples");
-        collect_sample::<_, _, _, F, _, _>(
-            scope,
-            global_left,
-            n,
-            matrix,
-            MatrixDirection::Rows,
-            rng.clone(),
-        )
-        .exchange(|_| 0)
-        .probe_with(&mut p1)
-        .capture_into(left_local);
-        collect_sample::<_, _, _, F, _, _>(
-            scope,
-            global_right,
-            n,
-            matrix,
-            MatrixDirection::Columns,
-            rng.clone(),
-        )
-        .exchange(|_| 0)
-        .probe_with(&mut p2)
-        .capture_into(right_local);
-        p1
-    });
-    worker.step_while(|| probe.less_than(&1));
-
-    let best_k = if worker.index() == 0 {
-        info!("Finding best k locally on the master");
-        Some(estimate_best_k(
-            left_local_2.data().to_vec(),
-            right_local_2.data().to_vec(),
-            max_k,
-            builder,
-            &mut rng_2,
-        ))
-    } else {
-        None
-    };
-
-    info!("Sending the best k value around");
-    let k_local = LocalData::new();
-    let k_local_2 = k_local.clone();
-
-    let best_k: Vec<usize> = best_k.iter().cloned().collect();
-    let probe = worker.dataflow::<u32, _, _>(move |scope| {
-        let mut probe = ProbeHandle::new();
-        let best_k = dbg!(best_k.clone());
-        best_k
-            .to_stream(scope)
-            .broadcast()
-            .probe_with(&mut probe)
-            .capture_into(k_local);
-        probe
-    });
-    worker.step_while(|| probe.less_than(&1));
-
-    let best_k = *k_local_2.data().iter().next().expect("No value to extract");
-    info!("Received best k value: {:?}", best_k);
-    best_k
-}
 
 #[allow(clippy::too_many_arguments)]
 pub fn fixed_param_lsh<D, F, H, O, S, V, B, R>(
@@ -321,21 +220,6 @@ where
 
     let hash_fn = match k {
         ParamK::Exact(k) => hash_collection_builder(k, rng),
-        ParamK::Max(_max_k) => {
-            unimplemented!("I have to change the datatype accepted by the estimate function")
-            // let best_k = estimate_best_k_from_sample(
-            //     worker,
-            //     global_left_read.clone(),
-            //     global_right_read.clone(),
-            //     estimator_samples,
-            //     max_k,
-            //     hash_collection_builder.clone(),
-            //     rng.clone(),
-            // );
-            // send_k.send(best_k);
-            // info!("Building collection with k={}", best_k);
-            // hash_collection_builder(best_k, &mut rng)
-        }
         ParamK::Adaptive(_, _) => panic!("You should not be here!!"),
     };
 
@@ -385,7 +269,6 @@ where
     }
 }
 
-#[allow(dead_code)]
 #[allow(clippy::too_many_arguments)]
 fn generate_candidates_adaptive<K, D, G, T, F, H, S, SV, R, B>(
     left: Arc<ChunkedDataset<K, D>>,
