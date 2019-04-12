@@ -78,6 +78,40 @@ fn main() {
             }
             _ => unimplemented!("Unknown measure {}", args.measure),
         },
+        "local-lsh" => match args.measure.as_ref() {
+            "cosine" => {
+                let k = args.k.expect("K is needed on the command line");
+                let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
+                let threshold = args.threshold;
+                let hash_funs_builder = lsh::Hyperplane::collection_builder(threshold, dim);
+                lsh::local_lsh::<UnitNormVector, _, _, _, _, _>(
+                    &args.left_path,
+                    &args.right_path,
+                    k,
+                    hash_funs_builder,
+                    move |a, b| InnerProduct::cosine(a, b) >= threshold,
+                    &config,
+                    &mut rng,
+                    &mut experiment,
+                )
+            }
+            "jaccard" => {
+                let k = args.k.expect("K is needed on the command line");
+                let threshold = args.threshold;
+                let hash_funs_builder = lsh::MinHash::collection_builder(threshold);
+                lsh::local_lsh::<BagOfWords, _, _, _, _, _>(
+                    &args.left_path,
+                    &args.right_path,
+                    k,
+                    hash_funs_builder,
+                    move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
+                    &config,
+                    &mut rng,
+                    &mut experiment,
+                )
+            }
+            _ => unimplemented!("Unknown measure {}", args.measure),
+        },
         "all-2-all" => match args.measure.as_ref() {
             "cosine" => baseline::all_pairs_parallel::<UnitNormVector, _>(
                 args.threshold,
