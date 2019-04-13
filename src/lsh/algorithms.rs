@@ -306,7 +306,39 @@ where
     ));
 
     match sketcher_pair {
-        Some((_sketcher, _sketch_predicate)) => unimplemented!(),
+        Some((sketcher, sketch_predicate)) => {
+            let (left_hashes_best, left_hashes_other) = source_hashed_adaptive_sketched(
+                &scope,
+                Arc::clone(&left),
+                Arc::clone(&multihash),
+                sketcher.clone(),
+                matrix,
+                MatrixDirection::Rows,
+                sample_size,
+                cost_balance,
+                probe.clone(),
+                rng.clone(),
+            );
+            let (right_hashes_best, right_hashes_other) = source_hashed_adaptive_sketched(
+                &scope,
+                Arc::clone(&right),
+                Arc::clone(&multihash),
+                sketcher.clone(),
+                matrix,
+                MatrixDirection::Columns,
+                sample_size,
+                cost_balance,
+                probe.clone(),
+                rng.clone(),
+            );
+            let stream_a = left_hashes_best
+                .bucket(&right_hashes_other)
+                .filter_sketches(sketch_predicate.clone());
+            let stream_b = left_hashes_other
+                .bucket(&right_hashes_best)
+                .filter_sketches(sketch_predicate.clone());
+            stream_a.concat(&stream_b)
+        }
         None => {
             let (left_hashes_best, left_hashes_other) = source_hashed_adaptive(
                 &scope,

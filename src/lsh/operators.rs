@@ -847,3 +847,201 @@ where
 
     (best_levels_stream, other_levels_stream)
 }
+
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+pub fn source_hashed_adaptive_sketched<G, T, K, D, F, H, R, S, SV>(
+    scope: &G,
+    global_vecs: Arc<ChunkedDataset<K, D>>,
+    multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
+    sketcher: S,
+    matrix: MatrixDescription,
+    direction: MatrixDirection,
+    n: usize,
+    balance: f64,
+    throttling_probe: ProbeHandle<G::Timestamp>,
+    rng: R,
+) -> (Stream<G, (H, (SV, K))>, Stream<G, (H, (SV, K))>)
+where
+    G: Scope<Timestamp = T>,
+    T: Timestamp + Succ + ToStepId,
+    D: Data + Sync + Send + Clone + Abomonation + Debug,
+    F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
+    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
+    K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
+    R: Rng + SeedableRng + Clone + ?Sized + 'static + Sync + Send,
+    S: Sketcher<Input = D, Output = SV> + Clone + 'static,
+    SV: ExchangeData + Debug,
+{
+    let worker: u64 = scope.index() as u64;
+
+    let mut sketches: HashMap<K, SV> = HashMap::new();
+    info!("Computing sketches");
+    let start_sketch = Instant::now();
+    for (k, v) in global_vecs.iter_stripe(matrix, direction, worker) {
+        let s = sketcher.sketch(v);
+        sketches.insert(k.clone(), s);
+    }
+    let end_sketch = Instant::now();
+    info!("Sketches computed in {:?}", end_sketch - start_sketch);
+
+    let max_level = multilevel_hasher.max_level();
+    let multilevel_hasher = Arc::clone(&multilevel_hasher);
+    let multilevel_hasher_2 = Arc::clone(&multilevel_hasher);
+    let global_vecs_2 = Arc::clone(&global_vecs);
+    let logger = scope.danny_logger();
+    let starting_level = multilevel_hasher.min_level();
+
+    let collisions = BestLevelEstimator::stream_collisions(
+        scope,
+        Arc::clone(&multilevel_hasher),
+        Arc::clone(&global_vecs),
+        n,
+        matrix,
+        direction,
+        rng.clone(),
+    );
+
+    // First, find the best k value for all the points
+    let best_levels = BestLevelEstimator::best_levels(
+        &collisions,
+        Arc::clone(&multilevel_hasher),
+        Arc::clone(&global_vecs),
+        matrix,
+        direction,
+        balance,
+    );
+    // Find the minimum among the levels
+    let min_level = best_levels
+        .broadcasted_min()
+        .inspect(|m| info!("Min level is {}", m));
+
+    let mut builder = OperatorBuilder::new("adaptive-source".to_owned(), best_levels.scope());
+    let mut input_best_levels = builder.new_input(&best_levels, Pipeline);
+    let mut input_min_level = builder.new_input(&min_level, Pipeline);
+    let (mut best_levels_output, best_levels_stream) = builder.new_output();
+    let (mut other_levels_output, other_levels_stream) = builder.new_output();
+    builder.build(move |mut capabilities| {
+        let mut other_levels_capability = Some(capabilities.pop().unwrap());
+        let mut best_levels_capability = Some(capabilities.pop().unwrap());
+
+        let mut rep_start = Instant::now();
+        let mut min_level: Option<usize> = None;
+        let mut best_levels: HashMap<K, usize> = HashMap::new();
+        // We start from the starting level of the hasher, even though the minimum level might be higher. 
+        // This is to synchronize the left and right generators. They might have different
+        // minimum levels, and this is the simplest way to ensure that they both are always in the
+        // same round. Performance-wise it doesn't hurt much to run through some empty levels.
+        let mut current_level = starting_level;
+        let mut current_repetition = 0;
+        let mut current_max_repetitions = 0;
+        let mut done = false;
+        let vecs = Arc::clone(&global_vecs_2);
+
+        move |frontiers| {
+            let mut best_levels_input =
+                FrontieredInputHandle::new(&mut input_best_levels, &frontiers[0]);
+            let mut min_level_input =
+                FrontieredInputHandle::new(&mut input_min_level, &frontiers[1]);
+            let mut output_best_levels = best_levels_output.activate();
+            let mut output_other_levels = other_levels_output.activate();
+
+            min_level_input.for_each(|_t, data| {
+                assert!(min_level.is_none());
+                assert!(data.len() == 1);
+                min_level.replace(data[0]);
+                current_max_repetitions = multilevel_hasher_2.repetitions_at_level(current_level);
+            });
+            best_levels_input.for_each(|_t, data| {
+                let mut data = data.replace(Vec::new());
+                for (key, level) in data.drain(..) {
+                    best_levels.insert(key, level);
+                }
+            });
+            if let Some(min_level) = min_level {
+                if let Some(best_levels_capability) = best_levels_capability.as_mut() {
+                    let other_levels_capability = other_levels_capability.as_mut().expect(
+                        "At this point I would have expected this capability to be not none",
+                    );
+                    assert!(best_levels_capability.time() == other_levels_capability.time(),
+                        "The two capabilities should track the same time, instead we have {:?} != {:?}", 
+                        best_levels_capability.time(), other_levels_capability.time());
+                    // Both capabilities are tracking the same time, so we check just one.
+                    // We use two separate capabilities because they have to be associated to different outputs
+                    if !throttling_probe.less_than(best_levels_capability.time()) {
+                        if worker == 0 {
+                            info!(
+                                "Level {}/{} repetition {}/{} (current memory {}, previous iter: {:?})",
+                                current_level,
+                                max_level,
+                                current_repetition,
+                                current_max_repetitions,
+                                proc_mem!(),
+                                Instant::now() - rep_start
+                            );
+                        }
+                        log_event!(logger, LogEvent::Profile(
+                            best_levels_capability.time().to_step_id(), 0, "repetition".to_owned(), Instant::now() - rep_start));
+                        rep_start = Instant::now();
+                        if current_level >= min_level {
+                            let _pg = ProfileGuard::new(
+                                logger.clone(), best_levels_capability.time().to_step_id(), 1, "hash_generation");
+                            let start = Instant::now();
+
+                            let mut session_best = output_best_levels.session(&best_levels_capability);
+                            let mut session_current = output_other_levels.session(&other_levels_capability);
+                            let mut emitted_best = 0;
+                            let mut emitted_current = 0;
+                            for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
+                                let this_best_level = best_levels[key];
+                                if current_level <= this_best_level {
+                                    let h = multilevel_hasher.hash(v, current_level, current_repetition);
+                                    let s = sketches.get(key).expect("Missing sketch");
+                                    if current_level == this_best_level {
+                                        session_best.give((h.clone(), (s.clone(), key.clone())));
+                                        emitted_best += 1;
+                                    }
+                                    session_current.give((h.clone(), (s.clone(), key.clone())));
+                                    emitted_current += 1;
+                                }
+                            }
+                            log_event!(
+                                logger,
+                                LogEvent::AdaptiveBestGenerated(current_level, emitted_best)
+                            );
+                            log_event!(
+                                logger,
+                                LogEvent::AdaptiveCurrentGenerated(current_level, emitted_current)
+                            );
+                            if worker == 0 {
+                                info!(
+                                    "Emitted all {} + {} hashed values in {:?}",
+                                    emitted_best, emitted_current,
+                                    Instant::now() - start
+                                );
+                            }
+                        }
+                        best_levels_capability.downgrade(&best_levels_capability.time().succ());
+                        other_levels_capability.downgrade(&other_levels_capability.time().succ());
+                        current_repetition += 1;
+                        if current_repetition >= current_max_repetitions {
+                            current_level += 1;
+                            done = current_level > max_level;
+                            if !done {
+                                current_repetition = 0;
+                                current_max_repetitions =
+                                    multilevel_hasher_2.repetitions_at_level(current_level)
+                            }
+                        }
+                    }
+                }
+            }
+            if done {
+                // Drop the capability to signal that we will send no more data
+                best_levels_capability = None;
+                other_levels_capability = None;
+            }
+        }
+    });
+
+    (best_levels_stream, other_levels_stream)
+}
