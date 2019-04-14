@@ -162,9 +162,9 @@ where
                 exec_summaries.extend(msgs);
             }
         }
-        let global_summary = exec_summaries
-            .iter()
-            .fold(FrozenExecutionSummary::default(), |a, b| a.sum(b));
+        for summary in exec_summaries.iter() {
+            summary.add_to_experiment(experiment);
+        }
         // From `recv` we get an entry for each timestamp, containing a one-element vector with the
         // count of output pairs for a given timestamp. We sum across all the timestamps, so we need to
         // remove the duplicates
@@ -178,13 +178,11 @@ where
         // let _potential_pairs =
         //     D::num_elements(left_path.into()) * D::num_elements(right_path.into());
         // let fraction_distinct = global_summary.distinct_pairs as f64 / potential_pairs as f64;
-        global_summary.add_to_experiment(experiment);
         // info!(
         //     "Evaluated fraction of the potential pairs: {} ({}/{})",
         //     fraction_distinct, global_summary.distinct_pairs, potential_pairs
         // );
         // info!("Precision: {}", precision);
-        // info!("Global summary \n{:#?}", global_summary);
 
         count as usize
     } else {
