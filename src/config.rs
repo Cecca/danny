@@ -1,8 +1,10 @@
+use crate::bloom::ToBits;
 use core::any::Any;
 use rand::rngs::StdRng;
 use rand::RngCore;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
+use regex::Regex;
 use std::path::PathBuf;
 use std::process::Command;
 use timely::communication::allocator::generic::GenericBuilder;
@@ -35,10 +37,10 @@ pub struct Config {
     estimator_samples: usize,
     #[serde(default = "Config::default_cost_balance")]
     cost_balance: f64,
-    #[serde(default = "Config::default_bloom_elements")]
-    bloom_elements: usize,
-    #[serde(default = "Config::default_bloom_fpp")]
-    bloom_fpp: f64,
+    #[serde(default = "Config::default_bloom_bits")]
+    bloom_bits: String,
+    #[serde(default = "Config::default_bloom_k")]
+    bloom_k: usize,
 }
 
 #[allow(dead_code)]
@@ -58,8 +60,8 @@ impl Config {
                                      estimate the best k value
             DANNY_COST_BALANCE In the adaptive algorithm, a number less than 1 gives more weight
                                to the collisions, a number larger than 1 penalizes the repetitions
-            DANNY_BLOOM_ELEMENTS   Number of elements expected in the bloom filters (power of two)
-            DANNY_BLOOM_FPP    False positive rate of the bloom filter
+            DANNY_BLOOM_BITS  Number of bits for the bloom filter (default 4G, use a string in the form \\d{K,M,G}B?)
+            DANNY_BLOOM_K     Number of hash functions of the bloom filter (default 5)
         "
     }
 
@@ -74,20 +76,49 @@ impl Config {
         100
     }
 
-    fn default_bloom_elements() -> usize {
-        30
+    fn default_bloom_bits() -> String {
+        "4G".to_owned()
     }
 
-    pub fn get_bloom_elements(&self) -> usize {
-        self.bloom_elements
+    pub fn get_bloom_bits(&self) -> usize {
+        let re_kb = Regex::new(r"(\d+)KB?").unwrap();
+        let re_mb = Regex::new(r"(\d+)MB?").unwrap();
+        let re_gb = Regex::new(r"(\d+)GB?").unwrap();
+        if let Some(gs) = re_kb.captures(&self.bloom_bits) {
+            gs.get(1)
+                .unwrap()
+                .as_str()
+                .parse::<usize>()
+                .unwrap()
+                .kb_to_bits()
+        } else if let Some(gs) = re_mb.captures(&self.bloom_bits) {
+            gs.get(1)
+                .unwrap()
+                .as_str()
+                .parse::<usize>()
+                .unwrap()
+                .mb_to_bits()
+        } else if let Some(gs) = re_gb.captures(&self.bloom_bits) {
+            gs.get(1)
+                .unwrap()
+                .as_str()
+                .parse::<usize>()
+                .unwrap()
+                .gb_to_bits()
+        } else {
+            panic!(
+                "The configuration string `{}` does not match the expected format",
+                self.bloom_bits
+            )
+        }
     }
 
-    fn default_bloom_fpp() -> f64 {
-        0.05
+    fn default_bloom_k() -> usize {
+        5
     }
 
-    pub fn get_bloom_fpp(&self) -> f64 {
-        self.bloom_fpp
+    pub fn get_bloom_k(&self) -> usize {
+        self.bloom_k
     }
 
     fn default_baselines_path() -> PathBuf {

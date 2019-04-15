@@ -7,7 +7,6 @@ use std::fs::File;
 use std::hash::Hash;
 use std::io::{Read, Write};
 use std::ops::Drop;
-use std::ops::{Add, AddAssign};
 use std::process;
 
 use std::sync::mpsc::Sender;

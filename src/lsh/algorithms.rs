@@ -73,15 +73,8 @@ where
 
     let estimator_samples = config.get_estimator_samples();
     let cost_balance = config.get_cost_balance();
-    // FIXME: Change to bloom_bits and bloom_k
-    let _bloom_fpp = config.get_bloom_fpp();
-    let _bloom_elements = config.get_bloom_elements();
 
-    let bloom_filter = Arc::new(AtomicBloomFilter::<u32>::new(
-        4usize.gb_to_bits(),
-        5,
-        rng.clone(),
-    ));
+    let bloom_filter = Arc::new(AtomicBloomFilter::<u32>::from_config(&config, rng.clone()));
 
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
         let global_left = Arc::clone(&global_left);
