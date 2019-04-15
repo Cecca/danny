@@ -90,7 +90,7 @@ class Dataset(object):
 
 
 def preprocess_glove_6b(download_file, final_output):
-    """Preprocess all datasets present in the glove6b archive"""
+    """Preprocess all datasets present in the glove archive"""
     tmp_dir = os.path.join(os.path.dirname(download_file), "glove_unzipped")
     print("Extracting zip file")
     zip_ref = zipfile.ZipFile(download_file, "r")
@@ -114,6 +114,8 @@ def preprocess_glove_6b(download_file, final_output):
                 "40",
             ]
         )
+
+
 
 
 def _preprocess_wiki(vocab_size, download_file, final_output):
@@ -309,6 +311,13 @@ DATASETS = {
         "Glove-6B-100",
         "http://nlp.stanford.edu/data/glove.6B.zip",
         "glove.6B.100d.bin",
+        preprocess_glove_6b,
+    ),
+    "Glove-27": Dataset(
+        # This dataset is the Glove-2m dataset in ANN-benchmarks
+        "Glove-6B-100",
+        "https://nlp.stanford.edu/data/glove.twitter.27B.zip",
+        "glove.27.bin",
         preprocess_glove_6b,
     ),
     "wiki-10k": Dataset(
