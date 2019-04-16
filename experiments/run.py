@@ -313,11 +313,11 @@ DATASETS = {
         "glove.6B.100d.bin",
         preprocess_glove_6b,
     ),
-    "Glove-27": Dataset(
+    "Glove-27-200": Dataset(
         # This dataset is the Glove-2m dataset in ANN-benchmarks
-        "Glove-6B-100",
+        "Glove-27-200",
         "https://nlp.stanford.edu/data/glove.twitter.27B.zip",
-        "glove.27.bin",
+        "glove.twitter.27B.200d.bin",
         preprocess_glove_6b,
     ),
     "wiki-10k": Dataset(
