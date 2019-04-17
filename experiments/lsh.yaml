@@ -5,45 +5,76 @@ environment:
   DANNY_BASELINES_PATH: "/mnt/fast_storage/users/mcec/baselines.csv"
   DANNY_COST_BALANCE: 100
   DANNY_DATA_DIR: /mnt/fast_storage/users/mcec
+  DANNY_SKETCH_EPSILON: 0.1
 experiments:
 
-  - name: Glove adaptive one shot
-    description: Debug configuration
+  - name: Glove fixed
     tags:
       - glove
       - cosine
-      - debug
+      - fixed
     environment:
       DANNY_SEED:
         - 13124534
     parameters:
       --algorithm: fixed-lsh
-      --range: [0.6]
+      --range: [0.5,0.7,0.9]
+      --measure: cosine
+      -k: 16
+    arguments:
+      - ["{{ dataset('Glove-27-200') }}", "{{ dataset('Glove-27-200') }}"]
+
+  - name: Glove fixed sketch
+    tags:
+      - glove
+      - cosine
+      - fixed
+      - sketch
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --algorithm: fixed-lsh
+      --range: [0.5,0.7,0.9]
+      --measure: cosine
+      -k: 16
+      --sketch-bits: 64
+    arguments:
+      - ["{{ dataset('Glove-27-200') }}", "{{ dataset('Glove-27-200') }}"]
+
+  - name: Glove adaptive
+    tags:
+      - glove
+      - cosine
+      - adaptive
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --algorithm: fixed-lsh
+      --range: [0.5,0.7,0.9]
       --measure: cosine
       --adaptive-k: "10,16"
     arguments:
-      - ["{{ dataset('Glove-6B-100') }}", "{{ dataset('Glove-6B-100') }}"]
+      - ["{{ dataset('Glove-27-200') }}", "{{ dataset('Glove-27-200') }}"]
 
-  - name: Glove no sketch
+  - name: Glove adaptive sketch
     tags:
       - glove
       - cosine
+      - adaptive
+      - sketch
     environment:
       DANNY_SEED:
         - 13124534
-        - 3894712397
-        - 98137401
-        - 12047
-        - 13254177
-        - 12358709
-        - 987125
     parameters:
       --algorithm: fixed-lsh
-      --range: [0.6]
+      --range: [0.5,0.7,0.9]
       --measure: cosine
-      -k: [10, 12, 14, 16, 18]
+      --adaptive-k: "10,16"
+      --sketch-bits: 64
     arguments:
-      - ["{{ dataset('Glove-6B-100') }}", "{{ dataset('Glove-6B-100') }}"]
+      - ["{{ dataset('Glove-27-200') }}", "{{ dataset('Glove-27-200') }}"]
 
   - name: Bag of Words (fixed)
     tags:
@@ -52,15 +83,30 @@ experiments:
     environment:
       DANNY_SEED:
         - 13124534
-        - 109781
-        - 2598723
-        - 1381
-        - 1358735
     parameters:
       --algorithm: lsh
-      --range: [0.5]
+      --range: [0.5,0.7,0.9]
       --measure: jaccard
       -k: 5
+    arguments:
+      - ["{{ dataset('AOL') }}", "{{ dataset('AOL') }}"]
+      - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
+      - ["{{ dataset('Livejournal') }}", "{{ dataset('Livejournal') }}"]
+
+  - name: Bag of Words (fixed, sketched)
+    tags:
+      - jaccard
+      - fixed
+      - sketches
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --algorithm: lsh
+      --range: [0.5,0.7,0.9]
+      --measure: jaccard
+      -k: 5
+      --sketch-bits: 64
     arguments:
       - ["{{ dataset('AOL') }}", "{{ dataset('AOL') }}"]
       - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
@@ -73,15 +119,30 @@ experiments:
     environment:
       DANNY_SEED:
         - 13124534
-        - 109781
-        - 2598723
-        - 1381
-        - 1358735
     parameters:
       --algorithm: lsh
-      --range: [0.5]
+      --range: [0.5,0.7,0.9]
       --measure: jaccard
       --adaptive-k: 1,5
+    arguments:
+      - ["{{ dataset('AOL') }}", "{{ dataset('AOL') }}"]
+      - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
+      - ["{{ dataset('Livejournal') }}", "{{ dataset('Livejournal') }}"]
+
+  - name: Bag of Words (adaptive, sketched)
+    tags:
+      - jaccard
+      - adaptive
+      - sketches
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --algorithm: lsh
+      --range: [0.5,0.7,0.9]
+      --measure: jaccard
+      --adaptive-k: 1,5
+      --sketch-bits: 64
     arguments:
       - ["{{ dataset('AOL') }}", "{{ dataset('AOL') }}"]
       - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
