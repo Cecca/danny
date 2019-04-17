@@ -17,7 +17,7 @@ experiments:
       DANNY_SEED:
         - 13124534
     parameters:
-      --algorithm: fixed-lsh
+      --algorithm: lsh
       --range: [0.5,0.7,0.9]
       --measure: cosine
       -k: 16
@@ -34,7 +34,7 @@ experiments:
       DANNY_SEED:
         - 13124534
     parameters:
-      --algorithm: fixed-lsh
+      --algorithm: lsh
       --range: [0.5,0.7,0.9]
       --measure: cosine
       -k: 16
@@ -51,7 +51,7 @@ experiments:
       DANNY_SEED:
         - 13124534
     parameters:
-      --algorithm: fixed-lsh
+      --algorithm: lsh
       --range: [0.5,0.7,0.9]
       --measure: cosine
       --adaptive-k: "10,16"
@@ -68,7 +68,7 @@ experiments:
       DANNY_SEED:
         - 13124534
     parameters:
-      --algorithm: fixed-lsh
+      --algorithm: lsh
       --range: [0.5,0.7,0.9]
       --measure: cosine
       --adaptive-k: "10,16"
