@@ -5,7 +5,7 @@ environment:
   DANNY_BASELINES_PATH: "/mnt/fast_storage/users/mcec/baselines.csv"
   DANNY_COST_BALANCE: 100
   DANNY_DATA_DIR: /mnt/fast_storage/users/mcec
-  DANNY_SKETCH_EPSILON: 0.1
+  DANNY_SKETCH_EPSILON: 0.01
 experiments:
 
   - name: Glove fixed
