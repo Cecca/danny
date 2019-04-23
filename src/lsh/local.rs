@@ -144,7 +144,7 @@ where
             hash_fns.repetitions(),
             proc_mem!()
         );
-        let mut buckets = HashMap::new(); // TODO: Find way to move this outside of the loop
+        let mut buckets = std::collections::BTreeMap::new(); // TODO: Find way to move this outside of the loop
         for (lk, lv) in left.iter_chunk(row) {
             let h = hash_fns.hash(lv, repetition);
             let bucket = buckets.entry(h).or_insert_with(|| (Vec::new(), Vec::new()));

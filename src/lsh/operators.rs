@@ -1,35 +1,26 @@
 use crate::dataset::*;
-
 use crate::logging::*;
 use crate::lsh::functions::*;
-
 use crate::operators::Route;
 use crate::operators::*;
 use crate::sketch::*;
-
 use abomonation::Abomonation;
-
 use rand::{Rng, SeedableRng};
-
 use std::clone::Clone;
-
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
-
 use std::sync::Arc;
-
 use std::time::Instant;
 use timely::communication::Push;
 use timely::dataflow::channels::pact::{Exchange as ExchangePact, Pipeline};
-
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::generic::{FrontieredInputHandle, OutputHandle};
 use timely::dataflow::operators::Capability;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
-
 use timely::progress::Timestamp;
 use timely::Data;
 use timely::ExchangeData;
@@ -38,7 +29,7 @@ pub struct PairGenerator<H, K>
 where
     H: Hash + Eq + Ord,
 {
-    buckets: HashMap<H, (Vec<K>, Vec<K>)>,
+    buckets: BTreeMap<H, (Vec<K>, Vec<K>)>,
     cur_left: Vec<K>,
     cur_right: Vec<K>,
     cur_left_idx: usize,
@@ -46,7 +37,7 @@ where
 }
 
 impl<H: Hash + Eq + Clone + Ord, K: Clone> PairGenerator<H, K> {
-    pub fn new(buckets: HashMap<H, (Vec<K>, Vec<K>)>) -> Self {
+    pub fn new(buckets: BTreeMap<H, (Vec<K>, Vec<K>)>) -> Self {
         PairGenerator {
             buckets,
             cur_left: Vec::new(),
@@ -174,9 +165,7 @@ where
                             logger,
                             LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
                         );
-                        let rep_entry = buckets
-                            .entry(t.retain())
-                            .or_insert_with(|| HashMap::with_capacity(initial_buckets_size));
+                        let rep_entry = buckets.entry(t.retain()).or_insert_with(BTreeMap::new);
                         for (h, k) in data.drain(..) {
                             let bucket = rep_entry
                                 .entry(h)
@@ -201,9 +190,7 @@ where
                             logger,
                             LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
                         );
-                        let rep_entry = buckets
-                            .entry(t.retain())
-                            .or_insert_with(|| HashMap::with_capacity(initial_buckets_size));
+                        let rep_entry = buckets.entry(t.retain()).or_insert_with(BTreeMap::new);
                         for (h, k) in data.drain(..) {
                             let bucket = rep_entry
                                 .entry(h)
