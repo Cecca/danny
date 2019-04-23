@@ -1,5 +1,6 @@
 use crate::dataset::*;
 use crate::logging::*;
+use crate::lsh::bucket::*;
 use crate::lsh::functions::*;
 use crate::operators::Route;
 use crate::operators::*;
@@ -123,7 +124,7 @@ impl<G, T, H, K> BucketStream<G, T, H, K> for Stream<G, (H, K)>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId,
-    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
+    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + Copy,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)> {
@@ -136,9 +137,8 @@ where
         P: FnMut(&(K, K)) -> bool + 'static,
     {
         let mut buckets = HashMap::new();
-        let mut generators = Vec::new();
+        let mut pool = BucketPool::default();
         let logger = self.scope().danny_logger();
-        let initial_buckets_size = 100_000;
 
         self.binary_frontier(
             &right,
@@ -165,12 +165,9 @@ where
                             logger,
                             LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
                         );
-                        let rep_entry = buckets.entry(t.retain()).or_insert_with(BTreeMap::new);
+                        let rep_entry = buckets.entry(t.retain()).or_insert_with(|| pool.get());
                         for (h, k) in data.drain(..) {
-                            let bucket = rep_entry
-                                .entry(h)
-                                .or_insert_with(|| (Vec::new(), Vec::new()));
-                            bucket.0.push(k);
+                            rep_entry.push_left(h, k);
                         }
                     });
                     right_in.for_each(|t, d| {
@@ -190,50 +187,48 @@ where
                             logger,
                             LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
                         );
-                        let rep_entry = buckets.entry(t.retain()).or_insert_with(BTreeMap::new);
+                        let rep_entry = buckets.entry(t.retain()).or_insert_with(|| pool.get());
                         for (h, k) in data.drain(..) {
-                            let bucket = rep_entry
-                                .entry(h)
-                                .or_insert_with(|| (Vec::new(), Vec::new()));
-                            bucket.1.push(k);
+                            rep_entry.push_right(h, k);
                         }
                     });
                     let frontiers = &[left_in.frontier(), right_in.frontier()];
-                    let time = buckets
-                        .keys()
-                        .cloned()
-                        .find(|t| frontiers.iter().all(|f| !f.less_equal(t)));
-                    if let Some(time) = time {
-                        // We got all data for the repetition at `time`
-                        // Enqueue the pairs generator
-                        let buckets = buckets
-                            .remove(&time)
-                            .expect("Cannot find the required time in the right buckets");
-                        let generator = PairGenerator::new(buckets);
-                        generators.push((time.clone(), generator));
-                    }
-                    for (time, generator) in generators.iter_mut() {
-                        let _pg = ProfileGuard::new(
-                            logger.clone(),
-                            time.time().to_step_id(),
-                            1,
-                            "candidate_emission",
-                        );
-                        // Emit some output pairs
-                        let mut session = output.session(time);
-                        let mut cnt = 0;
-                        for pair in generator.filter(&mut pred) {
-                            session.give(pair);
-                            cnt += 1;
+                    for (time, buckets) in buckets.iter_mut() {
+                        if frontiers.iter().all(|f| !f.less_equal(time)) {
+                            let _pg = ProfileGuard::new(
+                                logger.clone(),
+                                time.time().to_step_id(),
+                                1,
+                                "candidate_emission",
+                            );
+                            // Emit some output pairs
+                            let mut session = output.session(time);
+                            let mut cnt = 0;
+                            buckets.for_all(|l, r| {
+                                session.give((l.clone(), r.clone()));
+                                cnt += 1;
+                            });
+                            buckets.clear();
+                            log_event!(
+                                logger,
+                                LogEvent::GeneratedPairs(time.time().to_step_id(), cnt)
+                            );
                         }
-                        log_event!(
-                            logger,
-                            LogEvent::GeneratedPairs(time.time().to_step_id(), cnt)
-                        );
                     }
 
-                    // Cleanup exhausted generators
-                    generators.retain(|(_, gen)| !gen.done());
+                    // Cleanup exhausted buckets, returning buckets to the pool,
+                    // so to reuse the allocated memory in the future
+                    let cleanup_times: Vec<Capability<T>> = buckets
+                        .iter()
+                        .filter(|(_, b)| b.is_empty())
+                        .map(|p| p.0)
+                        .cloned()
+                        .collect();
+                    for t in cleanup_times.iter() {
+                        let bucket = buckets.remove(t).unwrap();
+                        // put it back into the pool
+                        pool.give_back(bucket);
+                    }
                 }
             },
         )
