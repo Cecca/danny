@@ -147,6 +147,7 @@ where
         let mut buckets = HashMap::new();
         let mut generators = Vec::new();
         let logger = self.scope().danny_logger();
+        let initial_buckets_size = 100_000;
 
         self.binary_frontier(
             &right,
@@ -173,11 +174,13 @@ where
                             logger,
                             LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
                         );
-                        let rep_entry = buckets.entry(t.retain()).or_insert_with(HashMap::new);
+                        let rep_entry = buckets
+                            .entry(t.retain())
+                            .or_insert_with(|| HashMap::with_capacity(initial_buckets_size));
                         for (h, k) in data.drain(..) {
-                            let bucket = rep_entry.entry(h).or_insert_with(|| {
-                                (Vec::with_capacity(4096), Vec::with_capacity(4096))
-                            });
+                            let bucket = rep_entry
+                                .entry(h)
+                                .or_insert_with(|| (Vec::new(), Vec::new()));
                             bucket.0.push(k);
                         }
                     });
@@ -198,11 +201,13 @@ where
                             logger,
                             LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
                         );
-                        let rep_entry = buckets.entry(t.retain()).or_insert_with(HashMap::new);
+                        let rep_entry = buckets
+                            .entry(t.retain())
+                            .or_insert_with(|| HashMap::with_capacity(initial_buckets_size));
                         for (h, k) in data.drain(..) {
-                            let bucket = rep_entry.entry(h).or_insert_with(|| {
-                                (Vec::with_capacity(4096), Vec::with_capacity(4096))
-                            });
+                            let bucket = rep_entry
+                                .entry(h)
+                                .or_insert_with(|| (Vec::new(), Vec::new()));
                             bucket.1.push(k);
                         }
                     });
