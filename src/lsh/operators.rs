@@ -275,6 +275,12 @@ where
         self.unary(Pipeline, "sketch filtering", move |_, _| {
             move |input, output| {
                 input.for_each(|t, data| {
+                    let _pg = ProfileGuard::new(
+                        logger.clone(),
+                        t.time().to_step_id(),
+                        1,
+                        "sketch_filtering",
+                    );
                     let mut discarded = 0;
                     let t = t.retain();
                     let mut session = output.session(&t);
