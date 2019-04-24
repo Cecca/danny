@@ -5,6 +5,8 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
 use std::hash::Hash;
+use std::io::BufRead;
+use std::io::BufReader;
 use std::io::{Read, Write};
 use std::ops::Drop;
 use std::process;
@@ -86,6 +88,133 @@ macro_rules! proc_mem {
             .map(ToSpaceString::to_space_string)
             .unwrap_or("--".to_owned());
     };
+}
+
+pub struct NetworkInfo {
+    pub received: usize,
+    pub transmitted: usize,
+}
+
+#[derive(Abomonation, Clone)]
+pub struct NetworkDiff {
+    pub received: usize,
+    pub transmitted: usize,
+}
+
+#[derive(Abomonation, Clone)]
+pub struct NetworkSummary {
+    pub hostname: String,
+    pub interfaces: Vec<(String, NetworkDiff)>,
+}
+
+impl NetworkSummary {
+    pub fn report(&self, experiment: &mut Experiment) {
+        for (iface, diff) in self.interfaces.iter() {
+            experiment.append(
+                "network",
+                row!(
+                    "hostname" => self.hostname.clone(),
+                    "interface" => iface.clone(),
+                    "transmitted" => diff.transmitted,
+                    "received" => diff.received
+                ),
+            );
+        }
+    }
+
+    /// sets up a small dataflow to exchange information about the network exchanges
+    pub fn collect_from_workers(self, config: &Config) -> Vec<NetworkSummary> {
+        let timely_builder = config.get_timely_builder();
+        let (send, recv) = std::sync::mpsc::channel();
+        let send = Arc::new(Mutex::new(send));
+        let this = Arc::new(Mutex::new(Some(self)));
+        timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
+            let send = Arc::clone(&send);
+            let (mut input, probe) = worker.dataflow::<u32, _, _>(move |scope| {
+                let send = send.lock().unwrap().clone();
+                let (input, stream) = scope.new_input::<NetworkSummary>();
+                let mut probe = ProbeHandle::new();
+                stream
+                    .exchange(|_| 0)
+                    .probe_with(&mut probe)
+                    .capture_into(send);
+
+                (input, probe)
+            });
+            // Use the lock to send the information about this machine just once
+            let this = this.lock().unwrap().take();
+            if this.is_some() {
+                input.send(this.unwrap());
+            }
+            input.advance_to(1);
+            worker.step_while(|| probe.less_than(&1));
+        })
+        .expect("problems with the dataflow for network monitoring");
+
+        let mut res = Vec::new();
+        if config.is_master() {
+            for summary in recv.iter() {
+                if let TimelyEvent::Messages(_, msgs) = summary {
+                    res.extend(msgs);
+                }
+            }
+        }
+        res
+    }
+}
+
+pub struct NetworkGauge {
+    initial: HashMap<String, NetworkInfo>,
+}
+
+impl NetworkGauge {
+    fn current() -> Option<HashMap<String, NetworkInfo>> {
+        File::open("/proc/net/dev")
+            .and_then(|dev| {
+                let dev = BufReader::new(dev);
+                let mut res = HashMap::new();
+                for line in dev.lines().skip(2) {
+                    let line = line.expect("Error getting line");
+                    let tokens: Vec<&str> = line.split_whitespace().collect();
+                    let iface = tokens[0].to_owned();
+                    let info = NetworkInfo {
+                        received: tokens[1].parse::<usize>().expect("Cannot parse as usize"),
+                        transmitted: tokens[9].parse::<usize>().expect("Cannot parse as usize"),
+                    };
+                    res.insert(iface, info);
+                }
+                Ok(res)
+            })
+            .ok()
+    }
+
+    pub fn start() -> Option<Self> {
+        Self::current().map(|initial| Self { initial })
+    }
+
+    pub fn measure(&self) -> NetworkSummary {
+        let hostname = get_hostname();
+        let current = Self::current().expect("Cannot get network information");
+        let mut interfaces = Vec::new();
+        for iface in self.initial.keys() {
+            interfaces.push((
+                iface.clone(),
+                NetworkDiff {
+                    received: current.get(iface).expect("Interface not present").received
+                        - self.initial[iface].received,
+                    transmitted: current
+                        .get(iface)
+                        .expect("Interface not present")
+                        .transmitted
+                        - self.initial[iface].transmitted,
+                },
+            ));
+        }
+        NetworkSummary {
+            hostname,
+            interfaces,
+        }
+    }
 }
 
 pub fn init_event_logging<A>(worker: &Worker<A>) -> Arc<Mutex<ExecutionSummary>>

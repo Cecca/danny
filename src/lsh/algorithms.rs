@@ -58,6 +58,7 @@ where
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
     B: Fn(usize, &mut R) -> LSHCollection<H, O> + Sized + Send + Sync + Clone + 'static,
 {
+    let network = NetworkGauge::start();
     let timely_builder = config.get_timely_builder();
     // This channel is used to get the results
     let (output_send_ch, recv) = channel();
@@ -148,6 +149,8 @@ where
     })
     .expect("Problems with the dataflow");
 
+    let network_summaries = network.map(|n| n.measure().collect_from_workers(&config));
+
     if config.is_master() {
         let mut exec_summaries = Vec::new();
         for summary in recv_exec_summary.iter() {
@@ -157,6 +160,12 @@ where
         }
         for summary in exec_summaries.iter() {
             summary.add_to_experiment(experiment);
+        }
+        if network_summaries.is_some() {
+            network_summaries
+                .unwrap()
+                .iter()
+                .for_each(|n| n.report(experiment));
         }
         // From `recv` we get an entry for each timestamp, containing a one-element vector with the
         // count of output pairs for a given timestamp. We sum across all the timestamps, so we need to
