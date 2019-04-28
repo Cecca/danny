@@ -815,13 +815,11 @@ where
                                 logger,
                                 LogEvent::AdaptiveCurrentGenerated(current_level, cnt_current)
                             );
-                            if worker == 0 {
-                                info!(
-                                    "Emitted all {} + {} hashed values in {:?}",
-                                    cnt_best, cnt_current,
-                                    Instant::now() - start
-                                );
-                            }
+                            info!(
+                                "Emitted all {} + {} hashed values in {:?}",
+                                cnt_best, cnt_current,
+                                Instant::now() - start
+                            );
                         }
                         best_levels_capability.downgrade(&best_levels_capability.time().succ());
                         other_levels_capability.downgrade(&other_levels_capability.time().succ());
