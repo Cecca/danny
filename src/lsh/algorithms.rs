@@ -332,13 +332,13 @@ where
                 probe.clone(),
                 rng.clone(),
             );
-            let stream_a = left_hashes_best
-                .bucket(&right_hashes_other)
-                .filter_sketches(sketch_predicate.clone());
-            let stream_b = left_hashes_other
-                .bucket(&right_hashes_best)
-                .filter_sketches(sketch_predicate.clone());
-            stream_a.concat(&stream_b)
+            scope
+                .concatenate(vec![
+                    left_hashes_best.bucket(&right_hashes_best),
+                    left_hashes_best.bucket(&right_hashes_other),
+                    left_hashes_other.bucket(&right_hashes_best),
+                ])
+                .filter_sketches(sketch_predicate.clone())
         }
         None => {
             let (left_hashes_best, left_hashes_other) = source_hashed_adaptive(
