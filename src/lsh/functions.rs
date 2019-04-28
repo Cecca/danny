@@ -673,7 +673,7 @@ where
             for rep in 0..hasher.repetitions() {
                 let h = hasher.hash(v, rep);
                 let collisions_count = self.buckets[idx][rep].get(&h).unwrap_or(&0usize);
-                collisions_work += collisions_count;
+                collisions_work += collisions_count * collisions_count;
             }
             let work = (self.balance * hasher.repetitions() as f64) as usize
                 + ((1.0 - self.balance) * collisions_work as f64) as usize;
