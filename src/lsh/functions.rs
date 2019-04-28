@@ -676,7 +676,7 @@ where
                 collisions_work += collisions_count;
             }
             let work = (self.balance * hasher.repetitions() as f64) as usize
-                + ((1.0 - self.balance) as usize * collisions_work);
+                + ((1.0 - self.balance) * collisions_work as f64) as usize;
             if work < min_work {
                 min_work = work;
                 best_level = *idx;
