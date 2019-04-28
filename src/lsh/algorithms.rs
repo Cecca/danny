@@ -13,6 +13,7 @@ use crate::sketch::*;
 use abomonation::Abomonation;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
+use timely::dataflow::operators::concat::Concatenate;
 
 use std::clone::Clone;
 
@@ -364,10 +365,11 @@ where
                 probe.clone(),
                 rng.clone(),
             );
-            // unimplemented!()
-            let stream_a = left_hashes_best.bucket(&right_hashes_other);
-            let stream_b = left_hashes_other.bucket(&right_hashes_best);
-            stream_a.concat(&stream_b)
+            scope.concatenate(vec![
+                left_hashes_best.bucket(&right_hashes_best),
+                left_hashes_best.bucket(&right_hashes_other),
+                left_hashes_other.bucket(&right_hashes_best),
+            ])
         }
     }
 }
