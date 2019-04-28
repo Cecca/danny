@@ -789,29 +789,36 @@ where
                             let _pg = ProfileGuard::new(
                                 logger.clone(), best_levels_capability.time().to_step_id(), 1, "hash_generation");
                             let start = Instant::now();
-                            let (emitted_best, emitted_current) = output_strategy.output_pairs(
-                                vecs.iter_stripe(matrix, direction, worker),
-                                current_level,
-                                current_repetition,
-                                Arc::clone(&multilevel_hasher_2),
-                                &best_levels,
-                                &mut output_best_levels,
-                                &mut output_other_levels,
-                                best_levels_capability,
-                                other_levels_capability,
+
+                            let mut session_best = output_best_levels.session(&best_levels_capability);
+                            let mut session_current = output_other_levels.session(&other_levels_capability);
+                            let mut cnt_best = 0;
+                            let mut cnt_current = 0;
+                            for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
+                                let this_best_level = best_levels[key];
+                                if current_level <= this_best_level {
+                                    let h = multilevel_hasher.hash(v, current_level, current_repetition);
+                                    if current_level == this_best_level {
+                                        session_best.give((h, key.clone()));
+                                        cnt_best += 1;
+                                    } else {
+                                        session_current.give((h, key.clone()));
+                                        cnt_current += 1;
+                                    }
+                                }
+                            }
+                            log_event!(
+                                logger,
+                                LogEvent::AdaptiveBestGenerated(current_level, cnt_best)
                             );
                             log_event!(
                                 logger,
-                                LogEvent::AdaptiveBestGenerated(current_level, emitted_best)
-                            );
-                            log_event!(
-                                logger,
-                                LogEvent::AdaptiveCurrentGenerated(current_level, emitted_current)
+                                LogEvent::AdaptiveCurrentGenerated(current_level, cnt_current)
                             );
                             if worker == 0 {
                                 info!(
                                     "Emitted all {} + {} hashed values in {:?}",
-                                    emitted_best, emitted_current,
+                                    cnt_best, cnt_current,
                                     Instant::now() - start
                                 );
                             }
