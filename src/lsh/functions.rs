@@ -445,8 +445,8 @@ where
     /// for each repetition, and each repetition is a map between hash value
     /// and count of things hashing to it
     buckets: HashMap<usize, Vec<HashMap<H, usize>>>,
-    /// A balance less than 1 gives more weight to the collisions in the computation of the cost,
-    /// a value greater than 1 gives more weight to the repetitions
+    /// A balance less than 0.5 gives more weight to the collisions in the computation of the cost,
+    /// a value greater than 0.5 gives more weight to the repetitions
     balance: f64,
 }
 
@@ -582,7 +582,7 @@ where
                             BestLevelEstimator::from_counts(&multilevel_hasher, &counts, balance);
                         debug!("Built estimator (total mem {})", proc_mem!(),);
                         let mut session = output.session(&time);
-                        let mut level_stats = HashMap::new();
+                        let mut level_stats = std::collections::BTreeMap::new();
                         for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
                             let best_level = estimator.get_best_level(&multilevel_hasher, v);
                             session.give((key.clone(), best_level));
@@ -669,12 +669,14 @@ where
         let mut min_work = std::usize::MAX;
         let mut best_level = 0;
         for (idx, hasher) in multilevel_hasher.hashers.iter() {
-            let mut work = (self.balance * hasher.repetitions() as f64) as usize;
+            let mut collisions_work = 0;
             for rep in 0..hasher.repetitions() {
                 let h = hasher.hash(v, rep);
                 let collisions_count = self.buckets[idx][rep].get(&h).unwrap_or(&0usize);
-                work += collisions_count;
+                collisions_work += collisions_count;
             }
+            let work = (self.balance * hasher.repetitions() as f64) as usize
+                + ((1.0 - self.balance) as usize * collisions_work);
             if work < min_work {
                 min_work = work;
                 best_level = *idx;

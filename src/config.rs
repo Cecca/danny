@@ -134,7 +134,7 @@ impl Config {
     }
 
     fn default_cost_balance() -> f64 {
-        1.0
+        0.5
     }
 
     fn default_threads() -> usize {
@@ -174,6 +174,10 @@ impl Config {
     }
 
     pub fn get_cost_balance(&self) -> f64 {
+        assert!(
+            self.cost_balance >= 0.0 && self.cost_balance <= 1.0,
+            "Cost balance should be between 0 and 1"
+        );
         self.cost_balance
     }
 
