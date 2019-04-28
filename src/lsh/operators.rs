@@ -399,10 +399,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     #[test]
     fn test_pair_iterator() {
-        let mut buckets = HashMap::new();
+        let mut buckets = BTreeMap::new();
         buckets.insert(0, (vec![1, 2, 3], vec![10, 11, 12]));
         buckets.insert(1, (vec![], vec![19]));
         buckets.insert(2, (vec![1, 2, 3, 4], vec![]));

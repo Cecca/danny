@@ -157,3 +157,43 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::collections::HashSet;
+
+    #[test]
+    fn test_bucket() {
+        let mut buckets = HashMap::new();
+        buckets.insert(0, (vec![1, 2, 3], vec![10, 11, 12]));
+        buckets.insert(1, (vec![], vec![19]));
+        buckets.insert(2, (vec![1, 2, 3, 4], vec![]));
+        buckets.insert(3, (vec![3, 4], vec![30]));
+
+        let mut expected = HashSet::new();
+        for (_k, (lks, rks)) in buckets.iter() {
+            for lk in lks.iter() {
+                for rk in rks.iter() {
+                    expected.insert((lk.clone(), rk.clone()));
+                }
+            }
+        }
+        let mut bucket = Bucket::new();
+        for (k, (lks, rks)) in buckets.iter() {
+            for lk in lks.iter().cloned() {
+                bucket.push_left(k, lk);
+            }
+            for rk in rks.iter().cloned() {
+                bucket.push_right(k, rk);
+            }
+        }
+        let mut actual = HashSet::new();
+        bucket.for_all(|l, r| {
+            actual.insert((l.clone(), r.clone()));
+        });
+
+        assert_eq!(expected, actual);
+    }
+}
