@@ -489,11 +489,12 @@ where
                     let mut accumulator = HashMap::new();
                     for (_, v) in vecs.iter_stripe(matrix, direction, worker) {
                         if rng.gen_bool(p) {
-                            for (level, hasher) in multilevel_hasher.hashers.iter() {
-                                for repetition in 0..multilevel_hasher.repetitions_at_level(*level)
-                                {
-                                    let h = hasher.hash(v, repetition);
-                                    *accumulator.entry((*level, repetition, h)).or_insert(0) +=
+                            for level in
+                                multilevel_hasher.min_level()..=multilevel_hasher.max_level()
+                            {
+                                for repetition in 0..multilevel_hasher.repetitions_at_level(level) {
+                                    let h = multilevel_hasher.hash(v, level, repetition);
+                                    *accumulator.entry((level, repetition, h)).or_insert(0) +=
                                         weight;
                                 }
                             }
