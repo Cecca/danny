@@ -484,6 +484,7 @@ where
                     let _pg = ProfileGuard::new(logger.clone(), 0, 0, "best_k_estimation");
                     let mut session = output.session(&cap);
                     let p = n as f64 / vecs.stripe_len(matrix, direction, worker) as f64;
+                    let p = if p > 1.0 { 1.0 } else { p };
                     let weight: usize = (1.0 / p).ceil() as usize;
                     info!("Sampling with probability {} from each block", p);
                     let mut accumulator = HashMap::new();
@@ -669,13 +670,16 @@ where
     {
         let mut min_work = std::f64::INFINITY;
         let mut best_level = 0;
+        let mut largest_bucket = 0;
         let rep_factor = self.balance;
         let collision_factor = 1.0 - self.balance;
         for (idx, hasher) in multilevel_hasher.hashers.iter() {
             let mut collisions_work = 0.0;
+            let mut largest = 0;
             for rep in 0..hasher.repetitions() {
                 let h = hasher.hash(v, rep);
                 let collisions_count = self.buckets[idx][rep].get(&h).unwrap_or(&0usize);
+                largest = std::cmp::max(largest, *collisions_count);
                 collisions_work += (*collisions_count as f64).powf(1.0);
             }
             let work = (rep_factor * hasher.repetitions() as f64)
@@ -683,9 +687,14 @@ where
             if work < min_work {
                 min_work = work;
                 best_level = *idx;
+                largest_bucket = largest;
             }
         }
         assert!(min_work > 0.0);
+        info!(
+            "Level {}, work {}, largest bucket in level {}",
+            best_level, min_work, largest_bucket
+        );
         best_level
     }
 }
