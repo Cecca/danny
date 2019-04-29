@@ -666,22 +666,25 @@ where
         D: Clone + Data + Debug + Abomonation + Send + Sync,
         F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
     {
-        let mut min_work = std::usize::MAX;
+        let mut min_work = std::f64::INFINITY;
         let mut best_level = 0;
+        let rep_factor = self.balance;
+        let collision_factor = 1.0 - self.balance;
         for (idx, hasher) in multilevel_hasher.hashers.iter() {
-            let mut collisions_work = 0;
+            let mut collisions_work = 0.0;
             for rep in 0..hasher.repetitions() {
                 let h = hasher.hash(v, rep);
                 let collisions_count = self.buckets[idx][rep].get(&h).unwrap_or(&0usize);
-                collisions_work += collisions_count;
+                collisions_work += (*collisions_count as f64).powf(1.0);
             }
-            let work = (self.balance * hasher.repetitions() as f64) as usize
-                + ((1.0 - self.balance) * collisions_work as f64) as usize;
+            let work = (rep_factor * hasher.repetitions() as f64)
+                + (collision_factor * collisions_work as f64);
             if work < min_work {
                 min_work = work;
                 best_level = *idx;
             }
         }
+        assert!(min_work > 0.0);
         best_level
     }
 }
