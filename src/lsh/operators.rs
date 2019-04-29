@@ -202,6 +202,11 @@ where
                                 "candidate_emission",
                             );
                             // Emit some output pairs
+                            info!(
+                                "Outputting pairs out of buckets from {} left and {} right vectors",
+                                buckets.len_left(),
+                                buckets.len_right()
+                            );
                             let mut session = output.session(time);
                             let mut cnt = 0;
                             buckets.for_all(|l, r| {

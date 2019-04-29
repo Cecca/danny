@@ -60,6 +60,14 @@ where
         self.right.push((h, k));
     }
 
+    pub fn len_left(&self) -> usize {
+        self.left.len()
+    }
+
+    pub fn len_right(&self) -> usize {
+        self.right.len()
+    }
+
     pub fn clear(&mut self) {
         self.left.clear();
         self.right.clear();
