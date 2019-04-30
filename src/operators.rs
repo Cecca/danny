@@ -44,6 +44,12 @@ impl Succ for i32 {
     }
 }
 
+impl Succ for usize {
+    fn succ(&self) -> usize {
+        self + 1
+    }
+}
+
 impl Succ for u8 {
     fn succ(&self) -> u8 {
         self + 1

@@ -90,7 +90,7 @@ where
         }
     }
 
-    pub fn for_all_bucekts<F>(&mut self, mut action: F)
+    pub fn for_all_buckets<F>(&mut self, mut action: F)
     where
         F: FnMut(&[(H, K)], &[(H, K)]) -> (),
     {

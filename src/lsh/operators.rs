@@ -16,12 +16,16 @@ use std::sync::Arc;
 use std::time::Instant;
 use timely::communication::Push;
 use timely::dataflow::channels::pact::{Exchange as ExchangePact, Pipeline};
+use timely::dataflow::operators::aggregation::Aggregate;
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::generic::{FrontieredInputHandle, OutputHandle};
 use timely::dataflow::operators::Capability;
+use timely::dataflow::operators::Leave;
 use timely::dataflow::operators::*;
+use timely::dataflow::scopes::Child;
 use timely::dataflow::*;
+use timely::order::Product;
 use timely::progress::Timestamp;
 use timely::Data;
 use timely::ExchangeData;
@@ -110,7 +114,7 @@ impl<H: Hash + Eq + Clone + Ord, K: Clone> Iterator for PairGenerator<H, K> {
 pub trait BucketStream<G, T, H, K>
 where
     G: Scope<Timestamp = T>,
-    T: Timestamp + Succ,
+    T: Timestamp,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
@@ -123,7 +127,7 @@ where
 impl<G, T, H, K> BucketStream<G, T, H, K> for Stream<G, (H, K)>
 where
     G: Scope<Timestamp = T>,
-    T: Timestamp + Succ + ToStepId,
+    T: Timestamp + ToStepId,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + Copy,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
@@ -863,4 +867,225 @@ where
     });
 
     (best_levels_stream, other_levels_stream)
+}
+
+// The timestamp to be used in the product estimation
+type CostTimestamp<T> = Product<Product<T, usize>, usize>;
+
+fn all_hashes_source<G, T, K, D, H, F>(
+    scope: &G,
+    vecs: Arc<ChunkedDataset<K, D>>,
+    hasher: Arc<MultilevelHasher<D, H, F>>,
+    matrix: MatrixDescription,
+    direction: MatrixDirection,
+) -> Stream<G, (H, K)>
+where
+    G: Scope<Timestamp = CostTimestamp<T>>,
+    T: Timestamp,
+    D: ExchangeData + Debug,
+    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
+    K: Data + Debug + Send + Sync + Abomonation + Clone + Route,
+    F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
+{
+    let worker = scope.index() as u64;
+    let vecs = Arc::clone(&vecs);
+    let mut done = false;
+    let mut current_level = hasher.min_level();
+    let mut current_repetition = 0;
+    let mut current_max_repetition = hasher.repetitions_at_level(current_level);
+    source(&scope, "all-hashes", move |cap| {
+        let hasher = Arc::clone(&hasher);
+        let mut cap = Some(cap);
+        move |output| {
+            if let Some(cap) = cap.as_mut() {
+                let mut session = output.session(cap);
+                for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
+                    let h = hasher.hash(v, current_level, current_repetition);
+                    session.give((h, k.clone()));
+                }
+
+                if current_repetition >= current_max_repetition {
+                    current_level += 1;
+                    if current_level > hasher.max_level() {
+                        done = true;
+                    } else {
+                        current_repetition = 0;
+                        current_max_repetition = hasher.repetitions_at_level(current_level);
+                        cap.downgrade(&Product::new(cap.time().outer.succ(), 0));
+                    }
+                } else {
+                    current_repetition += 1;
+                    cap.downgrade(&cap.time().succ());
+                }
+            }
+
+            if done {
+                cap = None;
+            }
+        }
+    })
+}
+
+fn count_collisions<G, H, K>(
+    left: &Stream<G, (H, K)>,
+    right: &Stream<G, (H, K)>,
+) -> (Stream<G, (K, usize)>, Stream<G, (K, usize)>)
+where
+    G: Scope,
+    K: ExchangeData,
+    H: ExchangeData + Ord + Copy + Route,
+{
+    let mut builder = OperatorBuilder::new("collision-counter".to_owned(), left.scope());
+    let mut input_left = builder.new_input(&left, ExchangePact::new(|p: &(H, K)| p.0.route()));
+    let mut input_right = builder.new_input(&right, ExchangePact::new(|p: &(H, K)| p.0.route()));
+    let (mut output_left, stream_left) = builder.new_output();
+    let (mut output_right, stream_right) = builder.new_output();
+
+    let mut pool = BucketPool::default();
+    let mut buckets = HashMap::new();
+
+    builder.build(move |_| {
+        move |frontiers| {
+            let mut input_left = FrontieredInputHandle::new(&mut input_left, &frontiers[0]);
+            let mut input_right = FrontieredInputHandle::new(&mut input_right, &frontiers[0]);
+            let mut output_left = output_left.activate();
+            let mut output_right = output_right.activate();
+
+            input_left.for_each(|t, data| {
+                let mut data = data.replace(Vec::new());
+                let rep_entry = buckets.entry(t.retain()).or_insert_with(|| pool.get());
+                for (h, k) in data.drain(..) {
+                    rep_entry.push_left(h, k);
+                }
+            });
+            input_right.for_each(|t, data| {
+                let mut data = data.replace(Vec::new());
+                let rep_entry = buckets.entry(t.retain()).or_insert_with(|| pool.get());
+                for (h, k) in data.drain(..) {
+                    rep_entry.push_right(h, k);
+                }
+            });
+
+            let frontiers = &[input_left.frontier(), input_right.frontier()];
+            for (time, buckets) in buckets.iter_mut() {
+                if frontiers.iter().all(|f| !f.less_equal(time)) {
+                    let mut session_left = output_left.session(time);
+                    let mut session_right = output_right.session(time);
+                    buckets.for_all_buckets(|lb, rb| {
+                        for (_, l) in lb {
+                            session_left.give((l.clone(), rb.len()));
+                        }
+                        for (_, r) in rb {
+                            session_right.give((r.clone(), lb.len()));
+                        }
+                    });
+                    buckets.clear();
+                }
+            }
+
+            // Cleanup exhausted buckets, returning buckets to the pool,
+            // so to reuse the allocated memory in the future
+            let cleanup_times: Vec<Capability<G::Timestamp>> = buckets
+                .iter()
+                .filter(|(_, b)| b.is_empty())
+                .map(|p| p.0)
+                .cloned()
+                .collect();
+            for t in cleanup_times.iter() {
+                let bucket = buckets.remove(t).unwrap();
+                // put it back into the pool
+                pool.give_back(bucket);
+            }
+            unimplemented!()
+        }
+    });
+    (stream_left, stream_right)
+}
+
+fn select_minimum<GOutput, T, K>(
+    counts: &Stream<Child<Child<GOutput, Product<T, usize>>, CostTimestamp<T>>, (K, usize)>,
+) -> Stream<GOutput, (K, usize)>
+where
+    GOutput: Scope<Timestamp = T>,
+    T: Timestamp,
+    K: ExchangeData + Route + Hash + Eq,
+{
+    counts
+        // sum over the repetitions
+        .leave()
+        .aggregate(
+            |_key, val, agg| {
+                *agg += val;
+            },
+            |key, agg: usize| (key, agg),
+            Route::route,
+        )
+        // take the minimum over the levels
+        .unary(Pipeline, "", |_, _| {
+            |input, output| {
+                input.for_each(|t, data| {
+                    let mut data = data.replace(Vec::new());
+                    for (k, collisions) in data.drain(..) {
+                        output.session(&t).give((k, (t.inner, collisions)));
+                    }
+                })
+            }
+        })
+        .leave()
+        .aggregate(
+            |_key, val: (usize, usize), agg: &mut (usize, usize)| {
+                if val.1 < agg.1 || (val.1 == agg.1 && val.0 < agg.0) {
+                    agg.0 = val.0;
+                    agg.1 = val.1;
+                }
+            },
+            |key, agg: (usize, usize)| (key, agg.0),
+            Route::route,
+        )
+}
+
+pub fn find_best_level<G, T, K, D, H, F>(
+    mut scope: G,
+    left: Arc<ChunkedDataset<K, D>>,
+    right: Arc<ChunkedDataset<K, D>>,
+    hasher: Arc<MultilevelHasher<D, H, F>>,
+    matrix: MatrixDescription,
+) -> (Stream<G, (K, usize)>, Stream<G, (K, usize)>)
+where
+    G: Scope<Timestamp = T>,
+    T: Timestamp + Succ + ToStepId,
+    D: ExchangeData + Debug,
+    K: Data + Debug + Send + Sync + Abomonation + Clone + Route + Hash + Eq,
+    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + Copy,
+    F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
+{
+    // 1. Generate all hash values for all repetitions
+    // 2. In each level/repetition pair, build the buckets
+    // 3. Accumulate the cost
+    // 4. Accumulate the minimum cost in a distributed fashion
+
+    scope.scoped::<Product<T, usize>, _, _>("scope_level", move |scope_level| {
+        scope_level.scoped::<CostTimestamp<T>, _, _>("scope_repetition", move |scope_repetition| {
+            let l_hashes = all_hashes_source(
+                scope_repetition,
+                left,
+                Arc::clone(&hasher),
+                matrix,
+                MatrixDirection::Rows,
+            );
+            let r_hashes = all_hashes_source(
+                scope_repetition,
+                right,
+                Arc::clone(&hasher),
+                matrix,
+                MatrixDirection::Columns,
+            );
+
+            let (left_collisions, right_collisions) = count_collisions(&l_hashes, &r_hashes);
+            (
+                select_minimum(&left_collisions),
+                select_minimum(&right_collisions),
+            )
+        })
+    })
 }

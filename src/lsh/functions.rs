@@ -1,35 +1,29 @@
 use crate::dataset::*;
-
 use crate::logging::*;
-
 use crate::measure::InnerProduct;
 use crate::operators::Route;
 use crate::operators::*;
-
 use crate::types::*;
 use abomonation::Abomonation;
 use rand::distributions::{Distribution, Normal, Uniform};
 use rand::{Rng, SeedableRng};
-
 use std::clone::Clone;
-
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
-
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Instant;
 use timely::dataflow::channels::pact::Pipeline;
 use timely::dataflow::operators::aggregation::Aggregate;
-
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::*;
+use timely::dataflow::scopes::Child;
 use timely::dataflow::*;
-
+use timely::order::Product;
 use timely::progress::Timestamp;
-
 use timely::Data;
+use timely::ExchangeData;
 
 pub trait LSHFunction {
     type Input;
