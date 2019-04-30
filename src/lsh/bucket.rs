@@ -89,6 +89,18 @@ where
             }
         }
     }
+
+    pub fn for_all_bucekts<F>(&mut self, mut action: F)
+    where
+        F: FnMut(&[(H, K)], &[(H, K)]) -> (),
+    {
+        self.left.sort_unstable_by_key(|p| p.0);
+        self.right.sort_unstable_by_key(|p| p.0);
+        let buckets_iter = BucketsIter::new(&self.left, &self.right);
+        for (lb, rb) in buckets_iter {
+            action(lb, rb);
+        }
+    }
 }
 
 impl<H, K> Default for Bucket<H, K>
