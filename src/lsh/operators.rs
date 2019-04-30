@@ -492,6 +492,7 @@ where
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn source_hashed_adaptive<G, T, K, D, F, H, R>(
     scope: &G,
+    best_levels: &Stream<G, (K, usize)>,
     global_vecs: Arc<ChunkedDataset<K, D>>,
     multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
     matrix: MatrixDescription,
@@ -518,25 +519,6 @@ where
     let logger = scope.danny_logger();
     let starting_level = multilevel_hasher.min_level();
 
-    let collisions = BestLevelEstimator::stream_collisions(
-        scope,
-        Arc::clone(&multilevel_hasher),
-        Arc::clone(&global_vecs),
-        n,
-        matrix,
-        direction,
-        rng.clone(),
-    );
-
-    // First, find the best k value for all the points
-    let best_levels = BestLevelEstimator::best_levels(
-        &collisions,
-        Arc::clone(&multilevel_hasher),
-        Arc::clone(&global_vecs),
-        matrix,
-        direction,
-        balance,
-    );
     // Find the minimum among the levels
     let min_level = best_levels
         .broadcasted_min()
@@ -881,7 +863,7 @@ fn all_hashes_source<G, T, K, D, H, F>(
 ) -> Stream<G, (H, K)>
 where
     G: Scope<Timestamp = CostTimestamp<T>>,
-    T: Timestamp,
+    T: Timestamp + Debug,
     D: ExchangeData + Debug,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
     K: Data + Debug + Send + Sync + Abomonation + Clone + Route,
@@ -899,11 +881,19 @@ where
         move |output| {
             if let Some(cap) = cap.as_mut() {
                 let mut session = output.session(cap);
+                info!(
+                    "Outputting things at level {} repetition {} (timestamp {:?})",
+                    current_level,
+                    current_repetition,
+                    cap.time()
+                );
                 for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
                     let h = hasher.hash(v, current_level, current_repetition);
                     session.give((h, k.clone()));
                 }
 
+                current_repetition += 1;
+                cap.downgrade(&cap.time().succ());
                 if current_repetition >= current_max_repetition {
                     current_level += 1;
                     if current_level > hasher.max_level() {
@@ -913,9 +903,6 @@ where
                         current_max_repetition = hasher.repetitions_at_level(current_level);
                         cap.downgrade(&Product::new(cap.time().outer.succ(), 0));
                     }
-                } else {
-                    current_repetition += 1;
-                    cap.downgrade(&cap.time().succ());
                 }
             }
 
@@ -996,7 +983,6 @@ where
                 // put it back into the pool
                 pool.give_back(bucket);
             }
-            unimplemented!()
         }
     });
     (stream_left, stream_right)
@@ -1053,7 +1039,7 @@ pub fn find_best_level<G, T, K, D, H, F>(
 ) -> (Stream<G, (K, usize)>, Stream<G, (K, usize)>)
 where
     G: Scope<Timestamp = T>,
-    T: Timestamp + Succ + ToStepId,
+    T: Timestamp + Succ + ToStepId + Debug,
     D: ExchangeData + Debug,
     K: Data + Debug + Send + Sync + Abomonation + Clone + Route + Hash + Eq,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + Copy,

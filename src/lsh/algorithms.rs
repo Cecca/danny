@@ -306,6 +306,20 @@ where
         rng,
     ));
 
+    let (levels_left, levels_right) = find_best_level(
+        scope.clone(),
+        Arc::clone(&left),
+        Arc::clone(&right),
+        Arc::clone(&multihash),
+        matrix,
+    );
+    let levels_left = levels_left
+        .matrix_distribute(MatrixDirection::Rows, matrix)
+        .map(|p| (p.1, p.2));
+    let levels_right = levels_right
+        .matrix_distribute(MatrixDirection::Columns, matrix)
+        .map(|p| (p.1, p.2));
+
     match sketcher_pair {
         Some((sketcher, sketch_predicate)) => {
             let (left_hashes_best, left_hashes_other) = source_hashed_adaptive_sketched(
@@ -343,6 +357,7 @@ where
         None => {
             let (left_hashes_best, left_hashes_other) = source_hashed_adaptive(
                 &scope,
+                &levels_left,
                 Arc::clone(&left),
                 Arc::clone(&multihash),
                 matrix,
@@ -354,6 +369,7 @@ where
             );
             let (right_hashes_best, right_hashes_other) = source_hashed_adaptive(
                 &scope,
+                &levels_right,
                 Arc::clone(&right),
                 Arc::clone(&multihash),
                 matrix,
