@@ -400,7 +400,10 @@ where
     }
 
     pub fn repetitions_at_level(&self, level: usize) -> usize {
-        self.hashers[&level].repetitions()
+        self.hashers
+            .get(&level)
+            .expect("no entry for requested level")
+            .repetitions()
     }
 
     pub fn hash(&self, v: &D, level: usize, repetition: usize) -> H {

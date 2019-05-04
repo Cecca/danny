@@ -26,6 +26,7 @@ use timely::dataflow::operators::*;
 use timely::dataflow::scopes::Child;
 use timely::dataflow::*;
 use timely::order::Product;
+use timely::progress::timestamp::PathSummary;
 use timely::progress::Timestamp;
 use timely::Data;
 use timely::ExchangeData;
@@ -601,7 +602,7 @@ where
                             let mut cnt_best = 0;
                             let mut cnt_current = 0;
                             for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
-                                let this_best_level = best_levels[key];
+                                let this_best_level = *best_levels.get(key).expect("Missing best level for vector");
                                 if current_level <= this_best_level {
                                     let h = multilevel_hasher.hash(v, current_level, current_repetition);
                                     if current_level == this_best_level {
@@ -797,7 +798,7 @@ where
                             let mut emitted_best = 0;
                             let mut emitted_current = 0;
                             for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
-                                let this_best_level = best_levels[key];
+                                let this_best_level = *best_levels.get(key).expect("Missing best level for a vector");
                                 if current_level <= this_best_level {
                                     let h = multilevel_hasher.hash(v, current_level, current_repetition);
                                     let s = sketches.get(key).expect("Missing sketch");
@@ -852,7 +853,55 @@ where
 }
 
 // The timestamp to be used in the product estimation
-type CostTimestamp<T> = Product<Product<T, usize>, usize>;
+#[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Copy, Debug, Abomonation, Default, Hash)]
+struct CostTimestamp {
+    level: usize,
+    repetition: usize,
+}
+
+impl PathSummary<CostTimestamp> for CostTimestamp {
+    #[inline]
+    fn results_in(&self, product: &CostTimestamp) -> Option<CostTimestamp> {
+        self.level.results_in(&product.level).and_then(|level| {
+            self.repetition
+                .results_in(&product.repetition)
+                .map(|repetition| Self { level, repetition })
+        })
+    }
+    #[inline]
+    fn followed_by(&self, other: &CostTimestamp) -> Option<CostTimestamp> {
+        self.level.followed_by(&other.level).and_then(|level| {
+            self.repetition
+                .followed_by(&other.repetition)
+                .map(|repetition| Self { level, repetition })
+        })
+    }
+}
+
+impl timely::PartialOrder for CostTimestamp {
+    fn less_equal(&self, other: &Self) -> bool {
+        self <= other
+    }
+}
+
+impl CostTimestamp {
+    fn advance_level(&self) -> Self {
+        Self {
+            level: self.level + 1,
+            repetition: 0,
+        }
+    }
+    fn advance_repetition(&self) -> Self {
+        Self {
+            level: self.level,
+            repetition: self.repetition + 1,
+        }
+    }
+}
+
+impl Timestamp for CostTimestamp {
+    type Summary = CostTimestamp;
+}
 
 fn all_hashes_source<G, T, K, D, H, F>(
     scope: &G,
@@ -862,7 +911,7 @@ fn all_hashes_source<G, T, K, D, H, F>(
     direction: MatrixDirection,
 ) -> Stream<G, (H, K)>
 where
-    G: Scope<Timestamp = CostTimestamp<T>>,
+    G: Scope<Timestamp = Product<T, CostTimestamp>>,
     T: Timestamp + Debug,
     D: ExchangeData + Debug,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
@@ -878,22 +927,35 @@ where
     source(&scope, "all-hashes", move |cap| {
         let hasher = Arc::clone(&hasher);
         let mut cap = Some(cap);
+        if let Some(cap) = cap.as_mut() {
+            while cap.time().inner.level < current_level {
+                cap.downgrade(&Product::new(
+                    cap.time().outer.clone(),
+                    cap.time().inner.advance_level(),
+                ));
+            }
+        }
         move |output| {
             if let Some(cap) = cap.as_mut() {
-                let mut session = output.session(cap);
                 info!(
                     "Outputting things at level {} repetition {} (timestamp {:?})",
                     current_level,
                     current_repetition,
                     cap.time()
                 );
+                assert!(cap.time().inner.level == current_level);
+                assert!(cap.time().inner.repetition == current_repetition);
+                let mut session = output.session(cap);
                 for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
                     let h = hasher.hash(v, current_level, current_repetition);
                     session.give((h, k.clone()));
                 }
 
                 current_repetition += 1;
-                cap.downgrade(&cap.time().succ());
+                cap.downgrade(&Product::new(
+                    cap.time().outer.clone(),
+                    cap.time().inner.advance_repetition(),
+                ));
                 if current_repetition >= current_max_repetition {
                     current_level += 1;
                     if current_level > hasher.max_level() {
@@ -901,9 +963,13 @@ where
                     } else {
                         current_repetition = 0;
                         current_max_repetition = hasher.repetitions_at_level(current_level);
-                        cap.downgrade(&Product::new(cap.time().outer.succ(), 0));
+                        cap.downgrade(&Product::new(
+                            cap.time().outer.clone(),
+                            cap.time().inner.advance_level(),
+                        ));
                     }
                 }
+                info!("Capability for next iteration {:?}", cap.time());
             }
 
             if done {
@@ -930,8 +996,10 @@ where
 
     let mut pool = BucketPool::default();
     let mut buckets = HashMap::new();
+    let mut caps_left = HashMap::new();
+    let mut caps_right = HashMap::new();
 
-    builder.build(move |_| {
+    builder.build(move |capabilities| {
         move |frontiers| {
             let mut input_left = FrontieredInputHandle::new(&mut input_left, &frontiers[0]);
             let mut input_right = FrontieredInputHandle::new(&mut input_right, &frontiers[0]);
@@ -940,14 +1008,24 @@ where
 
             input_left.for_each(|t, data| {
                 let mut data = data.replace(Vec::new());
-                let rep_entry = buckets.entry(t.retain()).or_insert_with(|| pool.get());
+                caps_left
+                    .entry(t.time().clone())
+                    .or_insert_with(|| t.delayed_for_output(t.time(), 0));
+                let rep_entry = buckets
+                    .entry(t.time().clone())
+                    .or_insert_with(|| pool.get());
                 for (h, k) in data.drain(..) {
                     rep_entry.push_left(h, k);
                 }
             });
             input_right.for_each(|t, data| {
                 let mut data = data.replace(Vec::new());
-                let rep_entry = buckets.entry(t.retain()).or_insert_with(|| pool.get());
+                caps_right
+                    .entry(t.time().clone())
+                    .or_insert_with(|| t.delayed_for_output(t.time(), 1));
+                let rep_entry = buckets
+                    .entry(t.time().clone())
+                    .or_insert_with(|| pool.get());
                 for (h, k) in data.drain(..) {
                     rep_entry.push_right(h, k);
                 }
@@ -956,8 +1034,8 @@ where
             let frontiers = &[input_left.frontier(), input_right.frontier()];
             for (time, buckets) in buckets.iter_mut() {
                 if frontiers.iter().all(|f| !f.less_equal(time)) {
-                    let mut session_left = output_left.session(time);
-                    let mut session_right = output_right.session(time);
+                    let mut session_left = output_left.session(&caps_left[time]);
+                    let mut session_right = output_right.session(&caps_right[time]);
                     buckets.for_all_buckets(|lb, rb| {
                         for (_, l) in lb {
                             session_left.give((l.clone(), rb.len()));
@@ -972,13 +1050,15 @@ where
 
             // Cleanup exhausted buckets, returning buckets to the pool,
             // so to reuse the allocated memory in the future
-            let cleanup_times: Vec<Capability<G::Timestamp>> = buckets
+            let cleanup_times: Vec<G::Timestamp> = buckets
                 .iter()
                 .filter(|(_, b)| b.is_empty())
                 .map(|p| p.0)
                 .cloned()
                 .collect();
             for t in cleanup_times.iter() {
+                caps_left.remove(t).unwrap();
+                caps_right.remove(t).unwrap();
                 let bucket = buckets.remove(t).unwrap();
                 // put it back into the pool
                 pool.give_back(bucket);
@@ -988,44 +1068,47 @@ where
     (stream_left, stream_right)
 }
 
-fn select_minimum<GOutput, T, K>(
-    counts: &Stream<Child<Child<GOutput, Product<T, usize>>, CostTimestamp<T>>, (K, usize)>,
+fn select_minimum<GOutput, T, K, D, H, F>(
+    counts: &Stream<Child<GOutput, Product<T, CostTimestamp>>, (K, usize)>,
+    hasher: Arc<MultilevelHasher<D, H, F>>,
 ) -> Stream<GOutput, (K, usize)>
 where
     GOutput: Scope<Timestamp = T>,
     T: Timestamp,
+    D: ExchangeData + Debug,
     K: ExchangeData + Route + Hash + Eq,
+    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + Copy,
+    F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
 {
     counts
-        // sum over the repetitions
-        .leave()
-        .aggregate(
-            |_key, val, agg| {
-                *agg += val;
-            },
-            |key, agg: usize| (key, agg),
-            Route::route,
-        )
-        // take the minimum over the levels
         .unary(Pipeline, "", |_, _| {
             |input, output| {
                 input.for_each(|t, data| {
                     let mut data = data.replace(Vec::new());
                     for (k, collisions) in data.drain(..) {
-                        output.session(&t).give((k, (t.inner, collisions)));
+                        output.session(&t).give((k, (t.inner.level, collisions)));
                     }
                 })
             }
         })
         .leave()
         .aggregate(
-            |_key, val: (usize, usize), agg: &mut (usize, usize)| {
-                if val.1 < agg.1 || (val.1 == agg.1 && val.0 < agg.0) {
-                    agg.0 = val.0;
-                    agg.1 = val.1;
-                }
+            |_key, val: (usize, usize), agg: &mut HashMap<usize, usize>| {
+                *agg.entry(val.0).or_insert(0usize) += val.1;
             },
-            |key, agg: (usize, usize)| (key, agg.0),
+            move |key, agg: HashMap<usize, usize>| {
+                let mut min_work = std::usize::MAX;
+                let mut best_level = 0;
+                for (&level, collisions) in agg.iter() {
+                    let reps = hasher.repetitions_at_level(level);
+                    let work = reps + collisions;
+                    if work < min_work {
+                        min_work = work;
+                        best_level = level;
+                    }
+                }
+                (key, best_level)
+            },
             Route::route,
         )
 }
@@ -1050,28 +1133,26 @@ where
     // 3. Accumulate the cost
     // 4. Accumulate the minimum cost in a distributed fashion
 
-    scope.scoped::<Product<T, usize>, _, _>("scope_level", move |scope_level| {
-        scope_level.scoped::<CostTimestamp<T>, _, _>("scope_repetition", move |scope_repetition| {
-            let l_hashes = all_hashes_source(
-                scope_repetition,
-                left,
-                Arc::clone(&hasher),
-                matrix,
-                MatrixDirection::Rows,
-            );
-            let r_hashes = all_hashes_source(
-                scope_repetition,
-                right,
-                Arc::clone(&hasher),
-                matrix,
-                MatrixDirection::Columns,
-            );
+    scope.scoped::<Product<T, CostTimestamp>, _, _>("scope_level", move |inner| {
+        let l_hashes = all_hashes_source(
+            inner,
+            left,
+            Arc::clone(&hasher),
+            matrix,
+            MatrixDirection::Rows,
+        );
+        let r_hashes = all_hashes_source(
+            inner,
+            right,
+            Arc::clone(&hasher),
+            matrix,
+            MatrixDirection::Columns,
+        );
 
-            let (left_collisions, right_collisions) = count_collisions(&l_hashes, &r_hashes);
-            (
-                select_minimum(&left_collisions),
-                select_minimum(&right_collisions),
-            )
-        })
+        let (left_collisions, right_collisions) = count_collisions(&l_hashes, &r_hashes);
+        (
+            select_minimum(&left_collisions, Arc::clone(&hasher)),
+            select_minimum(&right_collisions, Arc::clone(&hasher)),
+        )
     })
 }
