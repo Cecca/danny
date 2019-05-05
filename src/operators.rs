@@ -282,13 +282,13 @@ where
                     let mut data = data.replace(Vec::new());
                     for (k, v) in data.drain(..) {
                         match direction {
-                            MatrixDirection::Rows => {
+                            MatrixDirection::Columns => {
                                 let col = (k.route() % u64::from(matrix_description.columns)) as u8;
                                 for row in 0..matrix_description.rows {
                                     session.give(((row, col), k.clone(), v.clone()));
                                 }
                             }
-                            MatrixDirection::Columns => {
+                            MatrixDirection::Rows => {
                                 let row = (k.route() % u64::from(matrix_description.rows)) as u8;
                                 for col in 0..matrix_description.columns {
                                     session.give(((row, col), k.clone(), v.clone()));

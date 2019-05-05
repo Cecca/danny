@@ -315,10 +315,10 @@ where
     );
     let levels_left = levels_left
         .matrix_distribute(MatrixDirection::Rows, matrix)
-        .map(|p| (p.1, p.2));
+        .map(|triplet| (triplet.1, triplet.2));
     let levels_right = levels_right
         .matrix_distribute(MatrixDirection::Columns, matrix)
-        .map(|p| (p.1, p.2));
+        .map(|triplet| (triplet.1, triplet.2));
 
     match sketcher_pair {
         Some((sketcher, sketch_predicate)) => {

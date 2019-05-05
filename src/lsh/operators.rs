@@ -937,12 +937,6 @@ where
         }
         move |output| {
             if let Some(cap) = cap.as_mut() {
-                info!(
-                    "Outputting things at level {} repetition {} (timestamp {:?})",
-                    current_level,
-                    current_repetition,
-                    cap.time()
-                );
                 assert!(cap.time().inner.level == current_level);
                 assert!(cap.time().inner.repetition == current_repetition);
                 let mut session = output.session(cap);
@@ -969,7 +963,6 @@ where
                         ));
                     }
                 }
-                info!("Capability for next iteration {:?}", cap.time());
             }
 
             if done {
