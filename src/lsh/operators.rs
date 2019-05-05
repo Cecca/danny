@@ -1082,7 +1082,7 @@ where
                 let mut best_level = 0;
                 for (&level, collisions) in agg.iter() {
                     let reps = hasher.repetitions_at_level(level);
-                    let work = reps + collisions;
+                    let work = 10 * reps + collisions;
                     if work < min_work {
                         min_work = work;
                         best_level = level;
