@@ -1082,7 +1082,8 @@ where
     // 3. Accumulate the cost
     // 4. Accumulate the minimum cost in a distributed fashion
 
-    let iteration_cost = (left.global_n + right.global_n) as f64;
+    // let iteration_cost = (left.global_n + right.global_n) as f64;
+    let iteration_cost = 1.0;
     info!("The cost of every iteration is {}", iteration_cost);
 
     scope.scoped::<Product<T, CostTimestamp>, _, _>("scope_level", move |inner| {
