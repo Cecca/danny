@@ -376,7 +376,7 @@ where
     );
 
     (
-        Arc::new(left_builder.finish()),
-        Arc::new(right_builder.finish()),
+        Arc::new(left_builder.finish(D::num_elements(left_path_main.into()))),
+        Arc::new(right_builder.finish(D::num_elements(right_path_main.into()))),
     )
 }
