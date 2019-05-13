@@ -500,8 +500,6 @@ pub fn source_hashed_adaptive<G, T, K, D, F, H, R>(
     multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-    n: usize,
-    balance: f64,
     throttling_probe: ProbeHandle<G::Timestamp>,
     rng: R,
 ) -> Stream<G, (H, (K, bool))>
@@ -651,8 +649,6 @@ pub fn source_hashed_adaptive_sketched<G, T, K, D, F, H, R, S, SV>(
     sketcher: S,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-    n: usize,
-    balance: f64,
     throttling_probe: ProbeHandle<G::Timestamp>,
     rng: R,
 ) -> Stream<G, (H, (K, SV, bool))>

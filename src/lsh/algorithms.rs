@@ -331,8 +331,6 @@ where
                 sketcher.clone(),
                 matrix,
                 MatrixDirection::Rows,
-                sample_size,
-                cost_balance,
                 probe.clone(),
                 rng.clone(),
             );
@@ -344,8 +342,6 @@ where
                 sketcher.clone(),
                 matrix,
                 MatrixDirection::Columns,
-                sample_size,
-                cost_balance,
                 probe.clone(),
                 rng.clone(),
             );
@@ -363,8 +359,6 @@ where
                 Arc::clone(&multihash),
                 matrix,
                 MatrixDirection::Rows,
-                sample_size,
-                cost_balance,
                 probe.clone(),
                 rng.clone(),
             );
@@ -375,8 +369,6 @@ where
                 Arc::clone(&multihash),
                 matrix,
                 MatrixDirection::Columns,
-                sample_size,
-                cost_balance,
                 probe.clone(),
                 rng.clone(),
             );
