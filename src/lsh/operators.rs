@@ -1016,6 +1016,7 @@ fn select_minimum<GOutput, T, K, D, H, F>(
     counts: &Stream<Child<GOutput, Product<T, CostTimestamp>>, (K, usize)>,
     hasher: Arc<MultilevelHasher<D, H, F>>,
     balance: f64,
+    iteration_cost: f64,
 ) -> Stream<GOutput, (K, usize)>
 where
     GOutput: Scope<Timestamp = T>,
@@ -1047,7 +1048,8 @@ where
                 let mut best_level = 0;
                 for (&level, &collisions) in agg.iter() {
                     let reps = hasher.repetitions_at_level(level);
-                    let work = balance * reps as f64 + (1.0 - balance) * collisions as f64;
+                    let work = balance * iteration_cost * reps as f64
+                        + (1.0 - balance) * collisions as f64;
                     if work < min_work {
                         min_work = work;
                         best_level = level;
@@ -1080,6 +1082,9 @@ where
     // 3. Accumulate the cost
     // 4. Accumulate the minimum cost in a distributed fashion
 
+    let iteration_cost = (left.global_n + right.global_n) as f64;
+    info!("The cost of every iteration is {}", iteration_cost);
+
     scope.scoped::<Product<T, CostTimestamp>, _, _>("scope_level", move |inner| {
         let l_hashes = all_hashes_source(
             inner,
@@ -1098,8 +1103,18 @@ where
 
         let (left_collisions, right_collisions) = count_collisions(&l_hashes, &r_hashes);
         (
-            select_minimum(&left_collisions, Arc::clone(&hasher), balance),
-            select_minimum(&right_collisions, Arc::clone(&hasher), balance),
+            select_minimum(
+                &left_collisions,
+                Arc::clone(&hasher),
+                balance,
+                iteration_cost,
+            ),
+            select_minimum(
+                &right_collisions,
+                Arc::clone(&hasher),
+                balance,
+                iteration_cost,
+            ),
         )
     })
 }

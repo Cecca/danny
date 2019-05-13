@@ -7,7 +7,7 @@ pub struct ChunkedDataset<K, V>
 where
     K: Route,
 {
-    global_n: usize,
+    pub global_n: usize,
     chunks: Vec<Vec<(K, V)>>,
 }
 
