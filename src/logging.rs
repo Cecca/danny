@@ -490,7 +490,7 @@ impl FrozenExecutionSummary {
         for (level, count) in self.adaptive_histogram.iter() {
             experiment.append(
                 "adaptive_histogram",
-                row!("level" => *level, "count" => *count),
+                row!("level" => *level, "count" => *count, "worker" => self.worker_id),
             );
         }
         for ((step, depth, name), duration) in self.profile.iter() {
