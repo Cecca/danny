@@ -21,7 +21,7 @@ where
     Self: std::marker::Sized,
 {
     fn peek_one(path: PathBuf) -> Self;
-    fn read_binary<P, F>(path: PathBuf, predicate: P, fun: F)
+    fn read_binary<P, F>(path: PathBuf, predicate: P, fun: F) -> usize
     where
         P: Fn(usize) -> bool,
         F: FnMut(u64, Self) -> ();
@@ -53,12 +53,13 @@ where
         res.expect("Error deserializing").1
     }
 
-    fn read_binary<P, F>(path: PathBuf, predicate: P, mut fun: F)
+    fn read_binary<P, F>(path: PathBuf, predicate: P, mut fun: F) -> usize
     where
         P: Fn(usize) -> bool,
         F: FnMut(u64, T) -> (),
     {
         assert!(path.is_dir());
+        let mut n = 0usize;
         let files: Vec<PathBuf> = path
             .read_dir()
             .expect("Problems reading the directory")
@@ -80,13 +81,17 @@ where
             loop {
                 let res: bincode::Result<(u32, T)> = bincode::deserialize_from(&mut buf_reader);
                 match res {
-                    Ok((i, element)) => fun(u64::from(i), element),
+                    Ok((i, element)) => {
+                        n += 1;
+                        fun(u64::from(i), element)
+                    }
                     Err(_) => {
                         break;
                     }
                 }
             }
         }
+        n
     }
 
     fn num_elements(path: PathBuf) -> usize {
@@ -360,14 +365,14 @@ where
     debug!("This machine is responsible for rows: {:?}", row_set);
     debug!("This machine is responsible for columns: {:?}", column_set);
     debug!("Memory before reading data {}", proc_mem!());
-    ReadBinaryFile::read_binary(
+    let left_n = ReadBinaryFile::read_binary(
         left_path_main.into(),
         |l| row_set.contains(&((l % matrix_desc.rows as usize) as u8)),
         |c, v| {
             left_builder.insert(c as u32, v);
         },
     );
-    ReadBinaryFile::read_binary(
+    let right_n = ReadBinaryFile::read_binary(
         right_path_main.into(),
         |l| column_set.contains(&((l % matrix_desc.columns as usize) as u8)),
         |c, v| {
@@ -376,7 +381,7 @@ where
     );
 
     (
-        Arc::new(left_builder.finish()),
-        Arc::new(right_builder.finish()),
+        Arc::new(left_builder.finish(left_n)),
+        Arc::new(right_builder.finish(right_n)),
     )
 }
