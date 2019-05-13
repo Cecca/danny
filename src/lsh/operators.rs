@@ -1049,9 +1049,11 @@ where
     (stream_left, stream_right)
 }
 
+/// A balance greater than 0.5 penalizes repetitions
 fn select_minimum<GOutput, T, K, D, H, F>(
     counts: &Stream<Child<GOutput, Product<T, CostTimestamp>>, (K, usize)>,
     hasher: Arc<MultilevelHasher<D, H, F>>,
+    balance: f64,
 ) -> Stream<GOutput, (K, usize)>
 where
     GOutput: Scope<Timestamp = T>,
@@ -1061,6 +1063,7 @@ where
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + Copy,
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
 {
+    assert!(balance >= 0.0 && balance <= 1.0);
     counts
         .unary(Pipeline, "", |_, _| {
             |input, output| {
@@ -1078,11 +1081,11 @@ where
                 *agg.entry(val.0).or_insert(0usize) += val.1;
             },
             move |key, agg: HashMap<usize, usize>| {
-                let mut min_work = std::usize::MAX;
+                let mut min_work = std::f64::INFINITY;
                 let mut best_level = 0;
-                for (&level, collisions) in agg.iter() {
+                for (&level, &collisions) in agg.iter() {
                     let reps = hasher.repetitions_at_level(level);
-                    let work = 10 * reps + collisions;
+                    let work = balance * reps as f64 + (1.0 - balance) * collisions as f64;
                     if work < min_work {
                         min_work = work;
                         best_level = level;
@@ -1100,6 +1103,7 @@ pub fn find_best_level<G, T, K, D, H, F>(
     right: Arc<ChunkedDataset<K, D>>,
     hasher: Arc<MultilevelHasher<D, H, F>>,
     matrix: MatrixDescription,
+    balance: f64,
 ) -> (Stream<G, (K, usize)>, Stream<G, (K, usize)>)
 where
     G: Scope<Timestamp = T>,
@@ -1132,8 +1136,8 @@ where
 
         let (left_collisions, right_collisions) = count_collisions(&l_hashes, &r_hashes);
         (
-            select_minimum(&left_collisions, Arc::clone(&hasher)),
-            select_minimum(&right_collisions, Arc::clone(&hasher)),
+            select_minimum(&left_collisions, Arc::clone(&hasher), balance),
+            select_minimum(&right_collisions, Arc::clone(&hasher), balance),
         )
     })
 }

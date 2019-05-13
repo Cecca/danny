@@ -312,6 +312,7 @@ where
         Arc::clone(&right),
         Arc::clone(&multihash),
         matrix,
+        cost_balance,
     );
     let levels_left = levels_left
         .matrix_distribute(MatrixDirection::Rows, matrix)
