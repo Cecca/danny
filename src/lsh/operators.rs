@@ -1027,16 +1027,31 @@ where
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
 {
     let logger = counts.scope().danny_logger();
+    let mut partial_aggregator = HashMap::new();
     assert!(balance >= 0.0 && balance <= 1.0);
     counts
-        .unary(Pipeline, "", |_, _| {
-            |input, output| {
+        .unary_frontier(Pipeline, "", move |_, _| {
+            move |input, output| {
                 input.for_each(|t, data| {
                     let mut data = data.replace(Vec::new());
+                    let level = t.inner.level;
+                    let time_entry = partial_aggregator
+                        .entry(t.retain())
+                        .or_insert_with(HashMap::new);
                     for (k, collisions) in data.drain(..) {
-                        output.session(&t).give((k, (t.inner.level, collisions)));
+                        *time_entry.entry((k, level)).or_insert(0usize) += collisions;
+                        // output.session(&t).give((k, (t.inner.level, collisions)));
                     }
-                })
+                });
+                for (t, aggregator) in partial_aggregator.iter_mut() {
+                    if !input.frontier().less_equal(t) {
+                        let mut session = output.session(&t);
+                        for ((k, level), collisions) in aggregator.drain() {
+                            session.give((k, (level, collisions)))
+                        }
+                    }
+                }
+                partial_aggregator.retain(|_, d| !d.is_empty());
             }
         })
         .leave()
