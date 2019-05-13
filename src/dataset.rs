@@ -7,7 +7,6 @@ pub struct ChunkedDataset<K, V>
 where
     K: Route,
 {
-    global_n: usize,
     chunks: Vec<Vec<(K, V)>>,
 }
 
@@ -16,10 +15,7 @@ where
     K: Route,
 {
     pub fn empty() -> Self {
-        ChunkedDataset {
-            global_n: 0,
-            chunks: Vec::new(),
-        }
+        ChunkedDataset { chunks: Vec::new() }
     }
 
     pub fn builder(num_chunks: usize) -> ChunkedDatasetBuilder<K, V> {
@@ -156,12 +152,11 @@ where
         self.chunks[k.route() as usize % n_chunks].push((k, v));
     }
 
-    pub fn finish(mut self, global_n: usize) -> ChunkedDataset<K, V> {
+    pub fn finish(mut self) -> ChunkedDataset<K, V> {
         for chunk in self.chunks.iter_mut() {
             chunk.sort_by_key(|pair| pair.0.route());
         }
         ChunkedDataset {
-            global_n,
             chunks: self.chunks,
         }
     }
