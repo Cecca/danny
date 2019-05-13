@@ -1026,6 +1026,7 @@ where
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + Copy,
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
 {
+    let logger = counts.scope().danny_logger();
     assert!(balance >= 0.0 && balance <= 1.0);
     counts
         .unary(Pipeline, "", |_, _| {
@@ -1059,6 +1060,15 @@ where
             },
             Route::route,
         )
+        .inspect_batch(move |_, d| {
+            let mut levels = HashMap::new();
+            for (_, level) in d.iter() {
+                *levels.entry(level).or_insert(0) += 1;
+            }
+            for (&level, count) in levels {
+                log_event!(logger, LogEvent::AdaptiveLevelHistogram(level, count));
+            }
+        })
 }
 
 pub fn find_best_level<G, T, K, D, H, F>(

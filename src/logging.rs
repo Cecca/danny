@@ -332,6 +332,8 @@ pub enum LogEvent {
     AdaptiveBestGenerated(usize, usize),
     /// Hash values generated for current levels by the adaptive algorithm at level, across all repetitions
     AdaptiveCurrentGenerated(usize, usize),
+    /// Histogram of the distribution of levels in the adaptive algorithm (level, count) pairs
+    AdaptiveLevelHistogram(usize, usize),
     /// Profiling event, with (step, depth, name, duration)
     Profile(usize, u8, String, Duration),
 }
@@ -359,6 +361,7 @@ pub struct ExecutionSummary {
     received_hashes: HashMap<usize, usize>,
     adaptive_best: HashMap<usize, usize>,
     adaptive_current: HashMap<usize, usize>,
+    adaptive_histogram: HashMap<usize, usize>,
     profile: HashMap<(usize, u8, String), Duration>,
 }
 
@@ -373,6 +376,7 @@ impl ExecutionSummary {
             received_hashes: HashMap::new(),
             adaptive_best: HashMap::new(),
             adaptive_current: HashMap::new(),
+            adaptive_histogram: HashMap::new(),
             profile: HashMap::new(),
         }
     }
@@ -391,6 +395,7 @@ impl ExecutionSummary {
             received_hashes: Self::map_to_vec(&self.received_hashes),
             adaptive_best: Self::map_to_vec(&self.adaptive_best),
             adaptive_current: Self::map_to_vec(&self.adaptive_current),
+            adaptive_histogram: Self::map_to_vec(&self.adaptive_histogram),
             profile: Self::map_to_vec(&self.profile),
         }
     }
@@ -418,6 +423,9 @@ impl ExecutionSummary {
             LogEvent::AdaptiveCurrentGenerated(level, count) => {
                 *self.adaptive_current.entry(level).or_insert(0usize) += count;
             }
+            LogEvent::AdaptiveLevelHistogram(level, count) => {
+                *self.adaptive_histogram.entry(level).or_insert(0usize) += count;
+            }
             LogEvent::Profile(step, depth, name, duration) => {
                 *self
                     .profile
@@ -438,6 +446,7 @@ pub struct FrozenExecutionSummary {
     pub received_hashes: Vec<(usize, usize)>,
     pub adaptive_best: Vec<(usize, usize)>,
     pub adaptive_current: Vec<(usize, usize)>,
+    pub adaptive_histogram: Vec<(usize, usize)>,
     pub profile: Vec<((usize, u8, String), Duration)>,
 }
 
@@ -476,6 +485,12 @@ impl FrozenExecutionSummary {
             experiment.append(
                 "adaptive_counters",
                 row!("level" => *level, "kind" => "current", "count" => current_c),
+            );
+        }
+        for (level, count) in self.adaptive_histogram.iter() {
+            experiment.append(
+                "adaptive_histogram",
+                row!("level" => *level, "count" => *count),
             );
         }
         for ((step, depth, name), duration) in self.profile.iter() {
