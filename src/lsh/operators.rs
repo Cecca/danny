@@ -566,7 +566,7 @@ where
             });
             if let Some(min_level) = min_level {
                 if let Some(capability) = capability.as_mut() {
-                    if !throttling_probe.less_than(capability.time()) {
+                    if true { // !throttling_probe.less_than(capability.time()) {
                         if worker == 0 {
                             info!(
                                 "Level {}/{} repetition {}/{} (current memory {}, previous iter: {:?})",
