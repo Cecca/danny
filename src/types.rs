@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::fmt::Debug;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct VectorWithNorm {
     data: Vec<f32>,
     norm: f64,
@@ -40,7 +40,7 @@ impl VectorWithNorm {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Abomonation)]
+#[derive(Serialize, Deserialize, Debug, Clone, Abomonation, Default)]
 pub struct UnitNormVector {
     data: Vec<f32>,
 }
@@ -76,7 +76,7 @@ impl From<VectorWithNorm> for UnitNormVector {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct BagOfWords {
     universe: u32,
     words: Vec<u32>,

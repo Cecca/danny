@@ -26,6 +26,12 @@ where
         P: Fn(usize) -> bool,
         F: FnMut(u64, Self) -> ();
     fn num_elements(path: PathBuf) -> usize;
+    fn num_chunks(path: PathBuf) -> usize {
+        path.read_dir()
+            .expect("Problems reading the directory")
+            .map(|entry| entry.expect("Problem reading entry").path())
+            .count()
+    }
 }
 
 impl<T> ReadBinaryFile for T
