@@ -509,7 +509,7 @@ where
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
-    K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
+    K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route + Ord,
     R: Rng + SeedableRng + Clone + ?Sized + 'static + Sync + Send,
 {
     let worker: u64 = scope.index() as u64;
@@ -534,7 +534,7 @@ where
 
         let mut rep_start = Instant::now();
         let mut min_level: Option<usize> = None;
-        let mut best_levels: HashMap<K, usize> = HashMap::new();
+        let mut best_levels: BTreeMap<K, usize> = BTreeMap::new();
         // We start from the starting level of the hasher, even though the minimum level might be higher. 
         // This is to synchronize the left and right generators. They might have different
         // minimum levels, and this is the simplest way to ensure that they both are always in the
@@ -561,6 +561,9 @@ where
             best_levels_input.for_each(|_t, data| {
                 let mut data = data.replace(Vec::new());
                 for (key, level) in data.drain(..) {
+                    if format!("{:?}", key) == "57" {
+                        info!("Received key 57 for best level");
+                    }
                     best_levels.insert(key, level);
                 }
             });
@@ -590,7 +593,9 @@ where
                             let mut cnt_best = 0;
                             let mut cnt_current = 0;
                             for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
-                                let this_best_level = *best_levels.get(key).expect("Missing best level for vector");
+                                let this_best_level = *best_levels.get(key).unwrap_or_else(|| 
+                                    panic!("Missing best level for vector {:?} (direction {:?})", 
+                                    key, direction));
                                 if current_level <= this_best_level {
                                     let h = multilevel_hasher.hash(v, current_level, current_repetition);
                                     if current_level == this_best_level {
@@ -1022,7 +1027,7 @@ where
     GOutput: Scope<Timestamp = T>,
     T: Timestamp,
     D: ExchangeData + Debug,
-    K: ExchangeData + Route + Hash + Eq,
+    K: ExchangeData + Route + Hash + Eq + Debug,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + Copy,
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
 {
@@ -1030,36 +1035,51 @@ where
     let mut partial_aggregator = HashMap::new();
     assert!(balance >= 0.0 && balance <= 1.0);
     counts
-        .unary_frontier(Pipeline, "", move |_, _| {
+        .unary(Pipeline, "", move |_, _| {
             move |input, output| {
                 input.for_each(|t, data| {
                     let mut data = data.replace(Vec::new());
                     let level = t.inner.level;
+                    for (k, collisions) in data.drain(..) {
+                        output.session(&t).give((k, level, collisions));
+                    }
+                });
+            }
+        })
+        .leave()
+        // Aggregate per key and level on a worker-level, before exchanging
+        .unary_frontier(Pipeline, "", |_,_| {
+            move |input, output| {
+                input.for_each(|t, data| {
+                    let mut data = data.replace(Vec::new());
                     let time_entry = partial_aggregator
                         .entry(t.retain())
                         .or_insert_with(HashMap::new);
-                    for (k, collisions) in data.drain(..) {
+                    for (k, level, collisions) in data.drain(..) {
                         *time_entry.entry((k, level)).or_insert(0usize) += collisions;
-                        // output.session(&t).give((k, (t.inner.level, collisions)));
                     }
                 });
                 for (t, aggregator) in partial_aggregator.iter_mut() {
                     if !input.frontier().less_equal(t) {
                         let mut session = output.session(&t);
                         for ((k, level), collisions) in aggregator.drain() {
+                            if format!("{:?}", k) == "57" {
+                                info!("({:?}) Outputting partial aggregation for key 57 at level {}", t.time(), level);
+                            }
                             session.give((k, (level, collisions)))
                         }
                     }
                 }
                 partial_aggregator.retain(|_, d| !d.is_empty());
-            }
         })
-        .leave()
         .aggregate(
             |_key, val: (usize, usize), agg: &mut HashMap<usize, usize>| {
                 *agg.entry(val.0).or_insert(0usize) += val.1;
             },
             move |key, agg: HashMap<usize, usize>| {
+                if format!("{:?}", key) == "57" {
+                    info!("Computing best level for key 57");
+                }
                 let mut min_work = std::f64::INFINITY;
                 let mut best_level = 0;
                 for (&level, &collisions) in agg.iter() {
@@ -1082,6 +1102,10 @@ where
             }
             for (&level, count) in levels {
                 log_event!(logger, LogEvent::AdaptiveLevelHistogram(level, count));
+            }
+        }).inspect(|(key, _)| {
+            if format!("{:?}", key) == "57" {
+                info!("Sending key 57 for best level");
             }
         })
 }

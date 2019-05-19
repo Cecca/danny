@@ -364,6 +364,9 @@ where
         left_path_main.into(),
         |l| row_set.contains(&((l % matrix_desc.rows as usize) as u8)),
         |c, v| {
+            if c == 57 {
+                info!("Loaded vector 57");
+            }
             left_builder.insert(c as u32, v);
         },
     );
@@ -371,6 +374,9 @@ where
         right_path_main.into(),
         |l| column_set.contains(&((l % matrix_desc.columns as usize) as u8)),
         |c, v| {
+            if c == 57 {
+                info!("Loaded vector 57");
+            }
             right_builder.insert(c as u32, v);
         },
     );

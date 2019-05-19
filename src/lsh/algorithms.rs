@@ -285,7 +285,7 @@ fn generate_candidates_adaptive<K, D, G, T, F, H, S, SV, R, B>(
     rng: &mut R,
 ) -> Stream<G, (K, K)>
 where
-    K: Data + Sync + Send + Clone + Abomonation + Debug + Route + Hash + Eq,
+    K: Data + Sync + Send + Clone + Abomonation + Debug + Route + Hash + Eq + Ord,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId,
