@@ -561,9 +561,6 @@ where
             best_levels_input.for_each(|_t, data| {
                 let mut data = data.replace(Vec::new());
                 for (key, level) in data.drain(..) {
-                    if format!("{:?}", key) == "57" {
-                        info!("Received key 57 for best level");
-                    }
                     best_levels.insert(key, level);
                 }
             });
@@ -971,9 +968,6 @@ where
                     .entry(t.time().clone())
                     .or_insert_with(|| pool.get());
                 for (h, k) in data.drain(..) {
-                    if format!("{:?}", k) == "57" {
-                        info!("Pushing 57 on left bucket");
-                    }
                     rep_entry.push_left(h, k);
                 }
             });
@@ -986,9 +980,6 @@ where
                     .entry(t.time().clone())
                     .or_insert_with(|| pool.get());
                 for (h, k) in data.drain(..) {
-                    if format!("{:?}", k) == "57" {
-                        info!("Pushing 57 on right bucket");
-                    }
                     rep_entry.push_right(h, k);
                 }
             });
@@ -1000,15 +991,9 @@ where
                     let mut session_right = output_right.session(&caps_right[time]);
                     buckets.for_all_buckets(|lb, rb| {
                         for (_, l) in lb {
-                            if format!("{:?}", l) == "57" {
-                                info!("Output collision count for 57 on left channel");
-                            }
                             session_left.give((l.clone(), rb.len()));
                         }
                         for (_, r) in rb {
-                            if format!("{:?}", r) == "57" {
-                                info!("Output collision count for 57 on right channel");
-                            }
                             session_right.give((r.clone(), lb.len()));
                         }
                     });
@@ -1083,9 +1068,6 @@ where
                     if !input.frontier().less_equal(t) {
                         let mut session = output.session(&t);
                         for ((k, level), collisions) in aggregator.drain() {
-                            if format!("{:?}", k) == "57" {
-                                info!("Outputting partial aggregation for key 57 at level {}", level);
-                            }
                             session.give((k, (level, collisions)))
                         }
                     }
@@ -1097,9 +1079,6 @@ where
                 *agg.entry(val.0).or_insert(0usize) += val.1;
             },
             move |key, agg: HashMap<usize, usize>| {
-                if format!("{:?}", key) == "57" {
-                    info!("Computing best level for key 57");
-                }
                 let mut min_work = std::f64::INFINITY;
                 let mut best_level = 0;
                 for (&level, &collisions) in agg.iter() {
@@ -1122,10 +1101,6 @@ where
             }
             for (&level, count) in levels {
                 log_event!(logger, LogEvent::AdaptiveLevelHistogram(level, count));
-            }
-        }).inspect(|(key, _)| {
-            if format!("{:?}", key) == "57" {
-                info!("Sending key 57 for best level");
             }
         })
 }

@@ -170,27 +170,12 @@ where
             }
             let lend = Self::find_bucket_end(self.left, self.cur_left);
             let rend = Self::find_bucket_end(self.right, self.cur_right);
-            for (_, k) in &self.right[self.cur_right..rend.1] {
-                if format!("{:?}", k) == "57" {
-                    info!("57 is in a right bucket!");
-                }
-            }
             if lend.0 < rend.0 {
                 self.cur_left = lend.1;
             } else if lend.0 > rend.0 {
                 self.cur_right = rend.1;
             } else {
                 // We are in a non empty bucket!
-                for (_, k) in &self.left[self.cur_left..lend.1] {
-                    if format!("{:?}", k) == "57" {
-                        info!("57 is in a nonempty left bucket!");
-                    }
-                }
-                for (_, k) in &self.right[self.cur_right..rend.1] {
-                    if format!("{:?}", k) == "57" {
-                        info!("57 is in a nonempty right bucket!");
-                    }
-                }
                 let lstart = self.cur_left;
                 let rstart = self.cur_right;
                 self.cur_left = lend.1;
