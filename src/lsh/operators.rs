@@ -593,17 +593,20 @@ where
                             let mut cnt_best = 0;
                             let mut cnt_current = 0;
                             for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
-                                let this_best_level = *best_levels.get(key).unwrap_or_else(|| 
-                                    panic!("Missing best level for vector {:?} (direction {:?})", 
-                                    key, direction));
-                                if current_level <= this_best_level {
-                                    let h = multilevel_hasher.hash(v, current_level, current_repetition);
-                                    if current_level == this_best_level {
-                                        session.give((h, (key.clone(), true)));
-                                        cnt_best += 1;
-                                    } else {
-                                        session.give((h, (key.clone(), false)));
-                                        cnt_current += 1;
+                                // Here we have that some vectors may not not have a best level. This is because
+                                // those vectors didn't collide with anything in the estimatio of the cost.
+                                // Since we use the same hasher for both the estimation and the actual computation
+                                // we can simply avoid emitting the vectors for which we have no entry in the map.
+                                if let Some(&this_best_level) = best_levels.get(key) {
+                                    if current_level <= this_best_level {
+                                        let h = multilevel_hasher.hash(v, current_level, current_repetition);
+                                        if current_level == this_best_level {
+                                            session.give((h, (key.clone(), true)));
+                                            cnt_best += 1;
+                                        } else {
+                                            session.give((h, (key.clone(), false)));
+                                            cnt_current += 1;
+                                        }
                                     }
                                 }
                             }
@@ -756,16 +759,21 @@ where
                             let mut cnt_best = 0;
                             let mut cnt_current = 0;
                             for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
-                                let this_best_level = *best_levels.get(key).expect("Missing best level for vector");
-                                if current_level <= this_best_level {
-                                    let h = multilevel_hasher.hash(v, current_level, current_repetition);
-                                    let s = sketches[key].clone();
-                                    if current_level == this_best_level {
-                                        session.give((h, (key.clone(), s, true)));
-                                        cnt_best += 1;
-                                    } else {
-                                        session.give((h, (key.clone(), s, false)));
-                                        cnt_current += 1;
+                                // Here we have that some vectors may not not have a best level. This is because
+                                // those vectors didn't collide with anything in the estimatio of the cost.
+                                // Since we use the same hasher for both the estimation and the actual computation
+                                // we can simply avoid emitting the vectors for which we have no entry in the map.
+                                if let Some(&this_best_level) = best_levels.get(key) {
+                                    if current_level <= this_best_level {
+                                        let h = multilevel_hasher.hash(v, current_level, current_repetition);
+                                        let s = sketches[key].clone();
+                                        if current_level == this_best_level {
+                                            session.give((h, (key.clone(), s, true)));
+                                            cnt_best += 1;
+                                        } else {
+                                            session.give((h, (key.clone(), s, false)));
+                                            cnt_current += 1;
+                                        }
                                     }
                                 }
                             }
@@ -933,7 +941,7 @@ fn count_collisions<G, H, K>(
 ) -> (Stream<G, (K, usize)>, Stream<G, (K, usize)>)
 where
     G: Scope,
-    K: ExchangeData,
+    K: ExchangeData + Debug,
     H: ExchangeData + Ord + Copy + Route,
 {
     let mut builder = OperatorBuilder::new("collision-counter".to_owned(), left.scope());
@@ -963,6 +971,9 @@ where
                     .entry(t.time().clone())
                     .or_insert_with(|| pool.get());
                 for (h, k) in data.drain(..) {
+                    if format!("{:?}", k) == "57" {
+                        info!("Pushing 57 on left bucket");
+                    }
                     rep_entry.push_left(h, k);
                 }
             });
@@ -975,6 +986,9 @@ where
                     .entry(t.time().clone())
                     .or_insert_with(|| pool.get());
                 for (h, k) in data.drain(..) {
+                    if format!("{:?}", k) == "57" {
+                        info!("Pushing 57 on right bucket");
+                    }
                     rep_entry.push_right(h, k);
                 }
             });
@@ -986,9 +1000,15 @@ where
                     let mut session_right = output_right.session(&caps_right[time]);
                     buckets.for_all_buckets(|lb, rb| {
                         for (_, l) in lb {
+                            if format!("{:?}", l) == "57" {
+                                info!("Output collision count for 57 on left channel");
+                            }
                             session_left.give((l.clone(), rb.len()));
                         }
                         for (_, r) in rb {
+                            if format!("{:?}", r) == "57" {
+                                info!("Output collision count for 57 on right channel");
+                            }
                             session_right.give((r.clone(), lb.len()));
                         }
                     });
@@ -1064,7 +1084,7 @@ where
                         let mut session = output.session(&t);
                         for ((k, level), collisions) in aggregator.drain() {
                             if format!("{:?}", k) == "57" {
-                                info!("({:?}) Outputting partial aggregation for key 57 at level {}", t.time(), level);
+                                info!("Outputting partial aggregation for key 57 at level {}", level);
                             }
                             session.give((k, (level, collisions)))
                         }

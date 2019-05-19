@@ -1,8 +1,11 @@
+use std::fmt::Debug;
+
 /// Maintains a pool of buckets, to which used and cleared
 /// ones can be returned, in order to reuse the memory
 pub struct BucketPool<H, K>
 where
     H: Ord + Copy,
+    K: Debug,
 {
     pool: Vec<Bucket<H, K>>,
 }
@@ -10,6 +13,7 @@ where
 impl<H, K> BucketPool<H, K>
 where
     H: Ord + Copy,
+    K: Debug,
 {
     pub fn get(&mut self) -> Bucket<H, K> {
         self.pool.pop().unwrap_or_default()
@@ -23,6 +27,7 @@ where
 impl<H, K> Default for BucketPool<H, K>
 where
     H: Ord + Copy,
+    K: Debug,
 {
     fn default() -> Self {
         Self { pool: Vec::new() }
@@ -32,6 +37,7 @@ where
 pub struct Bucket<H, K>
 where
     H: Ord + Copy,
+    K: Debug,
 {
     left: Vec<(H, K)>,
     right: Vec<(H, K)>,
@@ -40,6 +46,7 @@ where
 impl<H, K> Bucket<H, K>
 where
     H: Ord + Copy,
+    K: Debug,
 {
     pub fn new() -> Self {
         Self {
@@ -106,6 +113,7 @@ where
 impl<H, K> Default for Bucket<H, K>
 where
     H: Ord + Copy,
+    K: Debug,
 {
     fn default() -> Self {
         Self::new()
@@ -115,6 +123,7 @@ where
 struct BucketsIter<'a, H, K>
 where
     H: PartialOrd + Copy,
+    K: Debug,
 {
     left: &'a [(H, K)],
     right: &'a [(H, K)],
@@ -125,6 +134,7 @@ where
 impl<'a, H, K> BucketsIter<'a, H, K>
 where
     H: PartialOrd + Copy,
+    K: Debug,
 {
     fn new(left: &'a [(H, K)], right: &'a [(H, K)]) -> Self {
         Self {
@@ -148,6 +158,7 @@ where
 
 impl<'a, H, K> Iterator for BucketsIter<'a, H, K>
 where
+    K: Debug,
     H: PartialOrd + Copy,
 {
     type Item = (&'a [(H, K)], &'a [(H, K)]);
@@ -159,12 +170,27 @@ where
             }
             let lend = Self::find_bucket_end(self.left, self.cur_left);
             let rend = Self::find_bucket_end(self.right, self.cur_right);
+            for (_, k) in &self.right[self.cur_right..rend.1] {
+                if format!("{:?}", k) == "57" {
+                    info!("57 is in a right bucket!");
+                }
+            }
             if lend.0 < rend.0 {
                 self.cur_left = lend.1;
             } else if lend.0 > rend.0 {
                 self.cur_right = rend.1;
             } else {
                 // We are in a non empty bucket!
+                for (_, k) in &self.left[self.cur_left..lend.1] {
+                    if format!("{:?}", k) == "57" {
+                        info!("57 is in a nonempty left bucket!");
+                    }
+                }
+                for (_, k) in &self.right[self.cur_right..rend.1] {
+                    if format!("{:?}", k) == "57" {
+                        info!("57 is in a nonempty right bucket!");
+                    }
+                }
                 let lstart = self.cur_left;
                 let rstart = self.cur_right;
                 self.cur_left = lend.1;
