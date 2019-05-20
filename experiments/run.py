@@ -89,12 +89,12 @@ class Dataset(object):
         return self.local_filename
 
 
-def DerivedDataset(object):
+class DerivedDataset(object):
 
     def __init__(self, name, filename, base, preprocess_fn):
         self.name = name
         self.base_path = base.get_path()
-        self.filename = filename
+        self.filename = os.path.join(DATA_DIRECTORY, filename)
         self.preprocess_fn = preprocess_fn
 
     def prepare(self):
@@ -106,7 +106,7 @@ def DerivedDataset(object):
             print("File {} missing, preparing it".format(self.filename))
             self.prepare()
         # sync()
-        return self.local_filename
+        return self.filename
 
 
 def preprocess_glove_6b(download_file, final_output):
@@ -328,7 +328,8 @@ def preprocess_livejournal(download_file, final_output):
 
 def preprocess_diverse(base_path, filepath):
     datatype = "unit-norm-vector" if "glove" in base_path else "bag-of-words"
-    tokens = filepath.split("-")
+    pre, ext = os.path.splitext(filepath)
+    tokens = pre.split("-")
     similarity_range = tokens[-2]
     size = tokens[-1]
     pre, ext = os.path.splitext(base_path)
@@ -395,14 +396,15 @@ DATASETS = {
 
 # Derived datasets
 
-derived_datasets = [
-    DerivedDataset(
-        'Livejournal-diverse-0.5-3M',
-        'Livejournal-diverse-0.5-3000000',
+derived_datasets = []
+for r in [0.5,0.7,0.9]:
+    d = DerivedDataset(
+        'Livejournal-diverse-{}-3M'.format(r),
+        'Livejournal-diverse-{}-3000000.bin'.format(r),
         DATASETS['Livejournal'],
         preprocess_diverse
     )
-]
+    derived_datasets.append(d)
 
 for d in derived_datasets:
     DATASETS[d.name] = d
