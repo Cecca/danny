@@ -71,6 +71,11 @@ where
     let hash_collection_builder = hash_collection_builder.clone();
     let rng = rng.clone();
 
+    info!(
+        "Left dataset has {} points, right has {}",
+        D::num_elements(left_path.into()),
+        D::num_elements(right_path.into())
+    );
     let (global_left, global_right) = load_vectors(left_path, right_path, &config);
 
     let estimator_samples = config.get_estimator_samples();
