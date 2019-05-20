@@ -1,7 +1,7 @@
 - hosts: all
 
   vars:
-    upstream_repository: git@github.itu.dk:mcec/danny.git
+    upstream_repository: git@github.com:mcec/danny.git
     local_repository: ~/danny
 
   tasks:
