@@ -89,6 +89,26 @@ class Dataset(object):
         return self.local_filename
 
 
+def DerivedDataset(object):
+
+    def __init__(self, name, filename, base, preprocess_fn):
+        self.name = name
+        self.base_path = base.get_path()
+        self.filename = filename
+        self.preprocess_fn = preprocess_fn
+
+    def prepare(self):
+        print("Preparing dataset", self.name)
+        self.preprocess_fn(self.base_path, self.filename)
+
+    def get_path(self):
+        if not os.path.exists(self.filename):
+            print("File {} missing, preparing it".format(self.filename))
+            self.prepare()
+        # sync()
+        return self.local_filename
+
+
 def preprocess_glove_6b(download_file, final_output):
     """Preprocess all datasets present in the glove archive"""
     tmp_dir = os.path.join(os.path.dirname(download_file), "glove_unzipped")
@@ -306,6 +326,33 @@ def preprocess_livejournal(download_file, final_output):
     )
 
 
+def preprocess_diverse(base_path, filepath):
+    datatype = "unit-norm-vector" if "glove" in base_path else "bag-of-words"
+    tokens = filepath.split("-")
+    similarity_range = tokens[-2]
+    size = tokens[-1]
+    pre, ext = os.path.splitext(base_path)
+    lid_path = pre + ".lid"
+    if not os.path.exists(lid_path):
+        print("Missing lid file for dataset", base_path)
+        print("Aborting!")
+        sys.exit(1)
+    subprocess.run(
+        [
+            "gendiverse",
+            "-t",
+            datatype,
+            "-s",
+            str(size),
+            "-r",
+            str(similarity_range),
+            base_path,
+            lid_path,
+            filepath,
+        ]
+    )
+
+
 DATASETS = {
     "Glove-6B-100": Dataset(
         "Glove-6B-100",
@@ -345,6 +392,22 @@ DATASETS = {
         preprocess_livejournal,
     ),
 }
+
+# Derived datasets
+
+derived_datasets = [
+    DerivedDataset(
+        'Livejournal-diverse-0.5-3M',
+        'Livejournal-diverse-0.5-3000000',
+        DATASETS['Livejournal'],
+        preprocess_diverse
+    )
+]
+
+for d in derived_datasets:
+    DATASETS[d.name] = d
+
+
 
 
 def should_run(exp_tags, only_tags):
