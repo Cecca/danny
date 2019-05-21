@@ -406,6 +406,30 @@ for r in [0.5,0.7,0.9]:
     )
     derived_datasets.append(d)
 
+    d = DerivedDataset(
+        'Orkut-diverse-{}-3M'.format(r),
+        'Orkut-diverse-{}-3000000.bin'.format(r),
+        DATASETS['Orkut'],
+        preprocess_diverse
+    )
+    derived_datasets.append(d)
+
+    d = DerivedDataset(
+        'AOL-diverse-{}-3M'.format(r),
+        'AOL-diverse-{}-3000000.bin'.format(r),
+        DATASETS['AOL'],
+        preprocess_diverse
+    )
+    derived_datasets.append(d)
+
+    d = DerivedDataset(
+        'Glove-27-diverse-{}-3M'.format(r),
+        'Glove-27-diverse-{}-3000000.bin'.format(r),
+        DATASETS['Glove-27-200'],
+        preprocess_diverse
+    )
+    derived_datasets.append(d)
+
 for d in derived_datasets:
     DATASETS[d.name] = d
 
