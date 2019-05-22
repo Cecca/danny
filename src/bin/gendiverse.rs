@@ -124,10 +124,30 @@ fn run<D>(
     add_lids(lid_path, range, &mut data);
     data.sort_by(|t1, t2| t1.0.partial_cmp(&t2.0).expect("Problem doing comparison"));
     info!("Sorted by local intrinsic dimensionality");
+    // Find the first index where the LID is non zero. We will bucket all these
+    // vectors on their own. Otherwise we get with many vectors with LID 0 in
+    // the output.
+    let gt_0_index = data.iter().take_while(|p| p.0 == 0.0).count();
+    let mut bucks: Vec<&[(f64, D)]> = Vec::new();
+    bucks.push(&data[0..gt_0_index]);
+    let mut cur_idx = gt_0_index;
+    let mut bucket_width = (data.len() - gt_0_index) / (buckets - 1);
+    if bucket_width == 0 {
+        warn!("Too many buckets requested! Using buckets of width 1");
+        bucket_width = 1;
+    }
+    assert!(bucket_width > 0);
+    while cur_idx < n {
+        info!("Current index is {}", cur_idx);
+        let buck_end = std::cmp::min(cur_idx + bucket_width, n);
+        bucks.push(&data[cur_idx..buck_end]);
+        cur_idx += bucket_width;
+    }
+    info!("Built buckets");
 
     let mut cnt = 0;
     let mut rng = XorShiftRng::seed_from_u64(seed);
-    let bucket_distr = Uniform::new(0usize, buckets);
+    let bucket_distr = Uniform::new(0usize, bucks.len());
     info!("Extremal LIDs: {} and {}", data[0].0, data[n - 1].0);
 
     info!("Start sampling");
@@ -137,12 +157,11 @@ fn run<D>(
         }
         cnt += 1;
         let idx = rng.sample(&bucket_distr);
-        let w = n / buckets;
-        let bucket_start = idx * w;
-        let bucket_end = std::cmp::min(bucket_start + w, n);
-        let d = Uniform::new(bucket_start, bucket_end);
-        let idx = rng.sample(&d);
-        Some(data[idx].1.perturb(&mut rng))
+        let b = bucks[idx];
+        let d = Uniform::new(0, b.len());
+        let i = rng.sample(&d);
+        let res = b[i].1.perturb(&mut rng);
+        Some(res)
     });
 
     WriteBinaryFile::write_binary(
