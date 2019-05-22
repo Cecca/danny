@@ -78,7 +78,7 @@ impl From<VectorWithNorm> for UnitNormVector {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct BagOfWords {
-    universe: u32,
+    pub universe: u32,
     words: Vec<u32>,
 }
 

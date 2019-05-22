@@ -1,6 +1,6 @@
-/// Generate a diverse dataset starting from the given one 
+/// Generate a diverse dataset starting from the given one
 /// and the distribution of its LIDs
- 
+
 #[macro_use]
 extern crate clap;
 #[macro_use]
@@ -11,46 +11,105 @@ extern crate env_logger;
 extern crate rayon;
 extern crate serde;
 
-use std::collections::HashMap;
 use danny::io::*;
 use danny::logging::ProgressLogger;
 use danny::measure::*;
 use danny::types::*;
-use rayon::prelude::*;
+use rand::distributions::Exp1;
+use rand::distributions::Normal;
+use rand::distributions::Uniform;
+use rand::Rng;
+use rand::SeedableRng;
+use rand_xorshift::XorShiftRng;
 use std::fs::File;
-use std::io::BufWriter;
-use std::io::BufReader;
 use std::io::BufRead;
+use std::io::BufReader;
+use std::io::BufWriter;
 use std::io::Write;
 use std::path::PathBuf;
-use rand_xorshift::XorShiftRng;
-use rand::SeedableRng;
-use rand::Rng;
-use rand::distributions::Uniform;
 
-use crossbeam_channel::unbounded;
-use std::sync::Arc;
-use std::thread;
-use std::time::Duration;
+trait Perturb {
+    fn perturb<R>(&self, rng: &mut R) -> Self
+    where
+        R: Rng;
+}
+
+impl Perturb for UnitNormVector {
+    fn perturb<R>(&self, rng: &mut R) -> UnitNormVector
+    where
+        R: Rng,
+    {
+        let noise = Normal::new(0.0, 0.01);
+        let new_data: Vec<f32> = self
+            .data()
+            .iter()
+            .map(|x| x + rng.sample(noise) as f32)
+            .collect();
+        UnitNormVector::new(new_data)
+    }
+}
+
+impl Perturb for BagOfWords {
+    fn perturb<R>(&self, rng: &mut R) -> BagOfWords
+    where
+        R: Rng,
+    {
+        let num_words = rng.sample(Exp1).ceil() as usize;
+        let wordgen = Uniform::new(0u32, self.universe);
+        let mut new_words = self.words().clone();
+        for _ in 0..num_words {
+            let w = rng.sample(wordgen);
+            new_words.push(w);
+        }
+        new_words.sort();
+        new_words.dedup();
+        BagOfWords::new(self.universe, new_words)
+    }
+}
 
 fn add_lids<D>(path: &PathBuf, range: f64, vecs: &mut Vec<(f64, D)>) {
     let f = File::open(path).expect("Problem opening LID file");
     let input = BufReader::new(f);
+    let mut cnt = 0;
     for line in input.lines() {
         let line = line.expect("Problem reading line");
         let mut tokens = line.split_whitespace();
-        let idx = tokens.next().expect("Missing token").parse::<usize>().expect("Problem parsing idx");
-        let r = tokens.next().expect("Missing token").parse::<f64>().expect("Problem parsing range");
-        let lid = tokens.next().expect("Missing token").parse::<f64>().expect("Problem parsing lid");
+        let idx = tokens
+            .next()
+            .expect("Missing token")
+            .parse::<usize>()
+            .expect("Problem parsing idx");
+        let r = tokens
+            .next()
+            .expect("Missing token")
+            .parse::<f64>()
+            .expect("Problem parsing range");
+        let lid = tokens
+            .next()
+            .expect("Missing token")
+            .parse::<f64>()
+            .expect("Problem parsing lid");
         if r == range {
+            cnt += 1;
             vecs[idx].0 = lid;
         }
     }
+    assert!(
+        cnt > 0,
+        "The requested range was not present in the LID file"
+    );
 }
 
-fn run<D>(path: &PathBuf, outputpath: &PathBuf, lid_path: &PathBuf, range: f64, target: usize, buckets: usize, seed: u64)
-where
-    D: ReadBinaryFile + WriteBinaryFile + Send + Sync + Default + Clone + 'static,
+fn run<D>(
+    path: &PathBuf,
+    outputpath: &PathBuf,
+    lid_path: &PathBuf,
+    range: f64,
+    target: usize,
+    buckets: usize,
+    seed: u64,
+) where
+    D: ReadBinaryFile + WriteBinaryFile + Send + Sync + Default + Clone + Perturb + 'static,
 {
     let n = D::num_elements(path.to_path_buf());
     let mut data: Vec<(f64, D)> = vec![(0.0f64, D::default()); n];
@@ -69,7 +128,7 @@ where
     let mut cnt = 0;
     let mut rng = XorShiftRng::seed_from_u64(seed);
     let bucket_distr = Uniform::new(0usize, buckets);
-    info!("Extremal LIDs: {} and {}", data[0].0, data[n-1].0);
+    info!("Extremal LIDs: {} and {}", data[0].0, data[n - 1].0);
 
     info!("Start sampling");
     let output_iter = std::iter::from_fn(move || {
@@ -83,15 +142,15 @@ where
         let bucket_end = std::cmp::min(bucket_start + w, n);
         let d = Uniform::new(bucket_start, bucket_end);
         let idx = rng.sample(&d);
-        Some(data[idx].1.clone())
+        Some(data[idx].1.perturb(&mut rng))
     });
 
     WriteBinaryFile::write_binary(
-        outputpath.to_path_buf(), 
-        D::num_chunks(path.to_path_buf()), 
-        output_iter);
+        outputpath.to_path_buf(),
+        D::num_chunks(path.to_path_buf()),
+        output_iter,
+    );
 }
-
 
 fn main() {
     let matches = clap_app!(lid =>
@@ -117,14 +176,34 @@ fn main() {
     let input: PathBuf = matches.value_of("INPUT").unwrap().into();
     let lid_path: PathBuf = matches.value_of("LID").unwrap().into();
     let output: PathBuf = matches.value_of("OUTPUT").unwrap().into();
-    let buckets: usize = matches.value_of("BUCKETS").unwrap_or("100").parse::<usize>().expect("Problem parsing the number of buckets");
-    let target: usize = matches.value_of("TARGET").unwrap().parse::<usize>().expect("Problem parsing the target");
-    let seed: u64 = matches.value_of("SEED").unwrap_or("140981350987").parse::<u64>().expect("Problem parsing the seed");
-    let range: f64 = matches.value_of("RANGE").unwrap().parse::<f64>().expect("Problem parsing the seed");
+    let buckets: usize = matches
+        .value_of("BUCKETS")
+        .unwrap_or("100")
+        .parse::<usize>()
+        .expect("Problem parsing the number of buckets");
+    let target: usize = matches
+        .value_of("TARGET")
+        .unwrap()
+        .parse::<usize>()
+        .expect("Problem parsing the target");
+    let seed: u64 = matches
+        .value_of("SEED")
+        .unwrap_or("140981350987")
+        .parse::<u64>()
+        .expect("Problem parsing the seed");
+    let range: f64 = matches
+        .value_of("RANGE")
+        .unwrap()
+        .parse::<f64>()
+        .expect("Problem parsing the seed");
     let datatype: String = matches.value_of("TYPE").unwrap().to_owned();
     match datatype.as_ref() {
-        "bag-of-words" => run::<BagOfWords>(&input, &output, &lid_path, range, target, buckets, seed),
-        "unit-norm-vector" => run::<UnitNormVector>(&input, &output, &lid_path, range, target, buckets, seed),
+        "bag-of-words" => {
+            run::<BagOfWords>(&input, &output, &lid_path, range, target, buckets, seed)
+        }
+        "unit-norm-vector" => {
+            run::<UnitNormVector>(&input, &output, &lid_path, range, target, buckets, seed)
+        }
         e => panic!("Unsupported measure {}", e),
     };
     info!("Done!");
