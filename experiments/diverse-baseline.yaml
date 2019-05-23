@@ -1,0 +1,102 @@
+---
+environment:
+  DANNY_THREADS: 8
+  DANNY_HOSTS: "sss00:2001,sss01:2001,sss02:2001,sss03:2001,sss04:2001"
+  DANNY_BASELINES_PATH: "/mnt/fast_storage/users/mcec/baselines.csv"
+  DANNY_COST_BALANCE: 0.5
+  DANNY_DATA_DIR: /mnt/fast_storage/users/mcec
+  DANNY_SKETCH_EPSILON: 0.01
+experiments:
+
+  - name: Glove fixed
+    tags:
+      - glove
+      - cosine
+      - fixed
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --algorithm: all-2-all
+      --range: 0.5
+      --measure: cosine
+    arguments:
+      - ["{{ dataset('Glove-27-diverse-0.5-3M')}}", "{{ dataset('Glove-27-200') }}"]
+
+  - name: Glove fixed
+    tags:
+      - glove
+      - cosine
+      - fixed
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --algorithm: all-2-all
+      --range: 0.7
+      --measure: cosine
+    arguments:
+      - ["{{ dataset('Glove-27-diverse-0.7-3M')}}", "{{ dataset('Glove-27-200') }}"]
+
+  - name: Glove fixed
+    tags:
+      - glove
+      - cosine
+      - fixed
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --algorithm: all-2-all
+      --range: 0.9
+      --measure: cosine
+    arguments:
+      - ["{{ dataset('Glove-27-diverse-0.9-3M')}}", "{{ dataset('Glove-27-200') }}"]
+
+  - name: Bag of Words (fixed)
+    tags:
+      - jaccard
+      - fixed
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --algorithm: all-2-all
+      --range: 0.5
+      --measure: jaccard
+    arguments:
+      - ["{{ dataset('AOL-diverse-0.5-3M') }}", "{{ dataset('AOL') }}"]
+      - ["{{ dataset('Livejournal-diverse-0.5-3M') }}", "{{ dataset('Livejournal') }}"]      
+      - ["{{ dataset('Orkut-diverse-0.5-3M') }}", "{{ dataset('Orkut') }}"]
+
+  - name: Bag of Words (fixed)
+    tags:
+      - jaccard
+      - fixed
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --algorithm: all-2-all
+      --range: 0.7
+      --measure: jaccard
+    arguments:
+      - ["{{ dataset('AOL-diverse-0.7-3M') }}", "{{ dataset('AOL') }}"]
+      - ["{{ dataset('Livejournal-diverse-0.7-3M') }}", "{{ dataset('Livejournal') }}"]      
+      - ["{{ dataset('Orkut-diverse-0.7-3M') }}", "{{ dataset('Orkut') }}"]
+
+  - name: Bag of Words (fixed)
+    tags:
+      - jaccard
+      - fixed
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --algorithm: all-2-all
+      --range: 0.9
+      --measure: jaccard
+    arguments:
+      - ["{{ dataset('AOL-diverse-0.9-3M') }}", "{{ dataset('AOL') }}"]
+      - ["{{ dataset('Livejournal-diverse-0.9-3M') }}", "{{ dataset('Livejournal') }}"]      
+      - ["{{ dataset('Orkut-diverse-0.9-3M') }}", "{{ dataset('Orkut') }}"]
