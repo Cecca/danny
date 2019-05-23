@@ -392,6 +392,12 @@ DATASETS = {
         "Livejournal.bin",
         preprocess_livejournal,
     ),
+    "GNews": Dataset(
+        "GNews",
+        "",
+        "GoogleNews-vectors-negative300.bin",
+        lambda a, b: raise Exception("Preprocessing unimplemented")
+    )
 }
 
 # Derived datasets
