@@ -1096,7 +1096,7 @@ fn count_collisions<G, H, K>(
 where
     G: Scope,
     K: ExchangeData + Debug,
-    H: ExchangeData + Ord + Route,
+    H: ExchangeData + Ord + Route + Debug,
 {
     let mut builder = OperatorBuilder::new("collision-counter".to_owned(), left.scope());
     let mut input_left = builder.new_input(&left, ExchangePact::new(|p: &(H, K)| p.0.route()));

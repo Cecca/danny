@@ -6,7 +6,7 @@ use std::ops::Range;
 /// ones can be returned, in order to reuse the memory
 pub struct BucketPool<H, K>
 where
-    H: Ord,
+    H: Ord + Debug,
     K: Debug,
 {
     pool: Vec<Bucket<H, K>>,
@@ -14,7 +14,7 @@ where
 
 impl<H, K> BucketPool<H, K>
 where
-    H: Ord,
+    H: Ord + Debug,
     K: Debug,
 {
     pub fn get(&mut self) -> Bucket<H, K> {
@@ -28,7 +28,7 @@ where
 
 impl<H, K> Default for BucketPool<H, K>
 where
-    H: Ord,
+    H: Ord + Debug,
     K: Debug,
 {
     fn default() -> Self {
@@ -38,7 +38,7 @@ where
 
 pub struct Bucket<H, K>
 where
-    H: Ord,
+    H: Ord + Debug,
     K: Debug,
 {
     left: Vec<(H, K)>,
@@ -47,7 +47,7 @@ where
 
 impl<H, K> Bucket<H, K>
 where
-    H: Ord,
+    H: Ord + Debug,
     K: Debug,
 {
     pub fn new() -> Self {
@@ -117,7 +117,7 @@ where
 
 impl<H, K> Bucket<H, (K, u8)>
 where
-    for<'a> H: Ord + PrefixHash<'a>,
+    for<'a> H: Ord + PrefixHash<'a> + Debug,
     K: Debug,
 {
     /// This method can be applied just to buckets such that information about the
@@ -142,11 +142,21 @@ where
             for (lb, rb) in buckets_iter {
                 for l in lb {
                     let l_level = (l.1).1;
-                    for r in rb {
-                        let r_level = (r.1).1;
-                        assert!(l.0.prefix_eq(&r.0, p as usize));
-                        if l_level == p || r_level == p {
-                            action(&(l.1).0, &(r.1).0);
+                    if l_level >= p {
+                        for r in rb {
+                            let r_level = (r.1).1;
+                            if r_level >= p {
+                                assert!(l.0.prefix_eq(&r.0, p as usize));
+                                if l_level == p || r_level == p {
+                                    // if format!("{:?}", l.1) != format!("{:?}", r.1) {
+                                    //     info!(
+                                    //         "(prefix {}) Emitting pair with hash values\n\t{:?} {:?}\n\t{:?} {:?}",
+                                    //         p, l.0, l.1, r.0, r.1
+                                    //     );
+                                    // }
+                                    action(&(l.1).0, &(r.1).0);
+                                }
+                            }
                         }
                     }
                 }
@@ -157,7 +167,7 @@ where
 
 impl<H, K> Default for Bucket<H, K>
 where
-    H: Ord,
+    H: Ord + Debug,
     K: Debug,
 {
     fn default() -> Self {
