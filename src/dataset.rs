@@ -184,7 +184,7 @@ mod test {
                 expected.insert(i, i);
             }
         }
-        let actual = actual.finish();
+        let actual = actual.finish(1000);
         assert_eq!(actual.len(), expected.len());
 
         for i in 0..1000 {
