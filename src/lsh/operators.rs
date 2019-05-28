@@ -1027,6 +1027,7 @@ fn all_hashes_source<G, T, K, D, H, F>(
     hasher: Arc<MultilevelHasher<D, H, F>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
+    throttling_probe: ProbeHandle<T>,
 ) -> Stream<G, (H, K)>
 where
     G: Scope<Timestamp = T>,
@@ -1047,15 +1048,18 @@ where
         let mut cap = Some(cap);
         move |output| {
             if let Some(cap) = cap.as_mut() {
-                let mut session = output.session(cap);
-                for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
-                    let h = hasher.hash(v, max_level, current_repetition);
-                    session.give((h, k.clone()));
-                }
-                current_repetition += 1;
-                cap.downgrade(&cap.time().succ());
-                if current_repetition >= num_repetitions {
-                    done = true;
+                if !throttling_probe.less_than(cap.time()) {
+                    info!("Estimation repetition {}", current_repetition);
+                    let mut session = output.session(cap);
+                    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
+                        let h = hasher.hash(v, max_level, current_repetition);
+                        session.give((h, k.clone()));
+                    }
+                    current_repetition += 1;
+                    cap.downgrade(&cap.time().succ());
+                    if current_repetition >= num_repetitions {
+                        done = true;
+                    }
                 }
             }
 
@@ -1071,6 +1075,7 @@ fn count_collisions<G, H, K>(
     max_level: usize,
     left: &Stream<G, (H, K)>,
     right: &Stream<G, (H, K)>,
+    probe: ProbeHandle<G::Timestamp>,
 ) -> (Stream<G, (K, (u8, usize))>, Stream<G, (K, (u8, usize))>)
 where
     G: Scope,
@@ -1164,7 +1169,10 @@ where
             }
         }
     });
-    (stream_left, stream_right)
+    (
+        stream_left.probe_with(&mut probe.clone()),
+        stream_right.probe_with(&mut probe.clone()),
+    )
 }
 
 /// A balance greater than 0.5 penalizes repetitions
@@ -1183,7 +1191,6 @@ where
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
 {
     let logger = counts.scope().danny_logger();
-    let max_repetition = hasher.repetitions_at_level(hasher.max_level());
     assert!(balance >= 0.0 && balance <= 1.0);
     counts
         .leave()
@@ -1245,6 +1252,7 @@ where
     info!("The cost of every iteration is {}", iteration_cost);
     let max_level = hasher.max_level();
     let min_level = hasher.min_level();
+    let probe = ProbeHandle::new();
 
     scope.scoped::<Product<T, u8>, _, _>("estimation scope", |inner| {
         let l_hashes = all_hashes_source(
@@ -1253,6 +1261,7 @@ where
             Arc::clone(&hasher),
             matrix,
             MatrixDirection::Rows,
+            probe.clone(),
         );
         let r_hashes = all_hashes_source(
             inner,
@@ -1260,10 +1269,11 @@ where
             Arc::clone(&hasher),
             matrix,
             MatrixDirection::Columns,
+            probe.clone(),
         );
 
         let (left_collisions, right_collisions) =
-            count_collisions(min_level, max_level, &l_hashes, &r_hashes);
+            count_collisions(min_level, max_level, &l_hashes, &r_hashes, probe.clone());
         (
             select_minimum(
                 &left_collisions,
