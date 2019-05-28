@@ -735,7 +735,9 @@ where
                 }
             });
             if let Some(capability) = capability.as_mut() {
-                if !throttling_probe.less_than(capability.time()) {
+                if !best_levels_input.frontier().less_equal(capability.time())
+                    && !throttling_probe.less_than(capability.time())
+                {
                     if worker == 0 {
                         info!(
                             "Repetition {}/{} (current memory {}, previous iter: {:?})",
@@ -1135,10 +1137,6 @@ where
                     });
                     buckets.clear();
                     for ((k, level), count) in collisions_left.drain() {
-                        info!(
-                            "Outputting partial count information ({:?}, ({}, {}))",
-                            k, level, count
-                        );
                         session_left.give((k, (level as u8, count)));
                     }
                     for ((k, level), count) in collisions_right.drain() {
