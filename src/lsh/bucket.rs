@@ -165,6 +165,26 @@ where
     }
 }
 
+impl<H, K> Bucket<H, K>
+where
+    for<'a> H: Ord + PrefixHash<'a> + Debug,
+    K: Debug,
+{
+    pub fn for_all_prefixes<F>(&mut self, max_level: usize, mut action: F)
+    where
+        F: FnMut(usize, &[(H, K)], &[(H, K)]) -> (),
+    {
+        self.left.sort_unstable_by(|p1, p2| p1.0.lex_cmp(&p2.0));
+        self.right.sort_unstable_by(|p1, p2| p1.0.lex_cmp(&p2.0));
+        for p in 1..=max_level {
+            let buckets_iter = BucketsPrefixIter::new(&self.left, &self.right, p as usize);
+            for (lb, rb) in buckets_iter {
+                action(p, lb, rb);
+            }
+        }
+    }
+}
+
 impl<H, K> Default for Bucket<H, K>
 where
     H: Ord + Debug,
