@@ -7,6 +7,7 @@ use crate::logging::init_event_logging;
 use crate::logging::*;
 use crate::lsh::functions::*;
 use crate::lsh::operators::*;
+use crate::lsh::prefix_hash::*;
 use crate::operators::Route;
 use crate::operators::*;
 use crate::sketch::*;
@@ -53,7 +54,8 @@ where
         ReadBinaryFile + Deserialize<'de> + Data + Sync + Send + Clone + Abomonation + Debug,
     F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
     H: LSHFunction<Input = D, Output = O> + Sync + Send + Clone + 'static,
-    O: Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash + Ord,
+    for<'a> O:
+        Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash + Ord + PrefixHash<'a>,
     S: Sketcher<Input = D, Output = V> + Send + Sync + Clone + 'static,
     V: Data + Debug + Sync + Send + Clone + Abomonation + SketchEstimate + BitBasedSketch,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
@@ -295,7 +297,8 @@ where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
-    H: Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash + Ord,
+    for<'a> H:
+        Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash + Ord + PrefixHash<'a>,
     S: Sketcher<Input = D, Output = SV> + Send + Sync + Clone + 'static,
     SV: Data + Debug + Sync + Send + Clone + Abomonation + SketchEstimate + BitBasedSketch,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
@@ -378,9 +381,7 @@ where
                 probe.clone(),
                 rng.clone(),
             );
-            left_hashes
-                .bucket_pred(&right_hashes, |l, r| unimplemented!())
-                .map(|(l, r)| (l.0, r.0))
+            left_hashes.bucket_prefixes(&right_hashes, |_, _| true)
         }
     }
 }
