@@ -129,7 +129,7 @@ impl<G, T, H, K> BucketStream<G, T, H, K> for Stream<G, (H, K)>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + ToStepId,
-    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + Copy,
+    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)> {
@@ -939,7 +939,7 @@ fn count_collisions<G, H, K>(
 where
     G: Scope,
     K: ExchangeData + Debug,
-    H: ExchangeData + Ord + Copy + Route,
+    H: ExchangeData + Ord + Route,
 {
     let mut builder = OperatorBuilder::new("collision-counter".to_owned(), left.scope());
     let mut input_left = builder.new_input(&left, ExchangePact::new(|p: &(H, K)| p.0.route()));
@@ -1033,7 +1033,7 @@ where
     T: Timestamp,
     D: ExchangeData + Debug,
     K: ExchangeData + Route + Hash + Eq + Debug,
-    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + Copy,
+    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord ,
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
 {
     let logger = counts.scope().danny_logger();
@@ -1118,7 +1118,7 @@ where
     T: Timestamp + Succ + ToStepId + Debug,
     D: ExchangeData + Debug,
     K: Data + Debug + Send + Sync + Abomonation + Clone + Route + Hash + Eq,
-    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + Copy,
+    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
 {
     // 1. Generate all hash values for all repetitions

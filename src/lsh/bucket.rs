@@ -4,7 +4,7 @@ use std::fmt::Debug;
 /// ones can be returned, in order to reuse the memory
 pub struct BucketPool<H, K>
 where
-    H: Ord + Copy,
+    H: Ord,
     K: Debug,
 {
     pool: Vec<Bucket<H, K>>,
@@ -12,7 +12,7 @@ where
 
 impl<H, K> BucketPool<H, K>
 where
-    H: Ord + Copy,
+    H: Ord,
     K: Debug,
 {
     pub fn get(&mut self) -> Bucket<H, K> {
@@ -26,7 +26,7 @@ where
 
 impl<H, K> Default for BucketPool<H, K>
 where
-    H: Ord + Copy,
+    H: Ord,
     K: Debug,
 {
     fn default() -> Self {
@@ -36,7 +36,7 @@ where
 
 pub struct Bucket<H, K>
 where
-    H: Ord + Copy,
+    H: Ord,
     K: Debug,
 {
     left: Vec<(H, K)>,
@@ -45,7 +45,7 @@ where
 
 impl<H, K> Bucket<H, K>
 where
-    H: Ord + Copy,
+    H: Ord,
     K: Debug,
 {
     pub fn new() -> Self {
@@ -84,8 +84,8 @@ where
     where
         F: FnMut(&K, &K) -> (),
     {
-        self.left.sort_unstable_by_key(|p| p.0);
-        self.right.sort_unstable_by_key(|p| p.0);
+        self.left.sort_unstable_by(|p1, p2| p1.0.cmp(&p2.0));
+        self.right.sort_unstable_by(|p1, p2| p1.0.cmp(&p2.0));
         let buckets_iter = BucketsIter::new(&self.left, &self.right);
         for (lb, rb) in buckets_iter {
             for l in lb {
@@ -101,8 +101,8 @@ where
     where
         F: FnMut(&[(H, K)], &[(H, K)]) -> (),
     {
-        self.left.sort_unstable_by_key(|p| p.0);
-        self.right.sort_unstable_by_key(|p| p.0);
+        self.left.sort_unstable_by(|p1, p2| p1.0.cmp(&p2.0));
+        self.right.sort_unstable_by(|p1, p2| p1.0.cmp(&p2.0));
         let buckets_iter = BucketsIter::new(&self.left, &self.right);
         for (lb, rb) in buckets_iter {
             action(lb, rb);
@@ -112,7 +112,7 @@ where
 
 impl<H, K> Default for Bucket<H, K>
 where
-    H: Ord + Copy,
+    H: Ord,
     K: Debug,
 {
     fn default() -> Self {
@@ -122,7 +122,7 @@ where
 
 struct BucketsIter<'a, H, K>
 where
-    H: PartialOrd + Copy,
+    H: PartialOrd,
     K: Debug,
 {
     left: &'a [(H, K)],
@@ -133,7 +133,7 @@ where
 
 impl<'a, H, K> BucketsIter<'a, H, K>
 where
-    H: PartialOrd + Copy,
+    H: PartialOrd,
     K: Debug,
 {
     fn new(left: &'a [(H, K)], right: &'a [(H, K)]) -> Self {
@@ -145,12 +145,12 @@ where
         }
     }
 
-    fn find_bucket_end(items: &[(H, K)], start: usize) -> (H, usize) {
-        let start_hash = items[start].0;
+    fn find_bucket_end<'b>(items: &'b [(H, K)], start: usize) -> (&'b H, usize) {
+        let start_hash = &items[start].0;
         let end = start
             + items[start..]
                 .iter()
-                .take_while(|p| p.0 == start_hash)
+                .take_while(|p| &p.0 == start_hash)
                 .count();
         (start_hash, end)
     }
@@ -159,7 +159,7 @@ where
 impl<'a, H, K> Iterator for BucketsIter<'a, H, K>
 where
     K: Debug,
-    H: PartialOrd + Copy,
+    H: PartialOrd,
 {
     type Item = (&'a [(H, K)], &'a [(H, K)]);
 

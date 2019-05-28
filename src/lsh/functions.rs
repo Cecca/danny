@@ -209,7 +209,6 @@ pub struct MinHash {
     k: usize,
     alphas: Vec<u64>,
     betas: Vec<u64>,
-    coeffs: Vec<u64>,
 }
 
 impl MinHash {
@@ -221,21 +220,18 @@ impl MinHash {
         let uniform = Uniform::new(0u64, std::u64::MAX);
         let mut alphas = Vec::with_capacity(k);
         let mut betas = Vec::with_capacity(k);
-        let mut coeffs = Vec::with_capacity(k);
         for _ in 0..k {
             alphas.push(uniform.sample(rng));
             betas.push(uniform.sample(rng));
-            coeffs.push(uniform.sample(rng));
         }
-        MinHash {
-            k,
-            alphas,
-            betas,
-            coeffs,
-        }
+        MinHash { k, alphas, betas }
     }
 
-    pub fn collection<R>(k: usize, repetitions: usize, rng: &mut R) -> LSHCollection<MinHash, u32>
+    pub fn collection<R>(
+        k: usize,
+        repetitions: usize,
+        rng: &mut R,
+    ) -> LSHCollection<MinHash, Vec<u32>>
     where
         R: Rng + ?Sized,
     {
@@ -248,7 +244,7 @@ impl MinHash {
 
     pub fn collection_builder<R>(
         threshold: f64,
-    ) -> impl Fn(usize, &mut R) -> LSHCollection<MinHash, u32> + Clone
+    ) -> impl Fn(usize, &mut R) -> LSHCollection<MinHash, Vec<u32>> + Clone
     where
         R: Rng + ?Sized,
     {
@@ -262,17 +258,11 @@ impl MinHash {
 
 impl LSHFunction for MinHash {
     type Input = BagOfWords;
-    type Output = u32;
+    type Output = Vec<u32>;
 
-    fn hash(&self, v: &BagOfWords) -> u32 {
-        let mut h = 0u64;
-        // for (hasher, coeff) in self.hashers.iter().zip(self.coeffs.iter()) {
-        for ((alpha, beta), coeff) in self
-            .alphas
-            .iter()
-            .zip(self.betas.iter())
-            .zip(self.coeffs.iter())
-        {
+    fn hash(&self, v: &BagOfWords) -> Vec<u32> {
+        let mut result = Vec::with_capacity(self.k);
+        for (alpha, beta) in self.alphas.iter().zip(self.betas.iter()) {
             assert!(!v.words().is_empty(), "The collection of words is empty");
             let min_w = v
                 .words()
@@ -280,9 +270,10 @@ impl LSHFunction for MinHash {
                 .map(|w| (alpha.wrapping_mul(u64::from(*w))).wrapping_add(*beta) >> 32)
                 .min()
                 .expect("No minimum");
-            h = h.wrapping_add(coeff.wrapping_mul(min_w));
+            // The hash value has already been masked to 32 bits at this point
+            result.push(min_w as u32);
         }
-        (h >> 32) as u32
+        result
     }
 
     fn probability_at_range(range: f64) -> f64 {
