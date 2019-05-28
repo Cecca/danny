@@ -636,53 +636,6 @@ where
     })
 }
 
-/// Represents the current repetition, along with the current minimum level to be looked at
-#[derive(PartialEq, PartialOrd, Ord, Eq, Clone, Copy, Abomonation, Hash, Debug, Default)]
-pub struct AdaptiveTimestamp {
-    repetition: usize,
-    min_level: u8,
-    max_level: u8,
-}
-
-impl Timestamp for AdaptiveTimestamp {
-    type Summary = AdaptiveTimestamp;
-}
-
-impl PathSummary<AdaptiveTimestamp> for AdaptiveTimestamp {
-    #[inline]
-    fn results_in(&self, product: &AdaptiveTimestamp) -> Option<AdaptiveTimestamp> {
-        unimplemented!("This should be needed just in `feedback`, which we don't use")
-    }
-    #[inline]
-    fn followed_by(&self, other: &AdaptiveTimestamp) -> Option<AdaptiveTimestamp> {
-        unimplemented!("This should be needed just in `feedback`, which we don't use")
-    }
-}
-
-impl timely::PartialOrder for AdaptiveTimestamp {
-    fn less_equal(&self, other: &Self) -> bool {
-        self.repetition <= other.repetition
-    }
-}
-
-impl ToStepId for AdaptiveTimestamp {
-    fn to_step_id(&self) -> usize {
-        self.repetition
-    }
-}
-
-impl AdaptiveTimestamp {
-    fn new(repetition: usize, min_level: usize, max_level: usize) -> Self {
-        assert!(min_level < max_level);
-        assert!(max_level < std::u8::MAX as usize);
-        Self {
-            repetition,
-            min_level: min_level as u8,
-            max_level: max_level as u8,
-        }
-    }
-}
-
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn source_hashed_adaptive<G, T, K, D, F, H, R>(
     scope: &G,
@@ -970,57 +923,6 @@ where
     output_stream
 }
 
-// The timestamp to be used in the product estimation
-#[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Copy, Debug, Abomonation, Default, Hash)]
-struct CostTimestamp {
-    level: usize,
-    repetition: usize,
-}
-
-impl PathSummary<CostTimestamp> for CostTimestamp {
-    #[inline]
-    fn results_in(&self, product: &CostTimestamp) -> Option<CostTimestamp> {
-        self.level.results_in(&product.level).and_then(|level| {
-            self.repetition
-                .results_in(&product.repetition)
-                .map(|repetition| Self { level, repetition })
-        })
-    }
-    #[inline]
-    fn followed_by(&self, other: &CostTimestamp) -> Option<CostTimestamp> {
-        self.level.followed_by(&other.level).and_then(|level| {
-            self.repetition
-                .followed_by(&other.repetition)
-                .map(|repetition| Self { level, repetition })
-        })
-    }
-}
-
-impl timely::PartialOrder for CostTimestamp {
-    fn less_equal(&self, other: &Self) -> bool {
-        self <= other
-    }
-}
-
-impl CostTimestamp {
-    fn advance_level(&self) -> Self {
-        Self {
-            level: self.level + 1,
-            repetition: 0,
-        }
-    }
-    fn advance_repetition(&self) -> Self {
-        Self {
-            level: self.level,
-            repetition: self.repetition + 1,
-        }
-    }
-}
-
-impl Timestamp for CostTimestamp {
-    type Summary = CostTimestamp;
-}
-
 fn all_hashes_source<G, T, K, D, H, F>(
     scope: &G,
     vecs: Arc<ChunkedDataset<K, D>>,
@@ -1049,7 +951,9 @@ where
         move |output| {
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
-                    info!("Estimation repetition {}", current_repetition);
+                    if worker == 0 {
+                        info!("Estimation repetition {}", current_repetition);
+                    }
                     let mut session = output.session(cap);
                     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
                         let h = hasher.hash(v, max_level, current_repetition);
