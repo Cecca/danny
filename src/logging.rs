@@ -492,6 +492,7 @@ impl FrozenExecutionSummary {
                 "adaptive_histogram",
                 row!("level" => *level, "count" => *count, "worker" => self.worker_id),
             );
+            info!("  AH: {} - {}", level, count);
         }
         for ((step, depth, name), duration) in self.profile.iter() {
             experiment.append(
