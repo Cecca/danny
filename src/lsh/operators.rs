@@ -18,6 +18,7 @@ use std::time::Instant;
 use timely::communication::Push;
 use timely::dataflow::channels::pact::{Exchange as ExchangePact, Pipeline};
 use timely::dataflow::operators::aggregation::Aggregate;
+use timely::dataflow::operators::aggregation::StateMachine;
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::generic::{FrontieredInputHandle, OutputHandle};
@@ -1052,6 +1053,7 @@ where
                     session.give((h, k.clone()));
                 }
                 current_repetition += 1;
+                cap.downgrade(&cap.time().succ());
                 if current_repetition >= num_repetitions {
                     done = true;
                 }
@@ -1167,7 +1169,7 @@ where
 
 /// A balance greater than 0.5 penalizes repetitions
 fn select_minimum<G, T, K, D, H, F>(
-    counts: &Stream<G, (K, (u8, usize))>,
+    counts: &Stream<Child<G, Product<T, u8>>, (K, (u8, usize))>,
     hasher: Arc<MultilevelHasher<D, H, F>>,
     balance: f64,
     iteration_cost: f64,
@@ -1181,8 +1183,10 @@ where
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
 {
     let logger = counts.scope().danny_logger();
+    let max_repetition = hasher.repetitions_at_level(hasher.max_level());
     assert!(balance >= 0.0 && balance <= 1.0);
     counts
+        .leave()
         .aggregate(
             |_key, val: (u8, usize), agg: &mut HashMap<u8, usize>| {
                 *agg.entry(val.0).or_insert(0usize) += val.1;
@@ -1215,7 +1219,7 @@ where
 }
 
 pub fn find_best_level<G, T, K, D, H, F>(
-    scope: G,
+    mut scope: G,
     left: Arc<ChunkedDataset<K, D>>,
     right: Arc<ChunkedDataset<K, D>>,
     hasher: Arc<MultilevelHasher<D, H, F>>,
@@ -1242,35 +1246,37 @@ where
     let max_level = hasher.max_level();
     let min_level = hasher.min_level();
 
-    let l_hashes = all_hashes_source(
-        &scope,
-        left,
-        Arc::clone(&hasher),
-        matrix,
-        MatrixDirection::Rows,
-    );
-    let r_hashes = all_hashes_source(
-        &scope,
-        right,
-        Arc::clone(&hasher),
-        matrix,
-        MatrixDirection::Columns,
-    );
+    scope.scoped::<Product<T, u8>, _, _>("estimation scope", |inner| {
+        let l_hashes = all_hashes_source(
+            inner,
+            left,
+            Arc::clone(&hasher),
+            matrix,
+            MatrixDirection::Rows,
+        );
+        let r_hashes = all_hashes_source(
+            inner,
+            right,
+            Arc::clone(&hasher),
+            matrix,
+            MatrixDirection::Columns,
+        );
 
-    let (left_collisions, right_collisions) =
-        count_collisions(min_level, max_level, &l_hashes, &r_hashes);
-    (
-        select_minimum(
-            &left_collisions,
-            Arc::clone(&hasher),
-            balance,
-            iteration_cost,
-        ),
-        select_minimum(
-            &right_collisions,
-            Arc::clone(&hasher),
-            balance,
-            iteration_cost,
-        ),
-    )
+        let (left_collisions, right_collisions) =
+            count_collisions(min_level, max_level, &l_hashes, &r_hashes);
+        (
+            select_minimum(
+                &left_collisions,
+                Arc::clone(&hasher),
+                balance,
+                iteration_cost,
+            ),
+            select_minimum(
+                &right_collisions,
+                Arc::clone(&hasher),
+                balance,
+                iteration_cost,
+            ),
+        )
+    })
 }
