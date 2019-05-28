@@ -1063,6 +1063,7 @@ where
 }
 
 fn count_collisions<G, H, K>(
+    min_level: usize,
     max_level: usize,
     left: &Stream<G, (H, K)>,
     right: &Stream<G, (H, K)>,
@@ -1122,7 +1123,7 @@ where
                     let mut collisions_right = HashMap::new();
                     let mut session_left = output_left.session(&caps_left[time]);
                     let mut session_right = output_right.session(&caps_right[time]);
-                    buckets.for_all_prefixes(max_level, |level, lb, rb| {
+                    buckets.for_all_prefixes(min_level, max_level, |level, lb, rb| {
                         for (_, l) in lb {
                             *collisions_left.entry((l.clone(), level)).or_insert(0usize) +=
                                 rb.len();
@@ -1241,6 +1242,7 @@ where
     let iteration_cost = 1.0;
     info!("The cost of every iteration is {}", iteration_cost);
     let max_level = hasher.max_level();
+    let min_level = hasher.min_level();
 
     let l_hashes = all_hashes_source(
         &scope,
@@ -1257,7 +1259,8 @@ where
         MatrixDirection::Columns,
     );
 
-    let (left_collisions, right_collisions) = count_collisions(max_level, &l_hashes, &r_hashes);
+    let (left_collisions, right_collisions) =
+        count_collisions(min_level, max_level, &l_hashes, &r_hashes);
     (
         select_minimum(
             &left_collisions,
