@@ -328,33 +328,34 @@ where
 
     match sketcher_pair {
         Some((sketcher, sketch_predicate)) => {
-            let left_hashes = source_hashed_adaptive_sketched(
-                &scope,
-                &levels_left,
-                Arc::clone(&left),
-                Arc::clone(&multihash),
-                sketcher.clone(),
-                matrix,
-                MatrixDirection::Rows,
-                probe.clone(),
-                rng.clone(),
-            );
-            let right_hashes = source_hashed_adaptive_sketched(
-                &scope,
-                &levels_right,
-                Arc::clone(&right),
-                Arc::clone(&multihash),
-                sketcher.clone(),
-                matrix,
-                MatrixDirection::Columns,
-                probe.clone(),
-                rng.clone(),
-            );
-            left_hashes
-                .bucket_pred(&right_hashes, move |l, r| {
-                    (l.2 || r.2) && (sketch_predicate.eval(&l.1, &r.1))
-                })
-                .map(|(l, r)| (l.0, r.0))
+            unimplemented!()
+            // let left_hashes = source_hashed_adaptive_sketched(
+            //     &scope,
+            //     &levels_left,
+            //     Arc::clone(&left),
+            //     Arc::clone(&multihash),
+            //     sketcher.clone(),
+            //     matrix,
+            //     MatrixDirection::Rows,
+            //     probe.clone(),
+            //     rng.clone(),
+            // );
+            // let right_hashes = source_hashed_adaptive_sketched(
+            //     &scope,
+            //     &levels_right,
+            //     Arc::clone(&right),
+            //     Arc::clone(&multihash),
+            //     sketcher.clone(),
+            //     matrix,
+            //     MatrixDirection::Columns,
+            //     probe.clone(),
+            //     rng.clone(),
+            // );
+            // left_hashes
+            //     .bucket_pred(&right_hashes, move |l, r| {
+            //         (l.2 || r.2) && (sketch_predicate.eval(&l.1, &r.1))
+            //     })
+            //     .map(|(l, r)| (l.0, r.0))
         }
         None => {
             let left_hashes = source_hashed_adaptive(
@@ -378,7 +379,7 @@ where
                 rng.clone(),
             );
             left_hashes
-                .bucket_pred(&right_hashes, |l, r| l.1 || r.1)
+                .bucket_pred(&right_hashes, |l, r| unimplemented!())
                 .map(|(l, r)| (l.0, r.0))
         }
     }

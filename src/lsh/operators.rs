@@ -1,3 +1,4 @@
+use crate::lsh::prefix_hash::*;
 use crate::dataset::*;
 use crate::logging::*;
 use crate::lsh::bucket::*;
@@ -215,6 +216,136 @@ where
                             let mut session = output.session(time);
                             let mut cnt = 0;
                             buckets.for_all(|l, r| {
+                                if pred(l, r) {
+                                    session.give((l.clone(), r.clone()));
+                                    cnt += 1;
+                                }
+                            });
+                            buckets.clear();
+                            log_event!(
+                                logger,
+                                LogEvent::GeneratedPairs(time.time().to_step_id(), cnt)
+                            );
+                        }
+                    }
+
+                    // Cleanup exhausted buckets, returning buckets to the pool,
+                    // so to reuse the allocated memory in the future
+                    let cleanup_times: Vec<Capability<T>> = buckets
+                        .iter()
+                        .filter(|(_, b)| b.is_empty())
+                        .map(|p| p.0)
+                        .cloned()
+                        .collect();
+                    for t in cleanup_times.iter() {
+                        let bucket = buckets.remove(t).unwrap();
+                        // put it back into the pool
+                        pool.give_back(bucket);
+                    }
+                }
+            },
+        )
+    }
+}
+
+pub trait BucketPrefixesStream<G, T, H, K>
+where
+    G: Scope<Timestamp = T>,
+    T: Timestamp,
+    for<'a> H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + PrefixHash<'a>,
+    K: Data + Debug + Send + Sync + Abomonation + Clone,
+{
+    fn bucket_prefixes<P>(&self, right: &Self, predicate: P) -> Stream<G, (K, K)>
+    where
+        P: FnMut(&K, &K) -> bool + 'static;
+}
+
+impl<G, T, H, K> BucketPrefixesStream<G, T, H, K> for Stream<G, (H, (K, u8))>
+where
+    G: Scope<Timestamp = T>,
+    T: Timestamp + ToStepId,
+    for<'a> H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + PrefixHash<'a>,
+    K: Data + Debug + Send + Sync + Abomonation + Clone,
+{
+    #[allow(clippy::explicit_counter_loop)]
+    fn bucket_prefixes<P>(&self, right: &Self, pred: P) -> Stream<G, (K, K)>
+    where
+        P: FnMut(&K, &K) -> bool + 'static,
+    {
+        let mut buckets = HashMap::new();
+        let mut pool = BucketPool::default();
+        let logger = self.scope().danny_logger();
+
+        self.binary_frontier(
+            &right,
+            ExchangePact::new(|pair: &(H, (K, u8))| pair.0.route()),
+            ExchangePact::new(|pair: &(H, (K, u8))| pair.0.route()),
+            "bucket",
+            move |_, _| {
+                let mut pred = pred;
+                move |left_in, right_in, output| {
+                    left_in.for_each(|t, d| {
+                        let _pg = ProfileGuard::new(
+                            logger.clone(),
+                            t.time().to_step_id(),
+                            1,
+                            "bucket_receive",
+                        );
+                        debug!(
+                            "Received batch of left messages for time {:?}:\n\t{:?}",
+                            t.time(),
+                            d.iter()
+                        );
+                        let mut data = d.replace(Vec::new());
+                        log_event!(
+                            logger,
+                            LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
+                        );
+                        let rep_entry = buckets.entry(t.retain()).or_insert_with(|| pool.get());
+                        for (h, k) in data.drain(..) {
+                            rep_entry.push_left(h, k);
+                        }
+                    });
+                    right_in.for_each(|t, d| {
+                        let _pg = ProfileGuard::new(
+                            logger.clone(),
+                            t.time().to_step_id(),
+                            1,
+                            "bucket_receive",
+                        );
+                        debug!(
+                            "Received batch of right messages for time {:?}:\n\t{:?}",
+                            t.time(),
+                            d.iter()
+                        );
+                        let mut data = d.replace(Vec::new());
+                        log_event!(
+                            logger,
+                            LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
+                        );
+                        let rep_entry = buckets.entry(t.retain()).or_insert_with(|| pool.get());
+                        for (h, k) in data.drain(..) {
+                            rep_entry.push_right(h, k);
+                        }
+                    });
+                    let frontiers = &[left_in.frontier(), right_in.frontier()];
+                    for (time, buckets) in buckets.iter_mut() {
+                        if frontiers.iter().all(|f| !f.less_equal(time)) {
+                            let _pg = ProfileGuard::new(
+                                logger.clone(),
+                                time.time().to_step_id(),
+                                1,
+                                "candidate_emission",
+                            );
+                            // Emit some output pairs
+                            info!(
+                                "Outputting pairs out of buckets from {} left and {} right vectors",
+                                buckets.len_left(),
+                                buckets.len_right()
+                            );
+                            let mut session = output.session(time);
+                            let mut cnt = 0;
+                            buckets.for_prefixes(|l, r| {
                                 if pred(l, r) {
                                     session.give((l.clone(), r.clone()));
                                     cnt += 1;
@@ -492,6 +623,54 @@ where
     })
 }
 
+/// Represents the current repetition, along with the current minimum level to be looked at
+#[derive(PartialEq, PartialOrd, Ord, Eq, Clone, Copy, Abomonation, Hash, Debug, Default)]
+pub struct AdaptiveTimestamp {
+    repetition: usize,
+    min_level: u8,
+    max_level: u8,
+}
+
+impl Timestamp for AdaptiveTimestamp {
+    type Summary = AdaptiveTimestamp;
+}
+
+impl PathSummary<AdaptiveTimestamp> for AdaptiveTimestamp {
+    #[inline]
+    fn results_in(&self, product: &AdaptiveTimestamp) -> Option<AdaptiveTimestamp> {
+        unimplemented!("This should be needed just in `feedback`, which we don't use")
+    }
+    #[inline]
+    fn followed_by(&self, other: &AdaptiveTimestamp) -> Option<AdaptiveTimestamp> {
+        unimplemented!("This should be needed just in `feedback`, which we don't use")
+    }
+}
+
+impl timely::PartialOrder for AdaptiveTimestamp {
+    fn less_equal(&self, other: &Self) -> bool {
+        self.repetition <= other.repetition
+    }
+}
+
+impl ToStepId for AdaptiveTimestamp {
+    fn to_step_id(&self) -> usize {
+        self.repetition
+    }
+}
+
+impl AdaptiveTimestamp {
+    fn new(repetition: usize, min_level: usize, max_level: usize) -> Self {
+        assert!(min_level < max_level);
+        assert!(max_level < std::u8::MAX as usize);
+        Self{
+            repetition,
+            min_level: min_level as u8,
+            max_level: max_level as u8
+        }
+    }
+}
+
+
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn source_hashed_adaptive<G, T, K, D, F, H, R>(
     scope: &G,
@@ -502,7 +681,7 @@ pub fn source_hashed_adaptive<G, T, K, D, F, H, R>(
     direction: MatrixDirection,
     throttling_probe: ProbeHandle<G::Timestamp>,
     rng: R,
-) -> Stream<G, (H, (K, bool))>
+) -> Stream<G, (H, (K, u8))>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId,
@@ -534,14 +713,10 @@ where
 
         let mut rep_start = Instant::now();
         let mut min_level: Option<usize> = None;
+        let mut max_level = multilevel_hasher.max_level();
         let mut best_levels: BTreeMap<K, usize> = BTreeMap::new();
-        // We start from the starting level of the hasher, even though the minimum level might be higher. 
-        // This is to synchronize the left and right generators. They might have different
-        // minimum levels, and this is the simplest way to ensure that they both are always in the
-        // same round. Performance-wise it doesn't hurt much to run through some empty levels.
-        let mut current_level = starting_level;
+        let mut num_repetitions = multilevel_hasher.repetitions_at_level(max_level);
         let mut current_repetition = 0;
-        let mut current_max_repetitions = 0;
         let mut done = false;
         let vecs = Arc::clone(&global_vecs_2);
 
@@ -556,7 +731,6 @@ where
                 assert!(min_level.is_none());
                 assert!(data.len() == 1);
                 min_level.replace(data[0]);
-                current_max_repetitions = multilevel_hasher_2.repetitions_at_level(current_level);
             });
             best_levels_input.for_each(|_t, data| {
                 let mut data = data.replace(Vec::new());
@@ -569,11 +743,9 @@ where
                     if !throttling_probe.less_than(capability.time()) {
                         if worker == 0 {
                             info!(
-                                "Level {}/{} repetition {}/{} (current memory {}, previous iter: {:?})",
-                                current_level,
-                                max_level,
+                                "Repetition {}/{} (current memory {}, previous iter: {:?})",
                                 current_repetition,
-                                current_max_repetitions,
+                                num_repetitions,
                                 proc_mem!(),
                                 Instant::now() - rep_start
                             );
@@ -581,56 +753,31 @@ where
                         log_event!(logger, LogEvent::Profile(
                             capability.time().to_step_id(), 0, "repetition".to_owned(), Instant::now() - rep_start));
                         rep_start = Instant::now();
-                        if current_level >= min_level {
-                            let _pg = ProfileGuard::new(
-                                logger.clone(), capability.time().to_step_id(), 1, "hash_generation");
-                            let start = Instant::now();
+                        let _pg = ProfileGuard::new(
+                            logger.clone(), capability.time().to_step_id(), 1, "hash_generation");
+                        let start = Instant::now();
 
-                            let mut session = output.session(&capability);
-                            let mut cnt_best = 0;
-                            let mut cnt_current = 0;
-                            for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
-                                // Here we have that some vectors may not not have a best level. This is because
-                                // those vectors didn't collide with anything in the estimatio of the cost.
-                                // Since we use the same hasher for both the estimation and the actual computation
-                                // we can simply avoid emitting the vectors for which we have no entry in the map.
-                                if let Some(&this_best_level) = best_levels.get(key) {
-                                    if current_level <= this_best_level {
-                                        let h = multilevel_hasher.hash(v, current_level, current_repetition);
-                                        if current_level == this_best_level {
-                                            session.give((h, (key.clone(), true)));
-                                            cnt_best += 1;
-                                        } else {
-                                            session.give((h, (key.clone(), false)));
-                                            cnt_current += 1;
-                                        }
-                                    }
+                        let mut session = output.session(&capability);
+                        let mut cnt_best = 0;
+                        let mut cnt_current = 0;
+                        let active_levels = multilevel_hasher.levels_at_repetition(current_repetition);
+                        for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
+                            // Here we have that some vectors may not not have a best level. This is because
+                            // those vectors didn't collide with anything in the estimatio of the cost.
+                            // Since we use the same hasher for both the estimation and the actual computation
+                            // we can simply avoid emitting the vectors for which we have no entry in the map.
+                            if let Some(&this_best_level) = best_levels.get(key) {
+                                if active_levels.contains(&this_best_level){
+                                    // We hash to the max level because the levelling will be taken care of in the buckets
+                                    let h = multilevel_hasher.hash(v, max_level, current_repetition);
+                                    session.give((h, (key.clone(), this_best_level as u8)));
                                 }
                             }
-                            log_event!(
-                                logger,
-                                LogEvent::AdaptiveBestGenerated(current_level, cnt_best)
-                            );
-                            log_event!(
-                                logger,
-                                LogEvent::AdaptiveCurrentGenerated(current_level, cnt_current)
-                            );
-                            info!(
-                                "Emitted all {} + {} hashed values in {:?}",
-                                cnt_best, cnt_current,
-                                Instant::now() - start
-                            );
                         }
                         capability.downgrade(&capability.time().succ());
                         current_repetition += 1;
-                        if current_repetition >= current_max_repetitions {
-                            current_level += 1;
-                            done = current_level > max_level;
-                            if !done {
-                                current_repetition = 0;
-                                current_max_repetitions =
-                                    multilevel_hasher_2.repetitions_at_level(current_level)
-                            }
+                        if current_repetition >= num_repetitions {
+                            done = true;
                         }
                     }
                 }

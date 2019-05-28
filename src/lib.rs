@@ -1,5 +1,6 @@
 #![feature(fn_traits)]
 #![feature(unboxed_closures)]
+#![feature(range_contains)]
 
 #[macro_use]
 extern crate log;

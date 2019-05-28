@@ -115,24 +115,39 @@ where
     }
 }
 
-impl<'a, H, K> Bucket<H, K>
+impl<H, K> Bucket<H, (K, u8)>
 where
-    H: Ord + PrefixHash<'a>,
+    for<'a> H: Ord + PrefixHash<'a>,
     K: Debug,
 {
-    pub fn for_prefixes<F>(&'a mut self, prefix_range: Range<usize>, mut action: F)
+    /// This method can be applied just to buckets such that information about the
+    /// best level is attached to keys.
+    pub fn for_prefixes<F>(&mut self, mut action: F)
     where
         F: FnMut(&K, &K) -> (),
     {
+        let min_level: u8 = *std::cmp::min(
+            self.left.iter().map(|(_, (_, l))| l).min().unwrap(),
+            self.right.iter().map(|(_, (_, l))| l).min().unwrap(),
+        );
+        let max_level: u8 = *std::cmp::max(
+            self.left.iter().map(|(_, (_, l))| l).max().unwrap(),
+            self.right.iter().map(|(_, (_, l))| l).max().unwrap(),
+        );
+        let prefix_range = min_level..=max_level;
         self.left.sort_unstable_by(|p1, p2| p1.0.lex_cmp(&p2.0));
         self.right.sort_unstable_by(|p1, p2| p1.0.lex_cmp(&p2.0));
         for p in prefix_range {
-            let buckets_iter = BucketsPrefixIter::<'a, _, _>::new(&self.left, &self.right, p);
+            let buckets_iter = BucketsPrefixIter::new(&self.left, &self.right, p as usize);
             for (lb, rb) in buckets_iter {
                 for l in lb {
+                    let l_level = (l.1).1;
                     for r in rb {
+                        let r_level = (r.1).1;
                         assert!(l.0 == r.0);
-                        action(&l.1, &r.1);
+                        if l_level == p || r_level == p {
+                            action(&(l.1).0, &(r.1).0);
+                        }
                     }
                 }
             }

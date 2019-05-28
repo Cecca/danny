@@ -397,6 +397,17 @@ where
             .repetitions()
     }
 
+    pub fn levels_at_repetition(&self, repetition: usize) -> std::ops::RangeInclusive<usize> {
+        let mut start = self.min_level();
+        let max_level = self.max_level();
+        // increment while we are below max level and while there
+        // are still repetitions to do for this level
+        while start <= max_level && self.repetitions_at_level(start) >= repetition {
+            start += 1;
+        }
+        start..=max_level
+    }
+
     pub fn hash(&self, v: &D, level: usize, repetition: usize) -> H {
         self.hashers[&level].hash(v, repetition)
     }
