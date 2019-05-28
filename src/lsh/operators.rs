@@ -345,6 +345,8 @@ where
                             );
                             let mut session = output.session(time);
                             let mut cnt = 0;
+                            info!("Starting candidate emission {:?}", proc_mem!());
+                            let start = Instant::now();
                             buckets.for_prefixes(|l, r| {
                                 if pred(l, r) {
                                     session.give((l.clone(), r.clone()));
@@ -352,6 +354,8 @@ where
                                 }
                             });
                             buckets.clear();
+                            let end = Instant::now();
+                            info!("Emitted candidate pairs in {:?} ({:?})", end - start, proc_mem!());
                             log_event!(
                                 logger,
                                 LogEvent::GeneratedPairs(time.time().to_step_id(), cnt)
