@@ -144,7 +144,7 @@ where
                     let l_level = (l.1).1;
                     for r in rb {
                         let r_level = (r.1).1;
-                        assert!(l.0 == r.0);
+                        assert!(l.0.prefix_eq(&r.0, p as usize));
                         if l_level == p || r_level == p {
                             action(&(l.1).0, &(r.1).0);
                         }

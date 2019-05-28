@@ -398,13 +398,11 @@ where
     }
 
     pub fn levels_at_repetition(&self, repetition: usize) -> std::ops::RangeInclusive<usize> {
-        let mut start = self.min_level();
+        let min_level = self.min_level();
         let max_level = self.max_level();
-        // increment while we are below max level and while there
-        // are still repetitions to do for this level
-        while start <= max_level && self.repetitions_at_level(start) >= repetition {
-            start += 1;
-        }
+        let start = (min_level..=max_level)
+            .find(|&l| self.repetitions_at_level(l) >= repetition)
+            .unwrap();
         start..=max_level
     }
 

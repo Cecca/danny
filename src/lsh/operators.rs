@@ -693,6 +693,7 @@ where
 {
     let worker: u64 = scope.index() as u64;
     let max_level = multilevel_hasher.max_level();
+    let num_repetitions = multilevel_hasher.repetitions_at_level(max_level);
     let multilevel_hasher = Arc::clone(&multilevel_hasher);
     let multilevel_hasher_2 = Arc::clone(&multilevel_hasher);
     let global_vecs_2 = Arc::clone(&global_vecs);
@@ -713,9 +714,7 @@ where
 
         let mut rep_start = Instant::now();
         let mut min_level: Option<usize> = None;
-        let mut max_level = multilevel_hasher.max_level();
         let mut best_levels: BTreeMap<K, usize> = BTreeMap::new();
-        let mut num_repetitions = multilevel_hasher.repetitions_at_level(max_level);
         let mut current_repetition = 0;
         let mut done = false;
         let vecs = Arc::clone(&global_vecs_2);
@@ -728,6 +727,7 @@ where
             let mut output = output.activate();
 
             min_level_input.for_each(|_t, data| {
+                // TODO: Remove this input channel
                 assert!(min_level.is_none());
                 assert!(data.len() == 1);
                 min_level.replace(data[0]);
@@ -738,6 +738,7 @@ where
                     best_levels.insert(key, level);
                 }
             });
+            // TODO: Remove min_level
             if let Some(min_level) = min_level {
                 if let Some(capability) = capability.as_mut() {
                     if !throttling_probe.less_than(capability.time()) {
@@ -755,11 +756,9 @@ where
                         rep_start = Instant::now();
                         let _pg = ProfileGuard::new(
                             logger.clone(), capability.time().to_step_id(), 1, "hash_generation");
-                        let start = Instant::now();
 
                         let mut session = output.session(&capability);
-                        let mut cnt_best = 0;
-                        let mut cnt_current = 0;
+                        let mut cnt = 0;
                         let active_levels = multilevel_hasher.levels_at_repetition(current_repetition);
                         for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
                             // Here we have that some vectors may not not have a best level. This is because
@@ -771,9 +770,11 @@ where
                                     // We hash to the max level because the levelling will be taken care of in the buckets
                                     let h = multilevel_hasher.hash(v, max_level, current_repetition);
                                     session.give((h, (key.clone(), this_best_level as u8)));
+                                    cnt += 1;
                                 }
                             }
                         }
+                        info!("Emitted {} hashed vectors (active levels {:?})", cnt, active_levels);
                         capability.downgrade(&capability.time().succ());
                         current_repetition += 1;
                         if current_repetition >= num_repetitions {
