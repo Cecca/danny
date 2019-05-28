@@ -721,6 +721,7 @@ where
                     let mut session = output.session(&capability);
                     let mut cnt = 0;
                     let active_levels = multilevel_hasher.levels_at_repetition(current_repetition);
+                    let mut histogram = BTreeMap::new();
                     for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
                         // Here we have that some vectors may not not have a best level. This is because
                         // those vectors didn't collide with anything in the estimatio of the cost.
@@ -732,12 +733,13 @@ where
                                 let h = multilevel_hasher.hash(v, max_level, current_repetition);
                                 session.give((h, (key.clone(), this_best_level as u8)));
                                 cnt += 1;
+                                *histogram.entry(this_best_level).or_insert(0usize) += 1;
                             }
                         }
                     }
                     info!(
-                        "Emitted {} hashed vectors (active levels {:?})",
-                        cnt, active_levels
+                        "Emitted {} hashed vectors (active levels {:?}) (hist: {:?})",
+                        cnt, active_levels, histogram
                     );
                     capability.downgrade(&capability.time().succ());
                     current_repetition += 1;
