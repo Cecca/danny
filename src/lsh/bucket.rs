@@ -1,4 +1,6 @@
+use crate::lsh::*;
 use std::fmt::Debug;
+use std::ops::Range;
 
 /// Maintains a pool of buckets, to which used and cleared
 /// ones can be returned, in order to reuse the memory
@@ -80,12 +82,16 @@ where
         self.right.clear();
     }
 
+    fn sort_inner(&mut self) {
+        self.left.sort_unstable_by(|p1, p2| p1.0.cmp(&p2.0));
+        self.right.sort_unstable_by(|p1, p2| p1.0.cmp(&p2.0));
+    }
+
     pub fn for_all<F>(&mut self, mut action: F)
     where
         F: FnMut(&K, &K) -> (),
     {
-        self.left.sort_unstable_by(|p1, p2| p1.0.cmp(&p2.0));
-        self.right.sort_unstable_by(|p1, p2| p1.0.cmp(&p2.0));
+        self.sort_inner();
         let buckets_iter = BucketsIter::new(&self.left, &self.right);
         for (lb, rb) in buckets_iter {
             for l in lb {
@@ -101,11 +107,35 @@ where
     where
         F: FnMut(&[(H, K)], &[(H, K)]) -> (),
     {
-        self.left.sort_unstable_by(|p1, p2| p1.0.cmp(&p2.0));
-        self.right.sort_unstable_by(|p1, p2| p1.0.cmp(&p2.0));
+        self.sort_inner();
         let buckets_iter = BucketsIter::new(&self.left, &self.right);
         for (lb, rb) in buckets_iter {
             action(lb, rb);
+        }
+    }
+}
+
+impl<'a, H, K> Bucket<H, K>
+where
+    H: Ord + PrefixHash<'a>,
+    K: Debug,
+{
+    pub fn for_prefixes<F>(&'a mut self, prefix_range: Range<usize>, mut action: F)
+    where
+        F: FnMut(&K, &K) -> (),
+    {
+        self.left.sort_unstable_by(|p1, p2| p1.0.lex_cmp(&p2.0));
+        self.right.sort_unstable_by(|p1, p2| p1.0.lex_cmp(&p2.0));
+        for p in prefix_range {
+            let buckets_iter = BucketsPrefixIter::<'a, _, _>::new(&self.left, &self.right, p);
+            for (lb, rb) in buckets_iter {
+                for l in lb {
+                    for r in rb {
+                        assert!(l.0 == r.0);
+                        action(&l.1, &r.1);
+                    }
+                }
+            }
         }
     }
 }
@@ -118,6 +148,10 @@ where
     fn default() -> Self {
         Self::new()
     }
+}
+
+trait FindBucketEnd<'a, H, K> {
+    fn find_bucket_end(&self, items: &'a [(H, K)], start: usize) -> (&'a H, usize);
 }
 
 struct BucketsIter<'a, H, K>
@@ -144,8 +178,14 @@ where
             cur_right: 0,
         }
     }
+}
 
-    fn find_bucket_end<'b>(items: &'b [(H, K)], start: usize) -> (&'b H, usize) {
+impl<'a, H, K> FindBucketEnd<'a, H, K> for BucketsIter<'a, H, K>
+where
+    H: PartialOrd,
+    K: Debug,
+{
+    fn find_bucket_end(&self, items: &'a [(H, K)], start: usize) -> (&'a H, usize) {
         let start_hash = &items[start].0;
         let end = start
             + items[start..]
@@ -168,8 +208,86 @@ where
             if self.cur_left >= self.left.len() || self.cur_right >= self.right.len() {
                 return None;
             }
-            let lend = Self::find_bucket_end(self.left, self.cur_left);
-            let rend = Self::find_bucket_end(self.right, self.cur_right);
+            let lend = self.find_bucket_end(self.left, self.cur_left);
+            let rend = self.find_bucket_end(self.right, self.cur_right);
+            if lend.0 < rend.0 {
+                self.cur_left = lend.1;
+            } else if lend.0 > rend.0 {
+                self.cur_right = rend.1;
+            } else {
+                // We are in a non empty bucket!
+                let lstart = self.cur_left;
+                let rstart = self.cur_right;
+                self.cur_left = lend.1;
+                self.cur_right = rend.1;
+                return Some((
+                    &self.left[lstart..self.cur_left],
+                    &self.right[rstart..self.cur_right],
+                ));
+            }
+        }
+    }
+}
+
+struct BucketsPrefixIter<'a, H, K>
+where
+    H: PartialOrd + PrefixHash<'a>,
+    K: Debug,
+{
+    left: &'a [(H, K)],
+    right: &'a [(H, K)],
+    cur_left: usize,
+    cur_right: usize,
+    prefix_len: usize,
+}
+
+impl<'a, H, K> BucketsPrefixIter<'a, H, K>
+where
+    H: PartialOrd + PrefixHash<'a>,
+    K: Debug,
+{
+    fn new(left: &'a [(H, K)], right: &'a [(H, K)], prefix_len: usize) -> Self {
+        Self {
+            left,
+            right,
+            cur_left: 0,
+            cur_right: 0,
+            prefix_len,
+        }
+    }
+}
+
+impl<'a, H, K> FindBucketEnd<'a, H, K> for BucketsPrefixIter<'a, H, K>
+where
+    H: PartialOrd + PrefixHash<'a>,
+    K: Debug,
+{
+    fn find_bucket_end(&self, items: &'a [(H, K)], start: usize) -> (&'a H, usize) {
+        let start_hash = &items[start].0;
+        let end = start
+            + items[start..]
+                .iter()
+                .take_while(|p| p.0.prefix_eq(start_hash, self.prefix_len))
+                .count();
+        (start_hash, end)
+    }
+}
+
+impl<'a, H, K> Iterator for BucketsPrefixIter<'a, H, K>
+where
+    K: Debug,
+    H: PartialOrd + PrefixHash<'a>,
+{
+    // TODO: This can be merged with the other, specializing just on find_bucket end
+    type Item = (&'a [(H, K)], &'a [(H, K)]);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if self.cur_left >= self.left.len() || self.cur_right >= self.right.len() {
+                return None;
+            }
+            let lend = self.find_bucket_end(self.left, self.cur_left);
+            let rend = self.find_bucket_end(self.right, self.cur_right);
             if lend.0 < rend.0 {
                 self.cur_left = lend.1;
             } else if lend.0 > rend.0 {
