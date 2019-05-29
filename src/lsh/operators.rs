@@ -660,10 +660,8 @@ where
     let max_level = multilevel_hasher.max_level();
     let num_repetitions = multilevel_hasher.repetitions_at_level(max_level);
     let multilevel_hasher = Arc::clone(&multilevel_hasher);
-    let multilevel_hasher_2 = Arc::clone(&multilevel_hasher);
     let global_vecs_2 = Arc::clone(&global_vecs);
     let logger = scope.danny_logger();
-    let starting_level = multilevel_hasher.min_level();
 
     let mut builder = OperatorBuilder::new("adaptive-source".to_owned(), best_levels.scope());
     let mut input_best_levels = builder.new_input(&best_levels, Pipeline);
@@ -718,10 +716,9 @@ where
                         "hash_generation",
                     );
 
-                    let mut session = output.session(&capability);
                     let mut cnt = 0;
+                    let mut session = output.session(&capability);
                     let active_levels = multilevel_hasher.levels_at_repetition(current_repetition);
-                    let mut histogram = BTreeMap::new();
                     for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
                         // Here we have that some vectors may not not have a best level. This is because
                         // those vectors didn't collide with anything in the estimatio of the cost.
@@ -733,14 +730,9 @@ where
                                 let h = multilevel_hasher.hash(v, max_level, current_repetition);
                                 session.give((h, (key.clone(), this_best_level as u8)));
                                 cnt += 1;
-                                *histogram.entry(this_best_level).or_insert(0usize) += 1;
                             }
                         }
                     }
-                    info!(
-                        "Emitted {} hashed vectors (active levels {:?}) (hist: {:?})",
-                        cnt, active_levels, histogram
-                    );
                     capability.downgrade(&capability.time().succ());
                     current_repetition += 1;
                     if current_repetition >= num_repetitions {
@@ -769,7 +761,7 @@ pub fn source_hashed_adaptive_sketched<G, T, K, D, F, H, R, S, SV>(
     direction: MatrixDirection,
     throttling_probe: ProbeHandle<G::Timestamp>,
     rng: R,
-) -> Stream<G, (H, (K, SV, bool))>
+) -> Stream<G, (H, ((K, SV), u8))>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId,
@@ -798,23 +790,17 @@ where
     let global_vecs_2 = Arc::clone(&global_vecs);
     let logger = scope.danny_logger();
     let starting_level = multilevel_hasher.min_level();
-
-    // Find the minimum among the levels
-    let min_level = best_levels
-        .broadcasted_min()
-        .inspect(|m| info!("Min level is {}", m));
+    let num_repetitions = multilevel_hasher.repetitions_at_level(max_level);
 
     let mut builder = OperatorBuilder::new("adaptive-source".to_owned(), best_levels.scope());
     let mut input_best_levels = builder.new_input(&best_levels, Pipeline);
-    let mut input_min_level = builder.new_input(&min_level, Pipeline);
     let (mut output, output_stream) = builder.new_output();
     builder.build(move |mut capabilities| {
         let mut capability = Some(capabilities.pop().unwrap());
 
         let mut rep_start = Instant::now();
-        let mut min_level: Option<usize> = None;
         let mut best_levels: HashMap<K, usize> = HashMap::new();
-        // We start from the starting level of the hasher, even though the minimum level might be higher. 
+        // We start from the starting level of the hasher, even though the minimum level might be higher.
         // This is to synchronize the left and right generators. They might have different
         // minimum levels, and this is the simplest way to ensure that they both are always in the
         // same round. Performance-wise it doesn't hurt much to run through some empty levels.
@@ -827,91 +813,67 @@ where
         move |frontiers| {
             let mut best_levels_input =
                 FrontieredInputHandle::new(&mut input_best_levels, &frontiers[0]);
-            let mut min_level_input =
-                FrontieredInputHandle::new(&mut input_min_level, &frontiers[1]);
             let mut output = output.activate();
 
-            min_level_input.for_each(|_t, data| {
-                assert!(min_level.is_none());
-                assert!(data.len() == 1);
-                min_level.replace(data[0]);
-                current_max_repetitions = multilevel_hasher_2.repetitions_at_level(current_level);
-            });
             best_levels_input.for_each(|_t, data| {
                 let mut data = data.replace(Vec::new());
                 for (key, level) in data.drain(..) {
                     best_levels.insert(key, level);
                 }
             });
-            if let Some(min_level) = min_level {
-                if let Some(capability) = capability.as_mut() {
-                    if !throttling_probe.less_than(capability.time()) {
-                        if worker == 0 {
-                            info!(
-                                "Level {}/{} repetition {}/{} (current memory {}, previous iter: {:?})",
-                                current_level,
-                                max_level,
-                                current_repetition,
-                                current_max_repetitions,
-                                proc_mem!(),
-                                Instant::now() - rep_start
-                            );
-                        }
-                        log_event!(logger, LogEvent::Profile(
-                            capability.time().to_step_id(), 0, "repetition".to_owned(), Instant::now() - rep_start));
-                        rep_start = Instant::now();
-                        if current_level >= min_level {
-                            let _pg = ProfileGuard::new(
-                                logger.clone(), capability.time().to_step_id(), 1, "hash_generation");
-                            let start = Instant::now();
+            if let Some(capability) = capability.as_mut() {
+                if !best_levels_input.frontier().less_equal(capability.time())
+                    && !throttling_probe.less_than(capability.time())
+                {
+                    if worker == 0 {
+                        info!(
+                            "Repetition {}/{} (current memory {}, previous iter: {:?})",
+                            current_repetition,
+                            num_repetitions,
+                            proc_mem!(),
+                            Instant::now() - rep_start
+                        );
+                    }
+                    log_event!(
+                        logger,
+                        LogEvent::Profile(
+                            capability.time().to_step_id(),
+                            0,
+                            "repetition".to_owned(),
+                            Instant::now() - rep_start
+                        )
+                    );
+                    rep_start = Instant::now();
+                    let _pg = ProfileGuard::new(
+                        logger.clone(),
+                        capability.time().to_step_id(),
+                        1,
+                        "hash_generation",
+                    );
+                    let start = Instant::now();
 
-                            let mut session = output.session(&capability);
-                            let mut cnt_best = 0;
-                            let mut cnt_current = 0;
-                            for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
-                                // Here we have that some vectors may not not have a best level. This is because
-                                // those vectors didn't collide with anything in the estimatio of the cost.
-                                // Since we use the same hasher for both the estimation and the actual computation
-                                // we can simply avoid emitting the vectors for which we have no entry in the map.
-                                if let Some(&this_best_level) = best_levels.get(key) {
-                                    if current_level <= this_best_level {
-                                        let h = multilevel_hasher.hash(v, current_level, current_repetition);
-                                        let s = sketches[key].clone();
-                                        if current_level == this_best_level {
-                                            session.give((h, (key.clone(), s, true)));
-                                            cnt_best += 1;
-                                        } else {
-                                            session.give((h, (key.clone(), s, false)));
-                                            cnt_current += 1;
-                                        }
-                                    }
-                                }
-                            }
-                            log_event!(
-                                logger,
-                                LogEvent::AdaptiveBestGenerated(current_level, cnt_best)
-                            );
-                            log_event!(
-                                logger,
-                                LogEvent::AdaptiveCurrentGenerated(current_level, cnt_current)
-                            );
-                            info!(
-                                "Emitted all {} + {} hashed values in {:?}",
-                                cnt_best, cnt_current,
-                                Instant::now() - start
-                            );
-                        }
-                        capability.downgrade(&capability.time().succ());
-                        current_repetition += 1;
-                        if current_repetition >= current_max_repetitions {
-                            current_level += 1;
-                            done = current_level > max_level;
-                            if !done {
-                                current_repetition = 0;
-                                current_max_repetitions =
-                                    multilevel_hasher_2.repetitions_at_level(current_level)
+                    let mut session = output.session(&capability);
+                    let active_levels = multilevel_hasher.levels_at_repetition(current_repetition);
+                    let mut cnt = 0;
+                    for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
+                        // Here we have that some vectors may not not have a best level. This is because
+                        // those vectors didn't collide with anything in the estimatio of the cost.
+                        // Since we use the same hasher for both the estimation and the actual computation
+                        // we can simply avoid emitting the vectors for which we have no entry in the map.
+                        if let Some(&this_best_level) = best_levels.get(key) {
+                            if active_levels.contains(&this_best_level) {
+                                // We hash to the max level because the levelling will be taken care of in the buckets
+                                let h = multilevel_hasher.hash(v, max_level, current_repetition);
+                                let s = sketches[key].clone();
+                                session.give((h, ((key.clone(), s), this_best_level as u8)));
+                                cnt += 1;
                             }
                         }
+                    }
+                    capability.downgrade(&capability.time().succ());
+                    current_repetition += 1;
+                    if current_repetition >= current_max_repetitions {
+                        done = true;
                     }
                 }
             }
