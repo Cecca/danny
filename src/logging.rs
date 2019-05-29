@@ -487,12 +487,16 @@ impl FrozenExecutionSummary {
                 row!("level" => *level, "kind" => "current", "count" => current_c),
             );
         }
+        let mut hist = std::collections::BTreeMap::new();
         for (level, count) in self.adaptive_histogram.iter() {
             experiment.append(
                 "adaptive_histogram",
                 row!("level" => *level, "count" => *count, "worker" => self.worker_id),
             );
-            info!("  AH: {} - {}", level, count);
+            hist.insert(*level, *count);
+        }
+        if !hist.is_empty() {
+            info!(" Adaptive hist: {:?}", hist);
         }
         for ((step, depth, name), duration) in self.profile.iter() {
             experiment.append(
