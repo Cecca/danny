@@ -1106,6 +1106,7 @@ where
             },
             move |key, agg: HashMap<u8, usize>| {
                 let mut min_work = std::f64::INFINITY;
+                let mut min_work_collisions = std::usize::MAX;
                 let mut best_level = 0;
                 for (&level, &collisions) in agg.iter() {
                     let reps = hasher.repetitions_at_level(level as usize);
@@ -1114,8 +1115,13 @@ where
                     if work < min_work {
                         min_work = work;
                         best_level = level;
+                        min_work_collisions = collisions;
                     }
                 }
+                info!(
+                    "best level {} with work {} and {} collisions",
+                    best_level, min_work, min_work_collisions
+                );
                 (key, best_level as usize)
             },
             Route::route,
