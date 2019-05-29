@@ -985,7 +985,7 @@ fn count_collisions<G, H, K>(
 ) -> (Stream<G, (K, (u8, usize))>, Stream<G, (K, (u8, usize))>)
 where
     G: Scope,
-    K: ExchangeData + Hash + Eq + Debug,
+    K: ExchangeData + Hash + Eq + Debug + Ord,
     for<'a> H: ExchangeData + Ord + Route + Debug + PrefixHash<'a>,
 {
     let mut builder = OperatorBuilder::new("collision-counter".to_owned(), left.scope());
@@ -1038,12 +1038,14 @@ where
                     let mut collisions_right = HashMap::new();
                     let mut session_left = output_left.session(&caps_left[time]);
                     let mut session_right = output_right.session(&caps_right[time]);
+                    // It is OK for a point not to collide on all levels if we
+                    // are not doing a self join
                     buckets.for_all_prefixes(min_level, max_level, |level, lb, rb| {
-                        for (_, l) in lb {
+                        for (h, l) in lb {
                             *collisions_left.entry((l.clone(), level)).or_insert(0usize) +=
                                 rb.len();
                         }
-                        for (_, r) in rb {
+                        for (_h, r) in rb {
                             *collisions_right.entry((r.clone(), level)).or_insert(0usize) +=
                                 lb.len();
                         }
@@ -1106,7 +1108,6 @@ where
             },
             move |key, agg: HashMap<u8, usize>| {
                 let mut min_work = std::f64::INFINITY;
-                let mut min_work_collisions = std::usize::MAX;
                 let mut best_level = 0;
                 for (&level, &collisions) in agg.iter() {
                     let reps = hasher.repetitions_at_level(level as usize);
@@ -1115,13 +1116,8 @@ where
                     if work < min_work {
                         min_work = work;
                         best_level = level;
-                        min_work_collisions = collisions;
                     }
                 }
-                info!(
-                    "best level {} with work {} and {} collisions",
-                    best_level, min_work, min_work_collisions
-                );
                 (key, best_level as usize)
             },
             Route::route,
@@ -1149,7 +1145,7 @@ where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId + Debug,
     D: ExchangeData + Debug,
-    K: Data + Debug + Send + Sync + Abomonation + Clone + Route + Hash + Eq,
+    K: Data + Debug + Send + Sync + Abomonation + Clone + Route + Hash + Eq + Ord,
     for<'a> H:
         Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + PrefixHash<'a>,
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,

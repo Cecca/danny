@@ -3,7 +3,7 @@
 use std::cmp::Ordering;
 
 pub trait PrefixHash<'a> {
-    type PrefixType: Eq;
+    type PrefixType: Eq + Ord + Clone;
     fn prefix(&'a self, n: usize) -> Self::PrefixType;
     fn lex_cmp(&self, other: &Self) -> Ordering;
     fn prefix_eq(&'a self, other: &'a Self, n: usize) -> bool {
@@ -71,5 +71,28 @@ mod test {
         let expected: &[u32] = &[];
         assert_eq!(hash.prefix(0), expected);
         assert_eq!(hash.prefix(4), &[19, 32, 124, 41]);
+        assert_eq!(hash.prefix(1), &[19]);
+    }
+
+    #[test]
+    fn test_prefix_sort() {
+        let mut hashes = vec![
+            vec![1, 3, 7, 2110],
+            vec![0, 1, 3, 5],
+            vec![1, 3, 5, 10],
+            vec![3, 1, 5, 8],
+            vec![30, 1, 5, 8],
+            vec![3, 2, 5, 8],
+        ];
+        let expected = vec![
+            vec![0, 1, 3, 5],
+            vec![1, 3, 5, 10],
+            vec![1, 3, 7, 2110],
+            vec![3, 1, 5, 8],
+            vec![3, 2, 5, 8],
+            vec![30, 1, 5, 8],
+        ];
+        hashes.sort_unstable_by(|a, b| a.lex_cmp(&b));
+        assert_eq!(hashes, expected);
     }
 }

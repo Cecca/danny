@@ -1,6 +1,5 @@
 use crate::lsh::*;
 use std::fmt::Debug;
-use std::ops::Range;
 
 /// Maintains a pool of buckets, to which used and cleared
 /// ones can be returned, in order to reuse the memory
@@ -148,12 +147,6 @@ where
                             if r_level >= p {
                                 assert!(l.0.prefix_eq(&r.0, p as usize));
                                 if l_level == p || r_level == p {
-                                    // if format!("{:?}", l.1) != format!("{:?}", r.1) {
-                                    //     info!(
-                                    //         "(prefix {}) Emitting pair with hash values\n\t{:?} {:?}\n\t{:?} {:?}",
-                                    //         p, l.0, l.1, r.0, r.1
-                                    //     );
-                                    // }
                                     action(&(l.1).0, &(r.1).0);
                                 }
                             }
@@ -167,8 +160,8 @@ where
 
 impl<H, K> Bucket<H, K>
 where
-    for<'a> H: Ord + PrefixHash<'a> + Debug,
-    K: Debug,
+    for<'a> H: Ord + PrefixHash<'a> + Debug + Clone,
+    K: Debug + Clone,
 {
     pub fn for_all_prefixes<F>(&mut self, min_level: usize, max_level: usize, mut action: F)
     where
@@ -304,16 +297,15 @@ where
 
 impl<'a, H, K> FindBucketEnd<'a, H, K> for BucketsPrefixIter<'a, H, K>
 where
-    H: PartialOrd + PrefixHash<'a>,
+    H: PartialOrd + PrefixHash<'a> + Debug,
     K: Debug,
 {
     fn find_bucket_end(&self, items: &'a [(H, K)], start: usize) -> (&'a H, usize) {
         let start_hash = &items[start].0;
-        let end = start
-            + items[start..]
-                .iter()
-                .take_while(|p| p.0.prefix_eq(start_hash, self.prefix_len))
-                .count();
+        let mut end = start + 1;
+        while end < items.len() && items[end].0.prefix_eq(start_hash, self.prefix_len) {
+            end += 1;
+        }
         (start_hash, end)
     }
 }
@@ -321,7 +313,7 @@ where
 impl<'a, H, K> Iterator for BucketsPrefixIter<'a, H, K>
 where
     K: Debug,
-    H: PartialOrd + PrefixHash<'a>,
+    H: PartialOrd + PrefixHash<'a> + Debug,
 {
     // TODO: This can be merged with the other, specializing just on find_bucket end
     type Item = (&'a [(H, K)], &'a [(H, K)]);
@@ -333,9 +325,9 @@ where
             }
             let lend = self.find_bucket_end(self.left, self.cur_left);
             let rend = self.find_bucket_end(self.right, self.cur_right);
-            if lend.0 < rend.0 {
+            if lend.0.prefix(self.prefix_len) < rend.0.prefix(self.prefix_len) {
                 self.cur_left = lend.1;
-            } else if lend.0 > rend.0 {
+            } else if lend.0.prefix(self.prefix_len) > rend.0.prefix(self.prefix_len) {
                 self.cur_right = rend.1;
             } else {
                 // We are in a non empty bucket!
