@@ -501,9 +501,9 @@ where
         let vecs = Arc::clone(&global_vecs);
         move |output| {
             let mut done = false;
-            stopwatch.maybe_stop();
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
+                    stopwatch.maybe_stop();
                     stopwatch.start();
                     if worker == 0 {
                         info!("Repetition {}", current_repetition);
@@ -568,9 +568,9 @@ where
         let mut cap = Some(capability);
         move |output| {
             let mut done = false;
-            stopwatch.maybe_stop();
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
+                    stopwatch.maybe_stop();
                     stopwatch.start();
                     if worker == 0 {
                         info!("Repetition {} with sketches", current_repetition,);
@@ -729,11 +729,11 @@ where
                     best_levels.insert(key, level);
                 }
             });
-            stopwatch.maybe_stop();
             if let Some(capability) = capability.as_mut() {
                 if !best_levels_input.frontier().less_equal(capability.time())
                     && !throttling_probe.less_than(capability.time())
                 {
+                    stopwatch.maybe_stop();
                     stopwatch.start();
                     if worker == 0 {
                         info!(
@@ -857,11 +857,11 @@ where
                     best_levels.insert(key, level);
                 }
             });
-            stopwatch.maybe_stop();
             if let Some(capability) = capability.as_mut() {
                 if !best_levels_input.frontier().less_equal(capability.time())
                     && !throttling_probe.less_than(capability.time())
                 {
+                    stopwatch.maybe_stop();
                     stopwatch.start();
                     if worker == 0 {
                         info!(
@@ -945,9 +945,9 @@ where
         let hasher = Arc::clone(&hasher);
         let mut cap = Some(cap);
         move |output| {
-            stopwatch.maybe_stop();
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
+                    stopwatch.maybe_stop();
                     stopwatch.start();
                     if worker == 0 {
                         info!("Estimation repetition {}", current_repetition);
