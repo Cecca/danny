@@ -1081,7 +1081,7 @@ where
 
 /// A balance greater than 0.5 penalizes repetitions
 fn select_minimum<G, T, K, D, H, F>(
-    counts: &Stream<Child<G, Product<T, u8>>, (K, (u8, usize))>,
+    counts: &Stream<Child<G, Product<T, usize>>, (K, (u8, usize))>,
     hasher: Arc<MultilevelHasher<D, H, F>>,
     balance: f64,
     iteration_cost: f64,
@@ -1158,8 +1158,7 @@ where
     let min_level = hasher.min_level();
     let probe = ProbeHandle::new();
 
-    // FIXME: u8 is too small, sometimes we do more than 256 repetitions
-    scope.scoped::<Product<T, u8>, _, _>("estimation scope", |inner| {
+    scope.scoped::<Product<T, usize>, _, _>("estimation scope", |inner| {
         let l_hashes = all_hashes_source(
             inner,
             left,
