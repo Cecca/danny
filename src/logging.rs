@@ -328,12 +328,10 @@ pub enum LogEvent {
     GeneratedPairs(usize, usize),
     /// The number of received hashes during bucketing. This is a proxy for the load measure
     ReceivedHashes(usize, usize),
-    /// Hash values generated for best level by the adaptive algorithm at level, across all repetitions
-    AdaptiveBestGenerated(usize, usize),
-    /// Hash values generated for current levels by the adaptive algorithm at level, across all repetitions
-    AdaptiveCurrentGenerated(usize, usize),
     /// Histogram of the distribution of levels in the adaptive algorithm (level, count) pairs
     AdaptiveLevelHistogram(usize, usize),
+    // The hashes generated in each iteration
+    GeneratedHashes(usize, usize),
     /// Profiling event, with (step, depth, name, duration)
     Profile(usize, u8, String, Duration),
 }
@@ -359,9 +357,8 @@ pub struct ExecutionSummary {
     duplicates_discarded: HashMap<usize, usize>,
     generated_pairs: HashMap<usize, usize>,
     received_hashes: HashMap<usize, usize>,
-    adaptive_best: HashMap<usize, usize>,
-    adaptive_current: HashMap<usize, usize>,
     adaptive_histogram: HashMap<usize, usize>,
+    generated_hashes: HashMap<usize, usize>,
     profile: HashMap<(usize, u8, String), Duration>,
 }
 
@@ -374,9 +371,8 @@ impl ExecutionSummary {
             duplicates_discarded: HashMap::new(),
             generated_pairs: HashMap::new(),
             received_hashes: HashMap::new(),
-            adaptive_best: HashMap::new(),
-            adaptive_current: HashMap::new(),
             adaptive_histogram: HashMap::new(),
+            generated_hashes: HashMap::new(),
             profile: HashMap::new(),
         }
     }
@@ -393,9 +389,8 @@ impl ExecutionSummary {
             duplicates_discarded: Self::map_to_vec(&self.duplicates_discarded),
             generated_pairs: Self::map_to_vec(&self.generated_pairs),
             received_hashes: Self::map_to_vec(&self.received_hashes),
-            adaptive_best: Self::map_to_vec(&self.adaptive_best),
-            adaptive_current: Self::map_to_vec(&self.adaptive_current),
             adaptive_histogram: Self::map_to_vec(&self.adaptive_histogram),
+            generated_hashes: Self::map_to_vec(&self.generated_hashes),
             profile: Self::map_to_vec(&self.profile),
         }
     }
@@ -417,14 +412,11 @@ impl ExecutionSummary {
             LogEvent::ReceivedHashes(step, count) => {
                 *self.received_hashes.entry(step).or_insert(0usize) += count;
             }
-            LogEvent::AdaptiveBestGenerated(level, count) => {
-                *self.adaptive_best.entry(level).or_insert(0usize) += count;
-            }
-            LogEvent::AdaptiveCurrentGenerated(level, count) => {
-                *self.adaptive_current.entry(level).or_insert(0usize) += count;
-            }
             LogEvent::AdaptiveLevelHistogram(level, count) => {
                 *self.adaptive_histogram.entry(level).or_insert(0usize) += count;
+            }
+            LogEvent::GeneratedHashes(step, count) => {
+                *self.generated_hashes.entry(step).or_insert(0usize) += count;
             }
             LogEvent::Profile(step, depth, name, duration) => {
                 *self
@@ -444,9 +436,8 @@ pub struct FrozenExecutionSummary {
     pub duplicates_discarded: Vec<(usize, usize)>,
     pub generated_pairs: Vec<(usize, usize)>,
     pub received_hashes: Vec<(usize, usize)>,
-    pub adaptive_best: Vec<(usize, usize)>,
-    pub adaptive_current: Vec<(usize, usize)>,
     pub adaptive_histogram: Vec<(usize, usize)>,
+    pub generated_hashes: Vec<(usize, usize)>,
     pub profile: Vec<((usize, u8, String), Duration)>,
 }
 
@@ -470,22 +461,7 @@ impl FrozenExecutionSummary {
             append_step_counter!(self, experiment, step, distinct_pairs);
             append_step_counter!(self, experiment, step, duplicates_discarded);
             append_step_counter!(self, experiment, step, generated_pairs);
-        }
-        for (level, best_c) in self.adaptive_best.iter() {
-            let current_c = self
-                .adaptive_current
-                .iter()
-                .find(|p| p.0 == *level)
-                .expect("Level not found during experiment dumping")
-                .1;
-            experiment.append(
-                "adaptive_counters",
-                row!("level" => *level, "kind" => "best", "count" => *best_c),
-            );
-            experiment.append(
-                "adaptive_counters",
-                row!("level" => *level, "kind" => "current", "count" => current_c),
-            );
+            append_step_counter!(self, experiment, step, generated_hashes);
         }
         let mut hist = std::collections::BTreeMap::new();
         for (level, count) in self.adaptive_histogram.iter() {

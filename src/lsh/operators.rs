@@ -457,15 +457,29 @@ where
     K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
 {
     let worker: u64 = scope.index() as u64;
-    let repetitions = hash_fns.repetitions() as u32;
-    let mut current_repetition = 0u32;
+    let logger = scope.danny_logger();
+    let repetitions = hash_fns.repetitions();
+    let mut current_repetition = 0usize;
+    let mut rep_start = None;
     source(scope, "hashed source", move |capability| {
         let mut cap = Some(capability);
         let vecs = Arc::clone(&global_vecs);
         move |output| {
             let mut done = false;
+            if let Some(start) = rep_start.take() {
+                let elapsed = Instant::now() - start;
+                info!(
+                    "Repetition iteration {} ended in {:?}",
+                    current_repetition, elapsed
+                );
+                log_event!(
+                    logger,
+                    LogEvent::Profile(current_repetition, 0, "repetition".to_owned(), elapsed)
+                );
+            }
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
+                    rep_start.replace(Instant::now());
                     if worker == 0 {
                         info!("Repetition {}", current_repetition);
                     }
@@ -510,8 +524,9 @@ where
     V: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     let worker: u64 = scope.index() as u64;
-    let repetitions = hash_fns.repetitions() as u32;
-    let mut current_repetition = 0u32;
+    let logger = scope.danny_logger();
+    let repetitions = hash_fns.repetitions();
+    let mut current_repetition = 0usize;
     let vecs = Arc::clone(&global_vecs);
     let mut sketches: HashMap<K, V> = HashMap::new();
     info!("Computing sketches");
@@ -522,13 +537,26 @@ where
     }
     let end_sketch = Instant::now();
     info!("Sketches computed in {:?}", end_sketch - start_sketch);
+    let mut rep_start = None;
 
     source(scope, "hashed source", move |capability| {
         let mut cap = Some(capability);
         move |output| {
             let mut done = false;
+            if let Some(start) = rep_start.take() {
+                let elapsed = Instant::now() - start;
+                info!(
+                    "Repetition iteration {} ended in {:?}",
+                    current_repetition, elapsed
+                );
+                log_event!(
+                    logger,
+                    LogEvent::Profile(current_repetition, 0, "repetition".to_owned(), elapsed)
+                );
+            }
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
+                    rep_start.replace(Instant::now());
                     if worker == 0 {
                         info!("Repetition {} with sketches", current_repetition,);
                     }
@@ -674,6 +702,7 @@ where
         let mut current_repetition = 0;
         let mut done = false;
         let vecs = Arc::clone(&global_vecs_2);
+        let mut rep_start = None;
 
         move |frontiers| {
             let mut best_levels_input =
@@ -686,29 +715,30 @@ where
                     best_levels.insert(key, level);
                 }
             });
+            if let Some(start) = rep_start.take() {
+                let elapsed = Instant::now() - start;
+                info!(
+                    "Repetition iteration {} ended in {:?}",
+                    current_repetition, elapsed
+                );
+                log_event!(
+                    logger,
+                    LogEvent::Profile(current_repetition, 0, "repetition".to_owned(), elapsed)
+                );
+            }
             if let Some(capability) = capability.as_mut() {
                 if !best_levels_input.frontier().less_equal(capability.time())
                     && !throttling_probe.less_than(capability.time())
                 {
+                    rep_start.replace(Instant::now());
                     if worker == 0 {
                         info!(
-                            "Repetition {}/{} (current memory {}, previous iter: {:?})",
+                            "Repetition {}/{} (current memory {}, previous iter)",
                             current_repetition,
                             num_repetitions,
                             proc_mem!(),
-                            Instant::now() - rep_start
                         );
                     }
-                    log_event!(
-                        logger,
-                        LogEvent::Profile(
-                            capability.time().to_step_id(),
-                            0,
-                            "repetition".to_owned(),
-                            Instant::now() - rep_start
-                        )
-                    );
-                    rep_start = Instant::now();
                     let _pg = ProfileGuard::new(
                         logger.clone(),
                         capability.time().to_step_id(),
@@ -733,6 +763,10 @@ where
                             }
                         }
                     }
+                    log_event!(
+                        logger,
+                        LogEvent::GeneratedHashes(capability.time().to_step_id(), cnt)
+                    );
                     capability.downgrade(&capability.time().succ());
                     current_repetition += 1;
                     if current_repetition >= num_repetitions {
@@ -809,6 +843,7 @@ where
         let mut current_max_repetitions = 0;
         let mut done = false;
         let vecs = Arc::clone(&global_vecs_2);
+        let mut rep_start = None;
 
         move |frontiers| {
             let mut best_levels_input =
@@ -821,36 +856,36 @@ where
                     best_levels.insert(key, level);
                 }
             });
+            if let Some(start) = rep_start.take() {
+                let elapsed = Instant::now() - start;
+                info!(
+                    "Repetition iteration {} ended in {:?}",
+                    current_repetition, elapsed
+                );
+                log_event!(
+                    logger,
+                    LogEvent::Profile(current_repetition, 0, "repetition".to_owned(), elapsed)
+                );
+            }
             if let Some(capability) = capability.as_mut() {
                 if !best_levels_input.frontier().less_equal(capability.time())
                     && !throttling_probe.less_than(capability.time())
                 {
+                    rep_start.replace(Instant::now());
                     if worker == 0 {
                         info!(
-                            "Repetition {}/{} (current memory {}, previous iter: {:?})",
+                            "Repetition {}/{} (current memory {})",
                             current_repetition,
                             num_repetitions,
                             proc_mem!(),
-                            Instant::now() - rep_start
                         );
                     }
-                    log_event!(
-                        logger,
-                        LogEvent::Profile(
-                            capability.time().to_step_id(),
-                            0,
-                            "repetition".to_owned(),
-                            Instant::now() - rep_start
-                        )
-                    );
-                    rep_start = Instant::now();
                     let _pg = ProfileGuard::new(
                         logger.clone(),
                         capability.time().to_step_id(),
                         1,
                         "hash_generation",
                     );
-                    let start = Instant::now();
 
                     let mut session = output.session(&capability);
                     let active_levels = multilevel_hasher.levels_at_repetition(current_repetition);
@@ -870,6 +905,10 @@ where
                             }
                         }
                     }
+                    log_event!(
+                        logger,
+                        LogEvent::GeneratedHashes(capability.time().to_step_id(), cnt)
+                    );
                     capability.downgrade(&capability.time().succ());
                     current_repetition += 1;
                     if current_repetition >= current_max_repetitions {
@@ -897,24 +936,38 @@ fn all_hashes_source<G, T, K, D, H, F>(
 ) -> Stream<G, (H, K)>
 where
     G: Scope<Timestamp = T>,
-    T: Timestamp + Debug + Succ,
+    T: Timestamp + Debug + Succ + ToStepId,
     D: ExchangeData + Debug,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
     K: Data + Debug + Send + Sync + Abomonation + Clone + Route,
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
 {
     let worker = scope.index() as u64;
+    let logger = scope.danny_logger();
     let vecs = Arc::clone(&vecs);
     let mut done = false;
     let max_level = hasher.max_level();
     let mut current_repetition = 0;
     let num_repetitions = hasher.repetitions_at_level(max_level);
+    let mut rep_start = None;
     source(&scope, "all-hashes", move |cap| {
         let hasher = Arc::clone(&hasher);
         let mut cap = Some(cap);
         move |output| {
+            if let Some(start) = rep_start.take() {
+                let elapsed = Instant::now() - start;
+                info!(
+                    "Estimation iteration {} ended in {:?}",
+                    current_repetition, elapsed
+                );
+                log_event!(
+                    logger,
+                    LogEvent::Profile(current_repetition, 0, "cost_estimation".to_owned(), elapsed)
+                );
+            }
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
+                    rep_start.replace(Instant::now());
                     if worker == 0 {
                         info!("Estimation repetition {}", current_repetition);
                     }
@@ -1124,6 +1177,7 @@ where
     let min_level = hasher.min_level();
     let probe = ProbeHandle::new();
 
+    // FIXME: u8 is too small, sometimes we do more than 256 repetitions
     scope.scoped::<Product<T, u8>, _, _>("estimation scope", |inner| {
         let l_hashes = all_hashes_source(
             inner,
