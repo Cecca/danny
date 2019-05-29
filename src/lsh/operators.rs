@@ -27,6 +27,7 @@ use timely::dataflow::operators::Leave;
 use timely::dataflow::operators::*;
 use timely::dataflow::scopes::Child;
 use timely::dataflow::*;
+use timely::logging::Logger;
 use timely::order::Product;
 use timely::progress::timestamp::PathSummary;
 use timely::progress::Timestamp;
@@ -440,6 +441,40 @@ where
     }
 }
 
+struct RepetitionStopWatch {
+    start: Option<Instant>,
+    counter: usize,
+    name: String,
+    logger: Option<Logger<LogEvent>>,
+}
+
+impl RepetitionStopWatch {
+    pub fn new(name: &str, logger: Option<Logger<LogEvent>>) -> Self {
+        Self {
+            start: None,
+            counter: 0usize,
+            name: name.to_owned(),
+            logger: logger,
+        }
+    }
+
+    pub fn start(&mut self) {
+        self.start.replace(Instant::now());
+    }
+
+    pub fn maybe_stop(&mut self) {
+        if let Some(start) = self.start.take() {
+            let elapsed = Instant::now() - start;
+            info!("{} {} ended in {:?}", self.name, self.counter, elapsed);
+            log_event!(
+                self.logger,
+                LogEvent::Profile(self.counter, 0, self.name.clone(), elapsed)
+            );
+            self.counter += 1;
+        }
+    }
+}
+
 pub fn source_hashed<G, T, K, D, F, H>(
     scope: &G,
     global_vecs: Arc<ChunkedDataset<K, D>>,
@@ -460,26 +495,16 @@ where
     let logger = scope.danny_logger();
     let repetitions = hash_fns.repetitions();
     let mut current_repetition = 0usize;
-    let mut rep_start = None;
+    let mut stopwatch = RepetitionStopWatch::new("repetition", logger);
     source(scope, "hashed source", move |capability| {
         let mut cap = Some(capability);
         let vecs = Arc::clone(&global_vecs);
         move |output| {
             let mut done = false;
-            if let Some(start) = rep_start.take() {
-                let elapsed = Instant::now() - start;
-                info!(
-                    "Repetition iteration {} ended in {:?}",
-                    current_repetition, elapsed
-                );
-                log_event!(
-                    logger,
-                    LogEvent::Profile(current_repetition, 0, "repetition".to_owned(), elapsed)
-                );
-            }
+            stopwatch.maybe_stop();
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
-                    rep_start.replace(Instant::now());
+                    stopwatch.start();
                     if worker == 0 {
                         info!("Repetition {}", current_repetition);
                     }
@@ -537,26 +562,16 @@ where
     }
     let end_sketch = Instant::now();
     info!("Sketches computed in {:?}", end_sketch - start_sketch);
-    let mut rep_start = None;
+    let mut stopwatch = RepetitionStopWatch::new("repetition", logger);
 
     source(scope, "hashed source", move |capability| {
         let mut cap = Some(capability);
         move |output| {
             let mut done = false;
-            if let Some(start) = rep_start.take() {
-                let elapsed = Instant::now() - start;
-                info!(
-                    "Repetition iteration {} ended in {:?}",
-                    current_repetition, elapsed
-                );
-                log_event!(
-                    logger,
-                    LogEvent::Profile(current_repetition, 0, "repetition".to_owned(), elapsed)
-                );
-            }
+            stopwatch.maybe_stop();
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
-                    rep_start.replace(Instant::now());
+                    stopwatch.start();
                     if worker == 0 {
                         info!("Repetition {} with sketches", current_repetition,);
                     }
@@ -697,12 +712,11 @@ where
     builder.build(move |mut capabilities| {
         let mut capability = Some(capabilities.pop().unwrap());
 
-        let mut rep_start = Instant::now();
         let mut best_levels: BTreeMap<K, usize> = BTreeMap::new();
         let mut current_repetition = 0;
         let mut done = false;
         let vecs = Arc::clone(&global_vecs_2);
-        let mut rep_start = None;
+        let mut stopwatch = RepetitionStopWatch::new("repetition", logger.clone());
 
         move |frontiers| {
             let mut best_levels_input =
@@ -715,22 +729,12 @@ where
                     best_levels.insert(key, level);
                 }
             });
-            if let Some(start) = rep_start.take() {
-                let elapsed = Instant::now() - start;
-                info!(
-                    "Repetition iteration {} ended in {:?}",
-                    current_repetition, elapsed
-                );
-                log_event!(
-                    logger,
-                    LogEvent::Profile(current_repetition, 0, "repetition".to_owned(), elapsed)
-                );
-            }
+            stopwatch.maybe_stop();
             if let Some(capability) = capability.as_mut() {
                 if !best_levels_input.frontier().less_equal(capability.time())
                     && !throttling_probe.less_than(capability.time())
                 {
-                    rep_start.replace(Instant::now());
+                    stopwatch.start();
                     if worker == 0 {
                         info!(
                             "Repetition {}/{} (current memory {}, previous iter)",
@@ -832,18 +836,15 @@ where
     builder.build(move |mut capabilities| {
         let mut capability = Some(capabilities.pop().unwrap());
 
-        let mut rep_start = Instant::now();
+        let mut stopwatch = RepetitionStopWatch::new("repetition", logger.clone());
         let mut best_levels: HashMap<K, usize> = HashMap::new();
         // We start from the starting level of the hasher, even though the minimum level might be higher.
         // This is to synchronize the left and right generators. They might have different
         // minimum levels, and this is the simplest way to ensure that they both are always in the
         // same round. Performance-wise it doesn't hurt much to run through some empty levels.
-        let mut current_level = starting_level;
         let mut current_repetition = 0;
-        let mut current_max_repetitions = 0;
         let mut done = false;
         let vecs = Arc::clone(&global_vecs_2);
-        let mut rep_start = None;
 
         move |frontiers| {
             let mut best_levels_input =
@@ -856,22 +857,12 @@ where
                     best_levels.insert(key, level);
                 }
             });
-            if let Some(start) = rep_start.take() {
-                let elapsed = Instant::now() - start;
-                info!(
-                    "Repetition iteration {} ended in {:?}",
-                    current_repetition, elapsed
-                );
-                log_event!(
-                    logger,
-                    LogEvent::Profile(current_repetition, 0, "repetition".to_owned(), elapsed)
-                );
-            }
+            stopwatch.maybe_stop();
             if let Some(capability) = capability.as_mut() {
                 if !best_levels_input.frontier().less_equal(capability.time())
                     && !throttling_probe.less_than(capability.time())
                 {
-                    rep_start.replace(Instant::now());
+                    stopwatch.start();
                     if worker == 0 {
                         info!(
                             "Repetition {}/{} (current memory {})",
@@ -911,7 +902,7 @@ where
                     );
                     capability.downgrade(&capability.time().succ());
                     current_repetition += 1;
-                    if current_repetition >= current_max_repetitions {
+                    if current_repetition >= num_repetitions {
                         done = true;
                     }
                 }
@@ -949,25 +940,15 @@ where
     let max_level = hasher.max_level();
     let mut current_repetition = 0;
     let num_repetitions = hasher.repetitions_at_level(max_level);
-    let mut rep_start = None;
+    let mut stopwatch = RepetitionStopWatch::new("cost_estimation", logger.clone());
     source(&scope, "all-hashes", move |cap| {
         let hasher = Arc::clone(&hasher);
         let mut cap = Some(cap);
         move |output| {
-            if let Some(start) = rep_start.take() {
-                let elapsed = Instant::now() - start;
-                info!(
-                    "Estimation iteration {} ended in {:?}",
-                    current_repetition, elapsed
-                );
-                log_event!(
-                    logger,
-                    LogEvent::Profile(current_repetition, 0, "cost_estimation".to_owned(), elapsed)
-                );
-            }
+            stopwatch.maybe_stop();
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
-                    rep_start.replace(Instant::now());
+                    stopwatch.start();
                     if worker == 0 {
                         info!("Estimation repetition {}", current_repetition);
                     }
