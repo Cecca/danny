@@ -198,14 +198,14 @@ fn first_match_position(r: &BagOfWords, s: &BagOfWords) -> Option<(usize, usize)
 /// Return true if the pair should be considered further
 fn positional_filter(r: &BagOfWords, s: &BagOfWords, threshold: f64) -> bool {
     if let Some((idx_r, idx_s)) = first_match_position(r, s) {
-        let olap = overlap(r, s, threshold);
+        let olap = overlap(r, s, threshold) - 1;
         olap + idx_r <= r.len() && olap + idx_s <= s.len()
     } else {
         false
     }
 }
 
-/// Return true if the pair should be discarded
+/// Return true if the pair should be further considered
 fn suffix_filter(r: &BagOfWords, s: &BagOfWords, range: f64) -> bool {
     if let Some((idx_r, idx_s)) = first_match_position(r, s) {
         let olap = overlap(r, s, range);
@@ -218,7 +218,7 @@ fn suffix_filter(r: &BagOfWords, s: &BagOfWords, range: f64) -> bool {
             let max_match_upper = std::cmp::min(r.len() - pivot_idx_r, s.len() - pivot_idx_s);
             // The 2 takes into account the first match and the pivot
             let max_match = 2 + max_match_lower + max_match_upper;
-            max_match > olap
+            max_match >= olap
         } else {
             true
         }
