@@ -27,6 +27,20 @@ impl Experiment {
         Experiment { date, tags, tables }
     }
 
+    pub fn from_env(config: &Config) -> Experiment {
+        Experiment::new()
+            .tag("threads_per_worker", config.get_threads())
+            .tag("hosts", config.get_hosts().clone())
+            .tag("num_hosts", config.get_num_hosts())
+            .tag("total_threads", config.get_total_workers())
+            .tag("seed", config.get_seed())
+            .tag("sketch_epsilon", config.get_sketch_epsilon())
+            .tag("estimator_samples", config.get_estimator_samples())
+            .tag("cost_balance", config.get_cost_balance())
+            .tag("git_revision", version::short_sha())
+            .tag("git_commit_date", version::commit_date())
+    }
+
     pub fn from_config(config: &Config, cmdline: &CmdlineConfig) -> Experiment {
         let experiment = Experiment::new()
             .tag("threads_per_worker", config.get_threads())

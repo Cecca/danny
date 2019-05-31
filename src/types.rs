@@ -3,6 +3,7 @@ use abomonation::Abomonation;
 use rand::distributions::{Distribution, Exp, Normal, Uniform};
 use rand::Rng;
 use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
 
@@ -113,6 +114,13 @@ impl BagOfWords {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub fn remap_tokens(&mut self, m: &HashMap<u32, u32>) {
+        for token in &mut self.words {
+            *token = m[token];
+        }
+        self.words.sort();
     }
 
     pub fn jaccard_predicate(r: &Self, s: &Self, sim: f64) -> bool {
