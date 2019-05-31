@@ -111,6 +111,7 @@ fn by_prefix_token<G: Scope>(
     stream: &Stream<G, (u64, BagOfWords)>,
     ranks: &Stream<G, (u32, u32)>,
     range: f64,
+    num_groups: u32,
 ) -> Stream<G, (PrefixToken, (u64, BagOfWords))> {
     stream.binary_frontier(
         ranks,
@@ -147,8 +148,13 @@ fn by_prefix_token<G: Scope>(
                         for (c, mut bow) in bows.drain(..) {
                             bow.remap_tokens(&ranks);
                             let prefix = bow.words().iter().take(prefix_len(&bow, range));
+                            let mut already_sent = HashSet::new();
                             for &token in prefix {
-                                session.give((token, (c, bow.clone())));
+                                let token_group = token % num_groups;
+                                if !already_sent.contains(&token_group) {
+                                    session.give((token_group, (c, bow.clone())));
+                                    already_sent.insert(token_group);
+                                }
                             }
                         }
                     },
@@ -323,7 +329,7 @@ fn count_distinct<G: Scope>(stream: &Stream<G, (u64, u64)>) -> Stream<G, usize> 
         })
 }
 
-fn run(left_path: PathBuf, right_path: PathBuf, range: f64, config: Config) {
+fn run(left_path: PathBuf, right_path: PathBuf, range: f64, num_groups: u32, config: Config) {
     let mut experiment = Experiment::from_env(&config)
         .tag("left", left_path.to_str().unwrap())
         .tag("right", right_path.to_str().unwrap())
@@ -342,8 +348,8 @@ fn run(left_path: PathBuf, right_path: PathBuf, range: f64, config: Config) {
                 let (input_right, stream_right) = scope.new_input();
 
                 let ranks = rank_tokens(&stream_left.concat(&stream_right));
-                let by_tokens_left = by_prefix_token(&stream_left, &ranks, range);
-                let by_tokens_right = by_prefix_token(&stream_right, &ranks, range);
+                let by_tokens_left = by_prefix_token(&stream_left, &ranks, range, num_groups);
+                let by_tokens_right = by_prefix_token(&stream_right, &ranks, range, num_groups);
                 let filtered = filter_candidates(&by_tokens_left, &by_tokens_right, range);
 
                 let captured = count_distinct(&filtered).probe_with(&mut probe).capture();
@@ -421,6 +427,7 @@ fn main() {
         (author: "Matteo Ceccarello <mcec@itu.dk>")
         (about: "Run the Vernica et al distributed join algorithm (just Jaccard similarity)")
         (@arg RANGE: -r +takes_value +required "The similarity threshold")
+        (@arg NUM_GROUPS: -g +takes_value +required "The number of token groups used")
         (@arg LEFT: +required "The left input path")
         (@arg RIGHT: +required "The right input path")
     )
@@ -432,13 +439,18 @@ fn main() {
         .value_of("RANGE")
         .unwrap()
         .parse::<f64>()
-        .expect("Problem parsing the seed");
+        .expect("Problem parsing the range");
+    let num_groups: u32 = matches
+        .value_of("NUM_GROUPS")
+        .unwrap()
+        .parse::<u32>()
+        .expect("Problem parsing the number of groups");
 
     let config = Config::get();
     init_logging(&config);
 
     info!("Starting");
-    run(input_left, input_right, range, config);
+    run(input_left, input_right, range, num_groups, config);
 
     info!("Done!");
 }
