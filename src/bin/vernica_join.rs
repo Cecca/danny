@@ -233,6 +233,133 @@ fn suffix_filter(r: &BagOfWords, s: &BagOfWords, range: f64) -> bool {
     }
 }
 
+struct InvertedIndexRecord<'a> {
+    id: u64,
+    bow: &'a BagOfWords,
+    token_pos: usize,
+}
+
+fn build_inverted_index<'a>(
+    bows: &'a [(u64, BagOfWords)],
+    range: f64,
+) -> HashMap<u32, Vec<InvertedIndexRecord<'a>>> {
+    let mut output = HashMap::new();
+    for (id, bow) in bows {
+        for (token_pos, token) in bow.words().iter().take(prefix_len(bow, range)).enumerate() {
+            output
+                .entry(*token)
+                .or_insert_with(Vec::new)
+                .push(InvertedIndexRecord {
+                    id: *id,
+                    bow,
+                    token_pos,
+                })
+        }
+    }
+    output
+}
+
+#[inline]
+fn intersection(l: &[u32], r: &[u32]) -> usize {
+    let mut intersection = 0;
+
+    let mut l_iter = l.iter();
+    let mut r_iter = r.iter();
+    let mut l_token = l_iter.next();
+    let mut r_token = r_iter.next();
+
+    loop {
+        if l_token.is_none() || r_token.is_none() {
+            break;
+        }
+        let l_t = l_token.unwrap();
+        let r_t = r_token.unwrap();
+        if l_t < r_t {
+            l_token = l_iter.next();
+        } else if l_t > r_t {
+            r_token = r_iter.next();
+        } else {
+            intersection += 1;
+            l_token = l_iter.next();
+            r_token = r_iter.next();
+        }
+    }
+
+    intersection
+}
+
+fn verify<A>(
+    l: u64,
+    l_bow: &BagOfWords,
+    overlap_map: &HashMap<u64, usize>,
+    right: &[(u64, BagOfWords)],
+    range: f64,
+    action: &mut A,
+) where
+    A: FnMut(u64, u64),
+{
+    let pl = prefix_len(l_bow, range);
+    for (r, r_bow) in right {
+        let target_overlap =
+            ((range / (1.0 + range)) * ((l_bow.len() + r_bow.len()) as f64).ceil()) as usize;
+        if let Some(mut overlap) = overlap_map.get(r).cloned() {
+            let pr = prefix_len(r_bow, range);
+            let last_token_l = l_bow.words()[pl - 1];
+            let last_token_r = r_bow.words()[pr - 1];
+            if last_token_l < last_token_r {
+                let upper_bound = overlap + l_bow.len() - pl;
+                if upper_bound > target_overlap {
+                    overlap += intersection(&l_bow.words()[pl..], &r_bow.words()[(overlap + 1)..]);
+                }
+            } else {
+                let upper_bound = overlap + r_bow.len() - pr;
+                if upper_bound > target_overlap {
+                    overlap += intersection(&l_bow.words()[(overlap + 1)..], &r_bow.words()[pr..]);
+                }
+            }
+            if overlap >= target_overlap {
+                action(l, *r);
+            }
+        }
+    }
+}
+
+fn ppjoin<A>(left: &[(u64, BagOfWords)], right: &[(u64, BagOfWords)], range: f64, mut action: A)
+where
+    A: FnMut(u64, u64),
+{
+    let empty_vec = Vec::new();
+    let inverted_index = build_inverted_index(right, range);
+    for (l, l_bow) in left {
+        let mut overlap_map: HashMap<u64, usize> = HashMap::new();
+        for (token_pos, token) in l_bow
+            .words()
+            .iter()
+            .take(prefix_len(l_bow, range))
+            .enumerate()
+        {
+            for record in inverted_index.get(token).unwrap_or(&empty_vec) {
+                if record.bow.len() > (range * l_bow.len() as f64) as usize {
+                    let target_overlap = ((range / (1.0 + range))
+                        * ((l_bow.len() + record.bow.len()) as f64).ceil())
+                        as usize;
+                    let upper_bound = 1 + std::cmp::min(
+                        l_bow.len() - token_pos,
+                        record.bow.len() - record.token_pos,
+                    );
+                    let overlap_entry = overlap_map.entry(record.id).or_insert(0);
+                    if *overlap_entry + upper_bound >= target_overlap {
+                        *overlap_entry += 1;
+                    } else {
+                        overlap_map.remove(&record.id);
+                    }
+                }
+            }
+        }
+        verify(*l, l_bow, &overlap_map, right, range, &mut action);
+    }
+}
+
 fn filter_candidates<G: Scope>(
     stream_left: &Stream<G, PrefixCandidate>,
     stream_right: &Stream<G, PrefixCandidate>,
@@ -278,17 +405,10 @@ fn filter_candidates<G: Scope>(
                         collisions.len()
                     );
 
-                    for (_prefix, (left, right)) in collisions.drain() {
-                        for (l, l_bow) in left.iter() {
-                            for (r, r_bow) in right.iter() {
-                                if positional_filter(l_bow, r_bow, range)
-                                    && suffix_filter(l_bow, r_bow, range)
-                                    && BagOfWords::jaccard_predicate(l_bow, r_bow, range)
-                                {
-                                    session.give((*l, *r));
-                                }
-                            }
-                        }
+                    for (_group, (mut left, mut right)) in collisions.drain() {
+                        left.sort_by_key(|pair| pair.1.len());
+                        right.sort_by_key(|pair| pair.1.len());
+                        ppjoin(&left, &right, range, |l, r| session.give((l, r)));
                     }
                 })
             }
