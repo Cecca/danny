@@ -308,13 +308,17 @@ fn verify<A>(
             let last_token_r = r_bow.words()[pr - 1];
             if last_token_l < last_token_r {
                 let upper_bound = overlap + l_bow.len() - pl;
-                if upper_bound > target_overlap {
-                    overlap += intersection(&l_bow.words()[pl..], &r_bow.words()[(overlap + 1)..]);
+                if upper_bound > target_overlap && pl + 1 < l_bow.len() && overlap + 1 < r_bow.len()
+                {
+                    overlap +=
+                        intersection(&l_bow.words()[(pl + 1)..], &r_bow.words()[(overlap + 1)..]);
                 }
             } else {
                 let upper_bound = overlap + r_bow.len() - pr;
-                if upper_bound > target_overlap {
-                    overlap += intersection(&l_bow.words()[(overlap + 1)..], &r_bow.words()[pr..]);
+                if upper_bound > target_overlap && overlap + 1 < l_bow.len() && pr + 1 < r_bow.len()
+                {
+                    overlap +=
+                        intersection(&l_bow.words()[(overlap + 1)..], &r_bow.words()[(pr + 1)..]);
                 }
             }
             if overlap >= target_overlap {
