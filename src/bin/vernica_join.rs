@@ -146,7 +146,7 @@ fn by_prefix_token<G: Scope>(
                         info!("There are {} distinct tokens", ranks.len());
                         let mut bows = stash_input.remove(&t).expect("there sholud be this time");
                         for (c, mut bow) in bows.drain(..) {
-                            bow.remap_tokens(&ranks);
+                            // FIXME: bow.remap_tokens(&ranks);
                             let prefix = bow.words().iter().take(prefix_len(&bow, range));
                             let mut already_sent = HashSet::new();
                             for &token in prefix {
@@ -233,6 +233,7 @@ fn suffix_filter(r: &BagOfWords, s: &BagOfWords, range: f64) -> bool {
     }
 }
 
+#[derive(Debug)]
 struct InvertedIndexRecord<'a> {
     id: u64,
     bow: &'a BagOfWords,
@@ -245,7 +246,8 @@ fn build_inverted_index<'a>(
 ) -> HashMap<u32, Vec<InvertedIndexRecord<'a>>> {
     let mut output = HashMap::new();
     for (id, bow) in bows {
-        for (token_pos, token) in bow.words().iter().take(prefix_len(bow, range)).enumerate() {
+        let p = prefix_len(bow, range);
+        for (token_pos, token) in bow.words().iter().take(p).enumerate() {
             output
                 .entry(*token)
                 .or_insert_with(Vec::new)
@@ -298,32 +300,34 @@ fn verify<A>(
 ) where
     A: FnMut(u64, u64),
 {
-    let pl = prefix_len(l_bow, range);
     for (r, r_bow) in right {
         let target_overlap =
             ((range / (1.0 + range)) * ((l_bow.len() + r_bow.len()) as f64).ceil()) as usize;
         if let Some(mut overlap) = overlap_map.get(r).cloned() {
-            let pr = prefix_len(r_bow, range);
-            let last_token_l = l_bow.words()[pl - 1];
-            let last_token_r = r_bow.words()[pr - 1];
-            if last_token_l < last_token_r {
-                let upper_bound = overlap + l_bow.len() - pl;
-                if upper_bound > target_overlap && pl + 1 < l_bow.len() && overlap + 1 < r_bow.len()
-                {
-                    overlap +=
-                        intersection(&l_bow.words()[(pl + 1)..], &r_bow.words()[(overlap + 1)..]);
-                }
-            } else {
-                let upper_bound = overlap + r_bow.len() - pr;
-                if upper_bound > target_overlap && overlap + 1 < l_bow.len() && pr + 1 < r_bow.len()
-                {
-                    overlap +=
-                        intersection(&l_bow.words()[(overlap + 1)..], &r_bow.words()[(pr + 1)..]);
-                }
-            }
-            if overlap >= target_overlap {
+            if BagOfWords::jaccard_predicate(l_bow, r_bow, range) {
                 action(l, *r);
             }
+            // let pr = prefix_len(r_bow, range);
+            // let last_token_l = l_bow.words()[pl - 1];
+            // let last_token_r = r_bow.words()[pr - 1];
+            // if last_token_l < last_token_r {
+            //     let upper_bound = overlap + l_bow.len() - pl;
+            //     if upper_bound > target_overlap && pl + 1 < l_bow.len() && overlap + 1 < r_bow.len()
+            //     {
+            //         overlap +=
+            //             intersection(&l_bow.words()[(pl + 1)..], &r_bow.words()[(overlap + 1)..]);
+            //     }
+            // } else {
+            //     let upper_bound = overlap + r_bow.len() - pr;
+            //     if upper_bound > target_overlap && overlap + 1 < l_bow.len() && pr + 1 < r_bow.len()
+            //     {
+            //         overlap +=
+            //             intersection(&l_bow.words()[(overlap + 1)..], &r_bow.words()[(pr + 1)..]);
+            //     }
+            // }
+            // if overlap >= target_overlap {
+            //     action(l, *r);
+            // }
         }
     }
 }
@@ -343,7 +347,7 @@ where
             .enumerate()
         {
             for record in inverted_index.get(token).unwrap_or(&empty_vec) {
-                if record.bow.len() > (range * l_bow.len() as f64) as usize {
+                if record.bow.len() >= (range * l_bow.len() as f64) as usize {
                     let target_overlap = ((range / (1.0 + range))
                         * ((l_bow.len() + record.bow.len()) as f64).ceil())
                         as usize;
