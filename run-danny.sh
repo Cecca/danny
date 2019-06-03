@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ARGS=$@
-DANNY_EXEC=~/.cargo/bin/danny
+DANNY_EXEC=${DANNY_EXEC:-~/.cargo/bin/danny}
 RUST_LOG=${RUST_LOG:-warn}
 DANNY_SEED=${DANNY_SEED:-2879349}
 DANNY_SKETCH_EPSILON=${DANNY_SKETCH_EPSILON:-0.01}
