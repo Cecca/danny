@@ -113,6 +113,7 @@ fn by_prefix_token<G: Scope>(
     range: f64,
     num_groups: u32,
 ) -> Stream<G, (PrefixToken, (u64, BagOfWords))> {
+    let worker = stream.scope().index();
     stream.binary_frontier(
         ranks,
         PipelinePact,
@@ -143,7 +144,9 @@ fn by_prefix_token<G: Scope>(
                     |t, _| {
                         let mut session = output.session(&t);
                         let ranks = stash_ranks.remove(&t).expect("there should be this time");
-                        info!("There are {} distinct tokens", ranks.len());
+                        if worker == 0 {
+                            info!("Routing vectors by prefix group");
+                        }
                         let mut bows = stash_input.remove(&t).expect("there sholud be this time");
                         for (c, mut bow) in bows.drain(..) {
                             bow.remap_tokens(&ranks);
@@ -166,74 +169,6 @@ fn by_prefix_token<G: Scope>(
 
 type PrefixCandidate = (PrefixToken, (u64, BagOfWords));
 
-#[inline]
-fn overlap(r: &BagOfWords, s: &BagOfWords, sim: f64) -> usize {
-    let t_unrounded = sim * (r.len() + s.len()) as f64 / (1.0 + sim);
-    let t_rounded = t_unrounded.round();
-    // The rounding below with the comparison with EPS is needed to counter the
-    // floating point errors introduced by the division
-    let t = if (t_rounded - t_unrounded).abs() < 0.000_000_000_000_01 {
-        t_rounded
-    } else {
-        t_unrounded
-    };
-    t as usize
-}
-
-fn first_match_position(r: &BagOfWords, s: &BagOfWords) -> Option<(usize, usize)> {
-    let mut r_iter = r.words().iter().enumerate();
-    let mut s_iter = s.words().iter().enumerate();
-    let mut cur_r = r_iter.next();
-    let mut cur_s = s_iter.next();
-    loop {
-        if cur_r.is_none() || cur_s.is_none() {
-            return None;
-        }
-        let (idx_r, tok_r) = cur_r.unwrap();
-        let (idx_s, tok_s) = cur_s.unwrap();
-        if tok_r < tok_s {
-            cur_r = r_iter.next();
-        } else if tok_r > tok_s {
-            cur_s = s_iter.next();
-        } else {
-            return Some((idx_r, idx_s));
-        }
-    }
-}
-
-/// Return true if the pair should be considered further
-fn positional_filter(r: &BagOfWords, s: &BagOfWords, threshold: f64) -> bool {
-    if let Some((idx_r, idx_s)) = first_match_position(r, s) {
-        let olap = overlap(r, s, threshold) - 1;
-        olap + idx_r <= r.len() && olap + idx_s <= s.len()
-    } else {
-        false
-    }
-}
-
-/// Return true if the pair should be further considered
-fn suffix_filter(r: &BagOfWords, s: &BagOfWords, range: f64) -> bool {
-    if let Some((idx_r, idx_s)) = first_match_position(r, s) {
-        let olap = overlap(r, s, range);
-        let suffix_r = &r.words()[idx_r..];
-        let suffix_s = &s.words()[idx_s..];
-        let pivot_idx_r = suffix_r.len() / 2;
-        let pivot = &suffix_r[pivot_idx_r];
-        if let Ok(pivot_idx_s) = suffix_s.binary_search(pivot) {
-            let max_match_lower = std::cmp::min(pivot_idx_r - idx_r, pivot_idx_s - idx_s);
-            let max_match_upper = std::cmp::min(r.len() - pivot_idx_r, s.len() - pivot_idx_s);
-            // The 2 takes into account the first match and the pivot
-            let max_match = 2 + max_match_lower + max_match_upper;
-            max_match >= olap
-        } else {
-            true
-        }
-    } else {
-        false
-    }
-}
-
-#[derive(Debug)]
 struct InvertedIndexRecord<'a> {
     id: u64,
     bow: &'a BagOfWords,
@@ -382,6 +317,11 @@ where
 {
     let empty_vec = Vec::new();
     let inverted_index = build_inverted_index(right, range);
+    let mut progress_logger = ProgressLogger::new(
+        std::time::Duration::from_secs(60),
+        "'left sets'".to_owned(),
+        Some(left.len() as u64),
+    );
     for (l, l_bow) in left {
         let mut overlap_map: HashMap<u64, usize> = HashMap::new();
         for (token_pos, token) in l_bow
@@ -409,7 +349,9 @@ where
             }
         }
         verify(*l, l_bow, &overlap_map, right, range, &mut action);
+        progress_logger.add(1);
     }
+    progress_logger.done();
 }
 
 fn filter_candidates<G: Scope>(
@@ -417,6 +359,7 @@ fn filter_candidates<G: Scope>(
     stream_right: &Stream<G, PrefixCandidate>,
     range: f64,
 ) -> Stream<G, (u64, u64)> {
+    let worker = stream_left.scope().index();
     stream_left.binary_frontier(
         &stream_right,
         ExchangePact::new(|pair: &PrefixCandidate| pair.0 as u64),
@@ -452,10 +395,9 @@ fn filter_candidates<G: Scope>(
                 notificator.for_each(&[input_left.frontier(), input_right.frontier()], |t, _| {
                     let mut collisions = stash.remove(&t).expect("This time should be present");
                     let mut session = output.session(&t);
-                    info!(
-                        "Considering candidates: there are {} prefix tokens",
-                        collisions.len()
-                    );
+                    if worker == 0 {
+                        info!("Verifying candidate pairs");
+                    }
 
                     for (_group, (mut left, mut right)) in collisions.drain() {
                         left.sort_by_key(|pair| pair.1.len());
