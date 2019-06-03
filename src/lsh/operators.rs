@@ -917,16 +917,18 @@ where
     output_stream
 }
 
+type EstimationTimestamp<T: Timestamp> = Product<T, usize>;
+
 fn all_hashes_source<G, T, K, D, H, F>(
     scope: &G,
     vecs: Arc<ChunkedDataset<K, D>>,
     hasher: Arc<MultilevelHasher<D, H, F>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-    throttling_probe: ProbeHandle<T>,
+    throttling_probe: ProbeHandle<EstimationTimestamp<T>>,
 ) -> Stream<G, (H, K)>
 where
-    G: Scope<Timestamp = T>,
+    G: Scope<Timestamp = EstimationTimestamp<T>>,
     T: Timestamp + Debug + Succ + ToStepId,
     D: ExchangeData + Debug,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
@@ -972,17 +974,21 @@ where
     })
 }
 
-fn count_collisions<G, H, K>(
+fn count_collisions<G, T, H, K, D, F>(
     min_level: usize,
     max_level: usize,
     left: &Stream<G, (H, K)>,
     right: &Stream<G, (H, K)>,
+    hasher: Arc<MultilevelHasher<D, H, F>>,
     probe: ProbeHandle<G::Timestamp>,
 ) -> (Stream<G, (K, (u8, usize))>, Stream<G, (K, (u8, usize))>)
 where
-    G: Scope,
+    G: Scope<Timestamp = EstimationTimestamp<T>>,
+    T: Timestamp,
     K: ExchangeData + Hash + Eq + Debug + Ord,
-    for<'a> H: ExchangeData + Ord + Route + Debug + PrefixHash<'a>,
+    for<'a> H: ExchangeData + Ord + Route + Debug + PrefixHash<'a> + Hash + Eq,
+    F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
+    D: ExchangeData + Debug,
 {
     let mut builder = OperatorBuilder::new("collision-counter".to_owned(), left.scope());
     let mut input_left = builder.new_input(&left, ExchangePact::new(|p: &(H, K)| p.0.route()));
@@ -1034,10 +1040,11 @@ where
                     let mut collisions_right = HashMap::new();
                     let mut session_left = output_left.session(&caps_left[time]);
                     let mut session_right = output_right.session(&caps_right[time]);
+                    let actual_min_level = *hasher.levels_at_repetition(time.inner).start();
                     // It is OK for a point not to collide on all levels if we
                     // are not doing a self join
-                    buckets.for_all_prefixes(min_level, max_level, |level, lb, rb| {
-                        for (h, l) in lb {
+                    buckets.for_all_prefixes(actual_min_level, max_level, |level, lb, rb| {
+                        for (_h, l) in lb {
                             *collisions_left.entry((l.clone(), level)).or_insert(0usize) +=
                                 rb.len();
                         }
@@ -1081,7 +1088,7 @@ where
 
 /// A balance greater than 0.5 penalizes repetitions
 fn select_minimum<G, T, K, D, H, F>(
-    counts: &Stream<Child<G, Product<T, usize>>, (K, (u8, usize))>,
+    counts: &Stream<Child<G, EstimationTimestamp<T>>, (K, (u8, usize))>,
     hasher: Arc<MultilevelHasher<D, H, F>>,
     balance: f64,
     iteration_cost: f64,
@@ -1158,7 +1165,7 @@ where
     let min_level = hasher.min_level();
     let probe = ProbeHandle::new();
 
-    scope.scoped::<Product<T, usize>, _, _>("estimation scope", |inner| {
+    scope.scoped::<EstimationTimestamp<T>, _, _>("estimation scope", |inner| {
         let l_hashes = all_hashes_source(
             inner,
             left,
@@ -1176,8 +1183,14 @@ where
             probe.clone(),
         );
 
-        let (left_collisions, right_collisions) =
-            count_collisions(min_level, max_level, &l_hashes, &r_hashes, probe.clone());
+        let (left_collisions, right_collisions) = count_collisions(
+            min_level,
+            max_level,
+            &l_hashes,
+            &r_hashes,
+            Arc::clone(&hasher),
+            probe.clone(),
+        );
         (
             select_minimum(
                 &left_collisions,
