@@ -146,7 +146,7 @@ fn by_prefix_token<G: Scope>(
                         info!("There are {} distinct tokens", ranks.len());
                         let mut bows = stash_input.remove(&t).expect("there sholud be this time");
                         for (c, mut bow) in bows.drain(..) {
-                            // FIXME: bow.remap_tokens(&ranks);
+                            bow.remap_tokens(&ranks);
                             let prefix = bow.words().iter().take(prefix_len(&bow, range));
                             let mut already_sent = HashSet::new();
                             for &token in prefix {
@@ -290,6 +290,20 @@ fn intersection(l: &[u32], r: &[u32]) -> usize {
     intersection
 }
 
+#[inline]
+fn equivalent_overlap(r: &BagOfWords, s: &BagOfWords, sim: f64) -> f64 {
+    let t_unrounded = sim * (r.len() + s.len()) as f64 / (1.0 + sim);
+    let t_rounded = t_unrounded.round();
+    // The rounding below with the comparison with EPS is needed to counter the
+    // floating point errors introduced by the division
+    let t = if (t_rounded - t_unrounded).abs() < 0.000_000_000_000_01 {
+        t_rounded
+    } else {
+        t_unrounded
+    };
+    t.ceil()
+}
+
 fn verify<A>(
     l: u64,
     l_bow: &BagOfWords,
@@ -300,34 +314,64 @@ fn verify<A>(
 ) where
     A: FnMut(u64, u64),
 {
+    let pl = prefix_len(l_bow, range);
     for (r, r_bow) in right {
-        let target_overlap =
-            ((range / (1.0 + range)) * ((l_bow.len() + r_bow.len()) as f64).ceil()) as usize;
+        // FIXME: This computation is wrong in some cases: BagOfWords { universe: 10000, words: [9949] } <-> BagOfWords { universe: 10000, words: [9949, 9991] }
+        // This is an f64 rather than usize because otherwise we accept some cases like:
+        //    BagOfWords { universe: 10000, words: [9949] } <-> BagOfWords { universe: 10000, words: [9949, 9991] }
+        let target_overlap = equivalent_overlap(l_bow, r_bow, range);
+        // let target_overlap =
+        //     ((range / (1.0 + range)) * ((l_bow.len() + r_bow.len()) as f64).ceil()) as usize;
         if let Some(mut overlap) = overlap_map.get(r).cloned() {
-            if BagOfWords::jaccard_predicate(l_bow, r_bow, range) {
-                action(l, *r);
-            }
-            // let pr = prefix_len(r_bow, range);
-            // let last_token_l = l_bow.words()[pl - 1];
-            // let last_token_r = r_bow.words()[pr - 1];
-            // if last_token_l < last_token_r {
-            //     let upper_bound = overlap + l_bow.len() - pl;
-            //     if upper_bound > target_overlap && pl + 1 < l_bow.len() && overlap + 1 < r_bow.len()
-            //     {
-            //         overlap +=
-            //             intersection(&l_bow.words()[(pl + 1)..], &r_bow.words()[(overlap + 1)..]);
-            //     }
-            // } else {
-            //     let upper_bound = overlap + r_bow.len() - pr;
-            //     if upper_bound > target_overlap && overlap + 1 < l_bow.len() && pr + 1 < r_bow.len()
-            //     {
-            //         overlap +=
-            //             intersection(&l_bow.words()[(overlap + 1)..], &r_bow.words()[(pr + 1)..]);
-            //     }
-            // }
-            // if overlap >= target_overlap {
+            // if BagOfWords::jaccard_predicate(l_bow, r_bow, range) {
             //     action(l, *r);
             // }
+
+            let pr = prefix_len(r_bow, range);
+            let last_token_l = l_bow.words()[pl - 1];
+            let last_token_r = r_bow.words()[pr - 1];
+            let (upper_bound, start_l, start_r) = if last_token_l < last_token_r {
+                (overlap + l_bow.len() - pl, pl, overlap)
+            } else {
+                (overlap + r_bow.len() - pr, overlap, pr)
+            };
+            let mut inter = 0;
+            if upper_bound as f64 >= target_overlap
+                && start_l <= l_bow.len()
+                && start_r <= r_bow.len()
+            {
+                inter = intersection(&l_bow.words()[start_l..], &r_bow.words()[start_r..]);
+                overlap += inter;
+            }
+
+            if overlap as f64 >= target_overlap {
+                debug_assert!(
+                    BagOfWords::jaccard_predicate(l_bow, r_bow, range),
+                    "false positive \n{:?}\n{:?} \n(target {} pl {} pr {} overlap {} jaccard sim {})",
+                    l_bow,
+                    r_bow,
+                    target_overlap,
+                    pl,
+                    pr,
+                    overlap,
+                    BagOfWords::jaccard(l_bow, r_bow)
+                );
+                action(l, *r);
+            } else {
+                debug_assert!(
+                    !BagOfWords::jaccard_predicate(l_bow, r_bow, range),
+                    "false negative \n{:?}\n{:?} \n(target {} upper bound {} intersection of suffxs {} pl {} pr {} overlap {} jaccard sim {})",
+                    l_bow,
+                    r_bow,
+                    target_overlap,
+                    upper_bound,
+                    inter,
+                    pl,
+                    pr,
+                    overlap,
+                    BagOfWords::jaccard(l_bow, r_bow)
+                );
+            }
         }
     }
 }
