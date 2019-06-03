@@ -503,6 +503,8 @@ fn count_distinct<G: Scope>(stream: &Stream<G, (u64, u64)>) -> Stream<G, usize> 
 
 fn run(left_path: PathBuf, right_path: PathBuf, range: f64, num_groups: u32, config: Config) {
     let mut experiment = Experiment::from_env(&config)
+        .tag("algorithm", "Vernica_join")
+        .tag("num_groups", num_groups)
         .tag("left", left_path.to_str().unwrap())
         .tag("right", right_path.to_str().unwrap())
         .tag("threshold", range);
