@@ -975,8 +975,6 @@ where
 }
 
 fn count_collisions<G, T, H, K, D, F>(
-    min_level: usize,
-    max_level: usize,
     left: &Stream<G, (H, K)>,
     right: &Stream<G, (H, K)>,
     hasher: Arc<MultilevelHasher<D, H, F>>,
@@ -1043,16 +1041,20 @@ where
                     let actual_min_level = *hasher.levels_at_repetition(time.inner).start();
                     // It is OK for a point not to collide on all levels if we
                     // are not doing a self join
-                    buckets.for_all_prefixes(actual_min_level, max_level, |level, lb, rb| {
-                        for (_h, l) in lb {
-                            *collisions_left.entry((l.clone(), level)).or_insert(0usize) +=
-                                rb.len();
-                        }
-                        for (_h, r) in rb {
-                            *collisions_right.entry((r.clone(), level)).or_insert(0usize) +=
-                                lb.len();
-                        }
-                    });
+                    buckets.for_all_prefixes(
+                        actual_min_level,
+                        hasher.max_level(),
+                        |level, lb, rb| {
+                            for (_h, l) in lb {
+                                *collisions_left.entry((l.clone(), level)).or_insert(0usize) +=
+                                    rb.len();
+                            }
+                            for (_h, r) in rb {
+                                *collisions_right.entry((r.clone(), level)).or_insert(0usize) +=
+                                    lb.len();
+                            }
+                        },
+                    );
                     buckets.clear();
                     for ((k, level), count) in collisions_left.drain() {
                         session_left.give((k, (level as u8, count)));
@@ -1161,8 +1163,6 @@ where
     // let iteration_cost = (left.global_n + right.global_n) as f64;
     let iteration_cost = 1.0;
     info!("The cost of every iteration is {}", iteration_cost);
-    let max_level = hasher.max_level();
-    let min_level = hasher.min_level();
     let probe = ProbeHandle::new();
 
     scope.scoped::<EstimationTimestamp<T>, _, _>("estimation scope", |inner| {
@@ -1183,14 +1183,8 @@ where
             probe.clone(),
         );
 
-        let (left_collisions, right_collisions) = count_collisions(
-            min_level,
-            max_level,
-            &l_hashes,
-            &r_hashes,
-            Arc::clone(&hasher),
-            probe.clone(),
-        );
+        let (left_collisions, right_collisions) =
+            count_collisions(&l_hashes, &r_hashes, Arc::clone(&hasher), probe.clone());
         (
             select_minimum(
                 &left_collisions,
