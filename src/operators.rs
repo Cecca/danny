@@ -137,6 +137,17 @@ impl Route for Vec<u32> {
     }
 }
 
+impl Route for &[u32] {
+    #[inline(always)]
+    fn route(&self) -> u64 {
+        let mut h = 0u64;
+        for &x in self.iter() {
+            h = h.wrapping_mul(31).wrapping_add(u64::from(x));
+        }
+        h
+    }
+}
+
 impl<D> Route for (u64, D) {
     #[inline(always)]
     fn route(&self) -> u64 {

@@ -313,6 +313,7 @@ where
         hash_collection_builder,
         rng,
     ));
+    let min_level = multihash.min_level();
 
     let (levels_left, levels_right) = find_best_level(
         scope.clone(),
@@ -354,7 +355,9 @@ where
                 rng.clone(),
             );
             left_hashes
-                .bucket_prefixes(&right_hashes, move |l, r| sketch_predicate.eval(&l.1, &r.1))
+                .bucket_prefixes(&right_hashes, min_level, move |l, r| {
+                    sketch_predicate.eval(&l.1, &r.1)
+                })
                 .map(|(l, r)| (l.0, r.0))
         }
         None => {
@@ -378,7 +381,7 @@ where
                 probe.clone(),
                 rng.clone(),
             );
-            left_hashes.bucket_prefixes(&right_hashes, |_, _| true)
+            left_hashes.bucket_prefixes(&right_hashes, min_level, |_, _| true)
         }
     }
 }

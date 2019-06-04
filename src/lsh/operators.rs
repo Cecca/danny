@@ -258,7 +258,12 @@ where
         Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + PrefixHash<'a>,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
-    fn bucket_prefixes<P>(&self, right: &Self, predicate: P) -> Stream<G, (K, K)>
+    fn bucket_prefixes<P>(
+        &self,
+        right: &Self,
+        routing_prefix: usize,
+        predicate: P,
+    ) -> Stream<G, (K, K)>
     where
         P: FnMut(&K, &K) -> bool + 'static;
 }
@@ -272,7 +277,7 @@ where
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     #[allow(clippy::explicit_counter_loop)]
-    fn bucket_prefixes<P>(&self, right: &Self, pred: P) -> Stream<G, (K, K)>
+    fn bucket_prefixes<P>(&self, right: &Self, routing_prefix: usize, pred: P) -> Stream<G, (K, K)>
     where
         P: FnMut(&K, &K) -> bool + 'static,
     {
@@ -282,8 +287,8 @@ where
 
         self.binary_frontier(
             &right,
-            ExchangePact::new(|pair: &(H, (K, u8))| pair.0.route()),
-            ExchangePact::new(|pair: &(H, (K, u8))| pair.0.route()),
+            ExchangePact::new(move |pair: &(H, (K, u8))| pair.0.prefix(routing_prefix).route()),
+            ExchangePact::new(move |pair: &(H, (K, u8))| pair.0.prefix(routing_prefix).route()),
             "bucket",
             move |_, _| {
                 let mut pred = pred;
@@ -988,9 +993,17 @@ where
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
     D: ExchangeData + Debug,
 {
+    let routing_prefix = hasher.min_level();
     let mut builder = OperatorBuilder::new("collision-counter".to_owned(), left.scope());
-    let mut input_left = builder.new_input(&left, ExchangePact::new(|p: &(H, K)| p.0.route()));
-    let mut input_right = builder.new_input(&right, ExchangePact::new(|p: &(H, K)| p.0.route()));
+
+    let mut input_left = builder.new_input(
+        &left,
+        ExchangePact::new(move |pair: &(H, K)| pair.0.prefix(routing_prefix).route()),
+    );
+    let mut input_right = builder.new_input(
+        &right,
+        ExchangePact::new(move |pair: &(H, K)| pair.0.prefix(routing_prefix).route()),
+    );
     let (mut output_left, stream_left) = builder.new_output();
     let (mut output_right, stream_right) = builder.new_output();
 
@@ -999,7 +1012,7 @@ where
     let mut caps_left = HashMap::new();
     let mut caps_right = HashMap::new();
 
-    builder.build(move |capabilities| {
+    builder.build(move |_| {
         move |frontiers| {
             let mut input_left = FrontieredInputHandle::new(&mut input_left, &frontiers[0]);
             let mut input_right = FrontieredInputHandle::new(&mut input_right, &frontiers[0]);

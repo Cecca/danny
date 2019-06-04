@@ -1,9 +1,10 @@
 //! Module to manage hashes of which we can access the prefix
 
+use crate::operators::Route;
 use std::cmp::Ordering;
 
 pub trait PrefixHash<'a> {
-    type PrefixType: Eq + Ord + Clone;
+    type PrefixType: Eq + Ord + Clone + Route;
     fn prefix(&'a self, n: usize) -> Self::PrefixType;
     fn lex_cmp(&self, other: &Self) -> Ordering;
     fn prefix_eq(&'a self, other: &'a Self, n: usize) -> bool {
