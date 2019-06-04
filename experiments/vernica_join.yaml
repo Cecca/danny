@@ -4,7 +4,7 @@ environment:
   DANNY_HOSTS: "sss00:2001,sss01:2001,sss02:2001,sss03:2001,sss04:2001"
   DANNY_BASELINES_PATH: "/mnt/fast_storage/users/mcec/baselines.csv"
   DANNY_DATA_DIR: /mnt/fast_storage/users/mcec
-  DANNY_EXECUTABLE: ~/.cargo/bin/vernica_join
+  DANNY_EXEC: ~/.cargo/bin/vernica_join
 experiments:
 
   - name: Vernica join
