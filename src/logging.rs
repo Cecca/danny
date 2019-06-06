@@ -481,7 +481,8 @@ impl FrozenExecutionSummary {
                     "step" => *step,
                     "depth" => *depth,
                     "name" => name.clone(),
-                    "duration" => duration.as_millis() as u64
+                    "duration" => duration.as_millis() as u64,
+                    "worker" => self.worker_id
                 ),
             );
         }
