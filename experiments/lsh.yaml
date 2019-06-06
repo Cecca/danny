@@ -123,7 +123,7 @@ experiments:
       --algorithm: lsh
       --range: [0.5,0.7,0.9]
       --measure: jaccard
-      --adaptive-k: 1,5
+      --adaptive-k: 3,5
     arguments:
       - ["{{ dataset('AOL') }}", "{{ dataset('AOL') }}"]
       - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
