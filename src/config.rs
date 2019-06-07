@@ -248,14 +248,14 @@ impl Config {
 
 #[derive(Debug, Clone, Copy)]
 pub enum ParamK {
-    Exact(usize),
+    Fixed(usize),
     Adaptive(usize, usize),
 }
 
 impl ParamK {
     pub fn to_string(&self) -> String {
         match self {
-            ParamK::Exact(k) => format!("Exact({})", k),
+            ParamK::Fixed(k) => format!("Fixed({})", k),
             ParamK::Adaptive(min_k, max_k) => format!("Adaptive({},{})", min_k, max_k),
         }
     }
@@ -315,7 +315,7 @@ impl CmdlineConfig {
                 let _k = k_str
                     .parse::<usize>()
                     .expect("k should be an unsigned integer");
-                ParamK::Exact(_k)
+                ParamK::Fixed(_k)
             })
             .or_else(|| {
                 matches.value_of("ADAPTIVE_K").map(|adaptive_k_str| {
