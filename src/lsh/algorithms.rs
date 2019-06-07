@@ -227,7 +227,7 @@ where
     let matrix = MatrixDescription::for_workers(peers as usize);
 
     let hash_fn = match k {
-        ParamK::Exact(k) => hash_collection_builder(k, rng),
+        ParamK::Fixed(k) => hash_collection_builder(k, rng),
         ParamK::Adaptive(_, _) => panic!("You should not be here!!"),
     };
 
