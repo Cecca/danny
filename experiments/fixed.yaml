@@ -1,0 +1,42 @@
+---
+environment:
+  DANNY_THREADS: 8
+  DANNY_HOSTS: "sss00:2001,sss01:2001,sss02:2001,sss03:2001,sss04:2001"
+  DANNY_BASELINES_PATH: "/mnt/fast_storage/users/mcec/baselines.csv"
+  DANNY_COST_BALANCE: 0.5
+  DANNY_DATA_DIR: /mnt/fast_storage/users/mcec
+  DANNY_SKETCH_EPSILON: 0.01
+experiments:
+
+  - name: Glove fixed
+    tags:
+      - glove
+      - cosine
+      - fixed
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --algorithm: lsh
+      --range: [0.5,0.7,0.9]
+      --measure: cosine
+      -k: [13,14,15,16,17]
+    arguments:
+      - ["{{ dataset('Glove-27-200') }}", "{{ dataset('Glove-27-200') }}"]
+
+  - name: Bag of Words (fixed)
+    tags:
+      - jaccard
+      - fixed
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --algorithm: lsh
+      --range: [0.5,0.7,0.9]
+      --measure: jaccard
+      -k: [2,3,4,5,6]
+    arguments:
+      - ["{{ dataset('AOL') }}", "{{ dataset('AOL') }}"]
+      - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
+      - ["{{ dataset('Livejournal') }}", "{{ dataset('Livejournal') }}"]
