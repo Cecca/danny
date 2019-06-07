@@ -267,24 +267,26 @@ where
     }
 }
 
-struct BucketsPrefixIter<'a, H, K>
+pub struct BucketsPrefixIter<'a, H, K1, K2>
 where
     H: PartialOrd + PrefixHash<'a>,
-    K: Debug,
+    K1: Debug,
+    K2: Debug,
 {
-    left: &'a [(H, K)],
-    right: &'a [(H, K)],
+    left: &'a [(H, K1)],
+    right: &'a [(H, K2)],
     cur_left: usize,
     cur_right: usize,
     prefix_len: usize,
 }
 
-impl<'a, H, K> BucketsPrefixIter<'a, H, K>
+impl<'a, H, K1, K2> BucketsPrefixIter<'a, H, K1, K2>
 where
     H: PartialOrd + PrefixHash<'a>,
-    K: Debug,
+    K1: Debug,
+    K2: Debug,
 {
-    fn new(left: &'a [(H, K)], right: &'a [(H, K)], prefix_len: usize) -> Self {
+    pub fn new(left: &'a [(H, K1)], right: &'a [(H, K2)], prefix_len: usize) -> Self {
         Self {
             left,
             right,
@@ -293,14 +295,7 @@ where
             prefix_len,
         }
     }
-}
-
-impl<'a, H, K> FindBucketEnd<'a, H, K> for BucketsPrefixIter<'a, H, K>
-where
-    H: PartialOrd + PrefixHash<'a> + Debug,
-    K: Debug,
-{
-    fn find_bucket_end(&self, items: &'a [(H, K)], start: usize) -> (&'a H, usize) {
+    fn find_bucket_end<K>(&self, items: &'a [(H, K)], start: usize) -> (&'a H, usize) {
         let start_hash = &items[start].0;
         let mut end = start + 1;
         while end < items.len() && items[end].0.prefix_eq(start_hash, self.prefix_len) {
@@ -310,13 +305,29 @@ where
     }
 }
 
-impl<'a, H, K> Iterator for BucketsPrefixIter<'a, H, K>
+// impl<'a, H, K> FindBucketEnd<'a, H, K> for BucketsPrefixIter<'a, H, K>
+// where
+//     H: PartialOrd + PrefixHash<'a> + Debug,
+//     K: Debug,
+// {
+//     fn find_bucket_end(&self, items: &'a [(H, K)], start: usize) -> (&'a H, usize) {
+//         let start_hash = &items[start].0;
+//         let mut end = start + 1;
+//         while end < items.len() && items[end].0.prefix_eq(start_hash, self.prefix_len) {
+//             end += 1;
+//         }
+//         (start_hash, end)
+//     }
+// }
+
+impl<'a, H, K1, K2> Iterator for BucketsPrefixIter<'a, H, K1, K2>
 where
-    K: Debug,
+    K1: Debug,
+    K2: Debug,
     H: PartialOrd + PrefixHash<'a> + Debug,
 {
     // TODO: This can be merged with the other, specializing just on find_bucket end
-    type Item = (&'a [(H, K)], &'a [(H, K)]);
+    type Item = (&'a [(H, K1)], &'a [(H, K2)]);
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {

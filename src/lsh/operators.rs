@@ -1151,66 +1151,66 @@ where
         })
 }
 
-pub fn find_best_level<G, T, K, D, H, F>(
-    mut scope: G,
-    left: Arc<ChunkedDataset<K, D>>,
-    right: Arc<ChunkedDataset<K, D>>,
-    hasher: Arc<MultilevelHasher<D, H, F>>,
-    matrix: MatrixDescription,
-    balance: f64,
-) -> (Stream<G, (K, usize)>, Stream<G, (K, usize)>)
-where
-    G: Scope<Timestamp = T>,
-    T: Timestamp + Succ + ToStepId + Debug,
-    D: ExchangeData + Debug,
-    K: Data + Debug + Send + Sync + Abomonation + Clone + Route + Hash + Eq + Ord,
-    for<'a> H:
-        Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + PrefixHash<'a>,
-    F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
-{
-    // 1. Generate all hash values for all repetitions
-    // 2. In each level/repetition pair, build the buckets
-    // 3. Accumulate the cost
-    // 4. Accumulate the minimum cost in a distributed fashion
+// pub fn find_best_level<G, T, K, D, H, F>(
+//     mut scope: G,
+//     left: Arc<ChunkedDataset<K, D>>,
+//     right: Arc<ChunkedDataset<K, D>>,
+//     hasher: Arc<MultilevelHasher<D, H, F>>,
+//     matrix: MatrixDescription,
+//     balance: f64,
+// ) -> (Stream<G, (K, usize)>, Stream<G, (K, usize)>)
+// where
+//     G: Scope<Timestamp = T>,
+//     T: Timestamp + Succ + ToStepId + Debug,
+//     D: ExchangeData + Debug,
+//     K: Data + Debug + Send + Sync + Abomonation + Clone + Route + Hash + Eq + Ord,
+//     for<'a> H:
+//         Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + PrefixHash<'a>,
+//     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
+// {
+//     // 1. Generate all hash values for all repetitions
+//     // 2. In each level/repetition pair, build the buckets
+//     // 3. Accumulate the cost
+//     // 4. Accumulate the minimum cost in a distributed fashion
 
-    // let iteration_cost = (left.global_n + right.global_n) as f64;
-    let iteration_cost = 1.0;
-    info!("The cost of every iteration is {}", iteration_cost);
-    let probe = ProbeHandle::new();
+//     // let iteration_cost = (left.global_n + right.global_n) as f64;
+//     let iteration_cost = 1.0;
+//     info!("The cost of every iteration is {}", iteration_cost);
+//     let probe = ProbeHandle::new();
 
-    scope.scoped::<EstimationTimestamp<T>, _, _>("estimation scope", |inner| {
-        let l_hashes = all_hashes_source(
-            inner,
-            left,
-            Arc::clone(&hasher),
-            matrix,
-            MatrixDirection::Rows,
-            probe.clone(),
-        );
-        let r_hashes = all_hashes_source(
-            inner,
-            right,
-            Arc::clone(&hasher),
-            matrix,
-            MatrixDirection::Columns,
-            probe.clone(),
-        );
+//     scope.scoped::<EstimationTimestamp<T>, _, _>("estimation scope", |inner| {
+//         let l_hashes = all_hashes_source(
+//             inner,
+//             left,
+//             Arc::clone(&hasher),
+//             matrix,
+//             MatrixDirection::Rows,
+//             probe.clone(),
+//         );
+//         let r_hashes = all_hashes_source(
+//             inner,
+//             right,
+//             Arc::clone(&hasher),
+//             matrix,
+//             MatrixDirection::Columns,
+//             probe.clone(),
+//         );
 
-        let (left_collisions, right_collisions) =
-            count_collisions(&l_hashes, &r_hashes, Arc::clone(&hasher), probe.clone());
-        (
-            select_minimum(
-                &left_collisions,
-                Arc::clone(&hasher),
-                balance,
-                iteration_cost,
-            ),
-            select_minimum(
-                &right_collisions,
-                Arc::clone(&hasher),
-                balance,
-                iteration_cost,
-            ),
-        )
-    })
-}
+//         let (left_collisions, right_collisions) =
+//             count_collisions(&l_hashes, &r_hashes, Arc::clone(&hasher), probe.clone());
+//         (
+//             select_minimum(
+//                 &left_collisions,
+//                 Arc::clone(&hasher),
+//                 balance,
+//                 iteration_cost,
+//             ),
+//             select_minimum(
+//                 &right_collisions,
+//                 Arc::clone(&hasher),
+//                 balance,
+//                 iteration_cost,
+//             ),
+//         )
+//     })
+// }

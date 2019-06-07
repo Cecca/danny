@@ -5,6 +5,7 @@ use crate::experiment::Experiment;
 use crate::io::*;
 use crate::logging::init_event_logging;
 use crate::logging::*;
+use crate::lsh::adaptive::*;
 use crate::lsh::functions::*;
 use crate::lsh::operators::*;
 use crate::lsh::prefix_hash::*;
@@ -14,7 +15,6 @@ use crate::sketch::*;
 use abomonation::Abomonation;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
-use timely::dataflow::operators::concat::Concatenate;
 
 use std::clone::Clone;
 
@@ -322,6 +322,7 @@ where
         Arc::clone(&multihash),
         matrix,
         cost_balance,
+        rng.clone(),
     );
     let levels_left = levels_left
         .matrix_distribute(MatrixDirection::Rows, matrix)
