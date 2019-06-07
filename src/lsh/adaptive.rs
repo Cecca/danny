@@ -60,7 +60,7 @@ where
         move |output| {
             let logger = logger.clone();
             if let Some(cap) = cap.as_mut() {
-                let _pg = ProfileGuard::new(logger, 0, 0, "cost_estimation_hashing");
+                let _pg = ProfileGuard::new(logger.clone(), 0, 0, "cost_estimation_hashing");
                 let mut session = output.session(cap);
                 let mut accum = HashMap::new();
                 let mut cnt = 0;
@@ -75,6 +75,7 @@ where
                     cnt += 1;
                 }
                 info!("Sampled {} points", cnt);
+                log_event!(logger, LogEvent::AdaptiveSampledPoints(cnt));
                 for ((rep, h), weight) in accum.drain() {
                     session.give((rep, h, weight));
                 }
@@ -194,6 +195,11 @@ where
                     info!(
                         "There are {} points colliding with nothing",
                         count_not_colliding_points
+                    );
+
+                    log_event!(
+                        logger,
+                        LogEvent::AdaptiveNoCollision(count_not_colliding_points)
                     );
                     for (level, count) in histogram {
                         log_event!(logger, LogEvent::AdaptiveLevelHistogram(level, count));

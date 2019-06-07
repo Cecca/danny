@@ -330,6 +330,8 @@ pub enum LogEvent {
     ReceivedHashes(usize, usize),
     /// Histogram of the distribution of levels in the adaptive algorithm (level, count) pairs
     AdaptiveLevelHistogram(usize, usize),
+    AdaptiveNoCollision(usize),
+    AdaptiveSampledPoints(usize),
     // The hashes generated in each iteration
     GeneratedHashes(usize, usize),
     /// Profiling event, with (step, depth, name, duration)
@@ -358,6 +360,8 @@ pub struct ExecutionSummary {
     generated_pairs: HashMap<usize, usize>,
     received_hashes: HashMap<usize, usize>,
     adaptive_histogram: HashMap<usize, usize>,
+    adaptive_no_collision: usize,
+    adaptive_sampled_points: usize,
     generated_hashes: HashMap<usize, usize>,
     profile: HashMap<(usize, u8, String), Duration>,
 }
@@ -372,6 +376,8 @@ impl ExecutionSummary {
             generated_pairs: HashMap::new(),
             received_hashes: HashMap::new(),
             adaptive_histogram: HashMap::new(),
+            adaptive_no_collision: 0,
+            adaptive_sampled_points: 0,
             generated_hashes: HashMap::new(),
             profile: HashMap::new(),
         }
@@ -390,6 +396,8 @@ impl ExecutionSummary {
             generated_pairs: Self::map_to_vec(&self.generated_pairs),
             received_hashes: Self::map_to_vec(&self.received_hashes),
             adaptive_histogram: Self::map_to_vec(&self.adaptive_histogram),
+            adaptive_no_collision: self.adaptive_no_collision,
+            adaptive_sampled_points: self.adaptive_sampled_points,
             generated_hashes: Self::map_to_vec(&self.generated_hashes),
             profile: Self::map_to_vec(&self.profile),
         }
@@ -415,6 +423,12 @@ impl ExecutionSummary {
             LogEvent::AdaptiveLevelHistogram(level, count) => {
                 *self.adaptive_histogram.entry(level).or_insert(0usize) += count;
             }
+            LogEvent::AdaptiveNoCollision(count) => {
+                self.adaptive_no_collision += count;
+            }
+            LogEvent::AdaptiveSampledPoints(count) => {
+                self.adaptive_sampled_points += count;
+            }
             LogEvent::GeneratedHashes(step, count) => {
                 *self.generated_hashes.entry(step).or_insert(0usize) += count;
             }
@@ -437,6 +451,8 @@ pub struct FrozenExecutionSummary {
     pub generated_pairs: Vec<(usize, usize)>,
     pub received_hashes: Vec<(usize, usize)>,
     pub adaptive_histogram: Vec<(usize, usize)>,
+    pub adaptive_no_collision: usize,
+    pub adaptive_sampled_points: usize,
     pub generated_hashes: Vec<(usize, usize)>,
     pub profile: Vec<((usize, u8, String), Duration)>,
 }
@@ -473,6 +489,16 @@ impl FrozenExecutionSummary {
         }
         if !hist.is_empty() {
             info!(" Adaptive hist: {:?}", hist);
+            info!(" Points with no collisions: {}", self.adaptive_no_collision);
+            info!(" Sampled points: {}", self.adaptive_sampled_points);
+            experiment.append(
+                "adaptive_counts",
+                row!("count" => self.adaptive_no_collision, "name" => "no_collision", "worker" => self.worker_id),
+            );
+            experiment.append(
+                "adaptive_counts",
+                row!("count" => self.adaptive_sampled_points, "name" => "sampled_points", "worker" => self.worker_id),
+            );
         }
         for ((step, depth, name), duration) in self.profile.iter() {
             experiment.append(
