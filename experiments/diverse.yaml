@@ -20,7 +20,7 @@ experiments:
       --algorithm: lsh
       --range: 0.5
       --measure: cosine
-      -k: 16
+      -k: [13,14,15,16,17]
     arguments:
       - ["{{ dataset('Glove-27-diverse-0.5-3M')}}", "{{ dataset('Glove-27-200') }}"]
 
@@ -52,7 +52,7 @@ experiments:
       --algorithm: lsh
       --range: 0.7
       --measure: cosine
-      -k: 16
+      -k: [13,14,15,16,17]
     arguments:
       - ["{{ dataset('Glove-27-diverse-0.7-3M')}}", "{{ dataset('Glove-27-200') }}"]
 
@@ -68,7 +68,7 @@ experiments:
       --algorithm: lsh
       --range: 0.7
       --measure: cosine
-      --adaptive-k: "10,16"
+      --adaptive-k: "14,18"
     arguments:
       - ["{{ dataset('Glove-27-diverse-0.7-3M')}}", "{{ dataset('Glove-27-200') }}"]
 
@@ -84,7 +84,7 @@ experiments:
       --algorithm: lsh
       --range: 0.9
       --measure: cosine
-      -k: 16
+      -k: [13,14,15,16,17]
     arguments:
       - ["{{ dataset('Glove-27-diverse-0.9-3M')}}", "{{ dataset('Glove-27-200') }}"]
 
@@ -100,7 +100,7 @@ experiments:
       --algorithm: lsh
       --range: 0.9
       --measure: cosine
-      --adaptive-k: "10,16"
+      --adaptive-k: "14,18"
     arguments:
       - ["{{ dataset('Glove-27-diverse-0.9-3M')}}", "{{ dataset('Glove-27-200') }}"]
 
@@ -115,7 +115,7 @@ experiments:
       --algorithm: lsh
       --range: 0.5
       --measure: jaccard
-      -k: 5
+      -k: [2,3,4,5,6]
     arguments:
       - ["{{ dataset('AOL-diverse-0.5-3M') }}", "{{ dataset('AOL') }}"]
       - ["{{ dataset('Livejournal-diverse-0.5-3M') }}", "{{ dataset('Livejournal') }}"]      
@@ -132,7 +132,7 @@ experiments:
       --algorithm: lsh
       --range: 0.5
       --measure: jaccard
-      --adaptive-k: 1,5
+      --adaptive-k: 3,7
     arguments:
       - ["{{ dataset('AOL-diverse-0.5-3M') }}", "{{ dataset('AOL') }}"]
       - ["{{ dataset('Livejournal-diverse-0.5-3M') }}", "{{ dataset('Livejournal') }}"]      
@@ -149,7 +149,7 @@ experiments:
       --algorithm: lsh
       --range: 0.7
       --measure: jaccard
-      -k: 5
+      -k: [2,3,4,5,6]
     arguments:
       - ["{{ dataset('AOL-diverse-0.7-3M') }}", "{{ dataset('AOL') }}"]
       - ["{{ dataset('Livejournal-diverse-0.7-3M') }}", "{{ dataset('Livejournal') }}"]      
@@ -166,7 +166,7 @@ experiments:
       --algorithm: lsh
       --range: 0.7
       --measure: jaccard
-      --adaptive-k: 1,5
+      --adaptive-k: 3,7
     arguments:
       - ["{{ dataset('AOL-diverse-0.7-3M') }}", "{{ dataset('AOL') }}"]
       - ["{{ dataset('Livejournal-diverse-0.7-3M') }}", "{{ dataset('Livejournal') }}"]      
@@ -183,7 +183,7 @@ experiments:
       --algorithm: lsh
       --range: 0.9
       --measure: jaccard
-      -k: 5
+      -k: [2,3,4,5,6]
     arguments:
       - ["{{ dataset('AOL-diverse-0.9-3M') }}", "{{ dataset('AOL') }}"]
       - ["{{ dataset('Livejournal-diverse-0.9-3M') }}", "{{ dataset('Livejournal') }}"]      
@@ -200,7 +200,7 @@ experiments:
       --algorithm: lsh
       --range: 0.9
       --measure: jaccard
-      --adaptive-k: 1,5
+      --adaptive-k: 3,7
     arguments:
       - ["{{ dataset('AOL-diverse-0.9-3M') }}", "{{ dataset('AOL') }}"]
       - ["{{ dataset('Livejournal-diverse-0.9-3M') }}", "{{ dataset('Livejournal') }}"]      
