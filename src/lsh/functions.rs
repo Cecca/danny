@@ -407,6 +407,7 @@ where
     }
 
     pub fn hash(&self, v: &D, level: usize, repetition: usize) -> H {
+        assert!(self.hashers.contains_key(&level));
         self.hashers[&level].hash(v, repetition)
     }
 }
