@@ -1073,8 +1073,14 @@ where
                 if frontiers.iter().all(|f| !f.less_equal(time)) {
                     let mut collisions_left = HashMap::new();
                     let mut collisions_right = HashMap::new();
-                    let mut session_left = output_left.session(&caps_left[time]);
-                    let mut session_right = output_right.session(&caps_right[time]);
+                    let cap_left = caps_left
+                        .get(time)
+                        .unwrap_or_else(||panic!("Could not find time {:?} (left)", time));
+                    let cap_right = caps_right
+                        .get(time)
+                        .unwrap_or_else(|| panic!("Could not find time {:?} (right)", time));
+                    let mut session_left = output_left.session(cap_left);
+                    let mut session_right = output_right.session(cap_right);
                     let actual_min_level = *hasher.levels_at_repetition(time.inner).start();
                     // It is OK for a point not to collide on all levels if we
                     // are not doing a self join
