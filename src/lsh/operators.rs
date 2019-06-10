@@ -965,7 +965,7 @@ where
         move |output| {
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
-                    stopwatch.maybe_stop(worker == 0);
+                    stopwatch.maybe_stop(worker < 8);
                     stopwatch.start();
                     let mut session = output.session(cap);
                     let mut cnt = 0;
@@ -977,15 +977,17 @@ where
                         session.give((h, k.clone()));
                         cnt += 1;
                     }
-                    info!(
-                        "Output just {} hashed points over {} (sample probability {})",
-                        cnt,
-                        vecs.stripe_len(matrix, direction, worker),
-                        sampling_probability
-                    );
+                    // info!(
+                    //     "Output just {} hashed points over {} (sample probability {})",
+                    //     cnt,
+                    //     vecs.stripe_len(matrix, direction, worker),
+                    //     sampling_probability
+                    // );
                     current_repetition += 1;
                     cap.downgrade(&cap.time().succ());
-                    info!("Downgraded capability to {:?}", cap);
+                    if worker < 8 {
+                        info!("Downgraded capability to {:?}", cap);
+                    }
                     if current_repetition >= num_repetitions {
                         done = true;
                     }
@@ -1015,6 +1017,7 @@ where
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
     D: ExchangeData + Debug,
 {
+    let worker = left.scope().index();
     let routing_prefix = hasher.min_level();
     let l_weight = 1.0 / left_sampling_probability;
     let r_weight = 1.0 / right_sampling_probability;
@@ -1056,6 +1059,9 @@ where
                 for (h, k) in data.drain(..) {
                     rep_entry.push_left(h, k);
                 }
+                if worker < 8 {
+                    info!("Left notify at {:?}", t.time());
+                }
                 notificator.notify_at(t.retain());
             });
             input_right.for_each(|t, data| {
@@ -1068,6 +1074,9 @@ where
                     .or_insert_with(|| pool.get());
                 for (h, k) in data.drain(..) {
                     rep_entry.push_right(h, k);
+                }
+                if worker < 8 {
+                    info!("Right notify at {:?}", t.time());
                 }
                 notificator.notify_at(t.retain());
             });
