@@ -1090,50 +1090,60 @@ where
                 &[input_left.frontier(), input_right.frontier()],
                 |time, _| {
                     if let Some(mut buckets) = buckets.remove(&time) {
-                        let mut collisions_left = HashMap::new();
-                        let mut collisions_right = HashMap::new();
-                        let cap_left = caps_left.remove(&time.time()).unwrap_or_else(|| {
-                            panic!(
-                                "[{}] Could not find time {:?} (left) {:?}",
-                                worker,
-                                time.time(),
-                                caps_left
-                            )
-                        });
-                        let cap_right = caps_right.remove(&time.time()).unwrap_or_else(|| {
-                            panic!(
-                                "[{}] Could not find time {:?} (right) {:?}",
-                                worker,
-                                time.time(),
-                                caps_right
-                            )
-                        });
-                        let mut session_left = output_left.session(&cap_left);
-                        let mut session_right = output_right.session(&cap_right);
-                        let actual_min_level = *hasher.levels_at_repetition(time.inner).start();
-                        // It is OK for a point not to collide on all levels if we
-                        // are not doing a self join
-                        buckets.for_all_prefixes(
-                            actual_min_level,
-                            hasher.max_level(),
-                            |level, lb, rb| {
-                                for (_h, l) in lb {
-                                    *collisions_left.entry((l.clone(), level)).or_insert(0.0) +=
-                                        rb.len() as f64 * r_weight;
-                                }
-                                for (_h, r) in rb {
-                                    *collisions_right.entry((r.clone(), level)).or_insert(0.0) +=
-                                        lb.len() as f64 * l_weight;
-                                }
-                            },
-                        );
-                        buckets.clear();
-                        pool.give_back(buckets);
-                        for ((k, level), weight) in collisions_left.drain() {
-                            session_left.give((k, (level as u8, weight)));
-                        }
-                        for ((k, level), weight) in collisions_right.drain() {
-                            session_right.give((k, (level as u8, weight)));
+                        // Because of the sampling, either the left or the right side of the bucket might be empty.
+                        // in this case we skip the block altogether, also because otherwise the capabilities might not be there.
+                        if buckets.len_left() > 0 && buckets.len_right() > 0 {
+                            let mut collisions_left = HashMap::new();
+                            let mut collisions_right = HashMap::new();
+                            let cap_left = caps_left.remove(&time.time()).unwrap_or_else(|| {
+                                panic!(
+                                    "[{}] Could not find time {:?} (left) {:?}",
+                                    worker,
+                                    time.time(),
+                                    caps_left
+                                )
+                            });
+                            let cap_right = caps_right.remove(&time.time()).unwrap_or_else(|| {
+                                panic!(
+                                    "[{}] Could not find time {:?} (right) {:?}",
+                                    worker,
+                                    time.time(),
+                                    caps_right
+                                )
+                            });
+                            let mut session_left = output_left.session(&cap_left);
+                            let mut session_right = output_right.session(&cap_right);
+                            let actual_min_level = *hasher.levels_at_repetition(time.inner).start();
+                            // It is OK for a point not to collide on all levels if we
+                            // are not doing a self join
+                            buckets.for_all_prefixes(
+                                actual_min_level,
+                                hasher.max_level(),
+                                |level, lb, rb| {
+                                    for (_h, l) in lb {
+                                        *collisions_left
+                                            .entry((l.clone(), level))
+                                            .or_insert(0.0) += rb.len() as f64 * r_weight;
+                                    }
+                                    for (_h, r) in rb {
+                                        *collisions_right
+                                            .entry((r.clone(), level))
+                                            .or_insert(0.0) += lb.len() as f64 * l_weight;
+                                    }
+                                },
+                            );
+                            buckets.clear();
+                            pool.give_back(buckets);
+                            for ((k, level), weight) in collisions_left.drain() {
+                                session_left.give((k, (level as u8, weight)));
+                            }
+                            for ((k, level), weight) in collisions_right.drain() {
+                                session_right.give((k, (level as u8, weight)));
+                            }
+                        } else {
+                            // Note that we still have to remove the capabilities from their stashes.
+                            caps_left.remove(&time.time());
+                            caps_right.remove(&time.time());
                         }
                     }
                 },
