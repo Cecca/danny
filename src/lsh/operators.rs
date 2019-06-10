@@ -1113,6 +1113,7 @@ where
             for t in cleanup_times.iter() {
                 assert!(caps_left.contains_key(t));
                 assert!(caps_right.contains_key(t));
+                assert!(buckets.contains_key(t));
                 caps_left.remove(t).unwrap();
                 caps_right.remove(t).unwrap();
                 let bucket = buckets.remove(t).unwrap();
