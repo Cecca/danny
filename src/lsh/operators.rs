@@ -1042,6 +1042,7 @@ where
             let mut input_right = FrontieredInputHandle::new(&mut input_right, &frontiers[1]);
             let mut output_left = output_left.activate();
             let mut output_right = output_right.activate();
+            let mut notificator = FrontierNotificator::new();
 
             input_left.for_each(|t, data| {
                 let mut data = data.replace(Vec::new());
@@ -1054,6 +1055,7 @@ where
                 for (h, k) in data.drain(..) {
                     rep_entry.push_left(h, k);
                 }
+                notificator.notify_at(t.retain());
             });
             input_right.for_each(|t, data| {
                 let mut data = data.replace(Vec::new());
@@ -1066,66 +1068,51 @@ where
                 for (h, k) in data.drain(..) {
                     rep_entry.push_right(h, k);
                 }
+                notificator.notify_at(t.retain());
             });
 
-            let frontiers = &[input_left.frontier(), input_right.frontier()];
-            for (time, buckets) in buckets.iter_mut() {
-                if frontiers.iter().all(|f| !f.less_equal(time)) {
-                    let mut collisions_left = HashMap::new();
-                    let mut collisions_right = HashMap::new();
-                    let cap_left = caps_left
-                        .get(time)
-                        .unwrap_or_else(||panic!("Could not find time {:?} (left)", time));
-                    let cap_right = caps_right
-                        .get(time)
-                        .unwrap_or_else(|| panic!("Could not find time {:?} (right)", time));
-                    let mut session_left = output_left.session(cap_left);
-                    let mut session_right = output_right.session(cap_right);
-                    let actual_min_level = *hasher.levels_at_repetition(time.inner).start();
-                    // It is OK for a point not to collide on all levels if we
-                    // are not doing a self join
-                    buckets.for_all_prefixes(
-                        actual_min_level,
-                        hasher.max_level(),
-                        |level, lb, rb| {
-                            for (_h, l) in lb {
-                                *collisions_left.entry((l.clone(), level)).or_insert(0.0) +=
-                                    rb.len() as f64 * r_weight;
-                            }
-                            for (_h, r) in rb {
-                                *collisions_right.entry((r.clone(), level)).or_insert(0.0) +=
-                                    lb.len() as f64 * l_weight;
-                            }
-                        },
-                    );
-                    buckets.clear();
-                    for ((k, level), weight) in collisions_left.drain() {
-                        session_left.give((k, (level as u8, weight)));
+            notificator.for_each(
+                &[input_left.frontier(), input_right.frontier()],
+                |time, _| {
+                    if let Some(mut buckets) = buckets.remove(&time) {
+                        let mut collisions_left = HashMap::new();
+                        let mut collisions_right = HashMap::new();
+                        let cap_left = caps_left
+                            .remove(&time)
+                            .unwrap_or_else(|| panic!("Could not find time {:?} (left)", time));
+                        let cap_right = caps_right
+                            .remove(&time)
+                            .unwrap_or_else(|| panic!("Could not find time {:?} (right)", time));
+                        let mut session_left = output_left.session(&cap_left);
+                        let mut session_right = output_right.session(&cap_right);
+                        let actual_min_level = *hasher.levels_at_repetition(time.inner).start();
+                        // It is OK for a point not to collide on all levels if we
+                        // are not doing a self join
+                        buckets.for_all_prefixes(
+                            actual_min_level,
+                            hasher.max_level(),
+                            |level, lb, rb| {
+                                for (_h, l) in lb {
+                                    *collisions_left.entry((l.clone(), level)).or_insert(0.0) +=
+                                        rb.len() as f64 * r_weight;
+                                }
+                                for (_h, r) in rb {
+                                    *collisions_right.entry((r.clone(), level)).or_insert(0.0) +=
+                                        lb.len() as f64 * l_weight;
+                                }
+                            },
+                        );
+                        buckets.clear();
+                        pool.give_back(buckets);
+                        for ((k, level), weight) in collisions_left.drain() {
+                            session_left.give((k, (level as u8, weight)));
+                        }
+                        for ((k, level), weight) in collisions_right.drain() {
+                            session_right.give((k, (level as u8, weight)));
+                        }
                     }
-                    for ((k, level), weight) in collisions_right.drain() {
-                        session_right.give((k, (level as u8, weight)));
-                    }
-                }
-            }
-
-            // Cleanup exhausted buckets, returning buckets to the pool,
-            // so to reuse the allocated memory in the future
-            let cleanup_times: Vec<G::Timestamp> = buckets
-                .iter()
-                .filter(|(_, b)| b.is_empty())
-                .map(|p| p.0)
-                .cloned()
-                .collect();
-            for t in cleanup_times.iter() {
-                assert!(caps_left.contains_key(t));
-                assert!(caps_right.contains_key(t));
-                assert!(buckets.contains_key(t));
-                caps_left.remove(t).unwrap();
-                caps_right.remove(t).unwrap();
-                let bucket = buckets.remove(t).unwrap();
-                // put it back into the pool
-                pool.give_back(bucket);
-            }
+                },
+            );
         }
     });
     (
