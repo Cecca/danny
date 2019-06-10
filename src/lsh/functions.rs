@@ -402,12 +402,11 @@ where
         let max_level = self.max_level();
         let start = (min_level..=max_level)
             .find(|&l| self.repetitions_at_level(l) >= repetition)
-            .unwrap();
+            .expect("could not find the start level");
         start..=max_level
     }
 
     pub fn hash(&self, v: &D, level: usize, repetition: usize) -> H {
-        assert!(self.hashers.contains_key(&level));
         self.hashers[&level].hash(v, repetition)
     }
 }

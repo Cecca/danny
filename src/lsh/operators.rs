@@ -1039,7 +1039,7 @@ where
     builder.build(move |_| {
         move |frontiers| {
             let mut input_left = FrontieredInputHandle::new(&mut input_left, &frontiers[0]);
-            let mut input_right = FrontieredInputHandle::new(&mut input_right, &frontiers[0]);
+            let mut input_right = FrontieredInputHandle::new(&mut input_right, &frontiers[1]);
             let mut output_left = output_left.activate();
             let mut output_right = output_right.activate();
 
