@@ -1087,12 +1087,20 @@ where
                     if let Some(mut buckets) = buckets.remove(&time) {
                         let mut collisions_left = HashMap::new();
                         let mut collisions_right = HashMap::new();
-                        let cap_left = caps_left
-                            .remove(&time)
-                            .unwrap_or_else(|| panic!("Could not find time {:?} (left)", time));
-                        let cap_right = caps_right
-                            .remove(&time)
-                            .unwrap_or_else(|| panic!("Could not find time {:?} (right)", time));
+                        let cap_left = caps_left.remove(&time.time()).unwrap_or_else(|| {
+                            panic!(
+                                "Could not find time {:?} (left) {:?}",
+                                time.time(),
+                                frontiers
+                            )
+                        });
+                        let cap_right = caps_right.remove(&time.time()).unwrap_or_else(|| {
+                            panic!(
+                                "Could not find time {:?} (right) {:?}",
+                                time.time(),
+                                frontiers
+                            )
+                        });
                         let mut session_left = output_left.session(&cap_left);
                         let mut session_right = output_right.session(&cap_right);
                         let actual_min_level = *hasher.levels_at_repetition(time.inner).start();
