@@ -985,6 +985,7 @@ where
                     );
                     current_repetition += 1;
                     cap.downgrade(&cap.time().succ());
+                    info!("Downgraded capability to {:?}", cap);
                     if current_repetition >= num_repetitions {
                         done = true;
                     }
@@ -1037,12 +1038,12 @@ where
     let mut caps_right = HashMap::new();
 
     builder.build(move |_| {
+        let mut notificator = FrontierNotificator::new();
         move |frontiers| {
             let mut input_left = FrontieredInputHandle::new(&mut input_left, &frontiers[0]);
             let mut input_right = FrontieredInputHandle::new(&mut input_right, &frontiers[1]);
             let mut output_left = output_left.activate();
             let mut output_right = output_right.activate();
-            let mut notificator = FrontierNotificator::new();
 
             input_left.for_each(|t, data| {
                 let mut data = data.replace(Vec::new());
