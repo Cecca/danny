@@ -705,6 +705,7 @@ where
     R: Rng + SeedableRng + Clone + ?Sized + 'static + Sync + Send,
 {
     let worker: u64 = scope.index() as u64;
+    let min_level = multilevel_hasher.min_level();
     let max_level = multilevel_hasher.max_level();
     let num_repetitions = multilevel_hasher.repetitions_at_level(max_level);
     let multilevel_hasher = Arc::clone(&multilevel_hasher);
@@ -759,17 +760,12 @@ where
                     let mut session = output.session(&capability);
                     let active_levels = multilevel_hasher.levels_at_repetition(current_repetition);
                     for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
-                        // Here we have that some vectors may not not have a best level. This is because
-                        // those vectors didn't collide with anything in the estimatio of the cost.
-                        // Since we use the same hasher for both the estimation and the actual computation
-                        // we can simply avoid emitting the vectors for which we have no entry in the map.
-                        if let Some(&this_best_level) = best_levels.get(key) {
-                            if active_levels.contains(&this_best_level) {
-                                // We hash to the max level because the levelling will be taken care of in the buckets
-                                let h = multilevel_hasher.hash(v, max_level, current_repetition);
-                                session.give((h, (key.clone(), this_best_level as u8)));
-                                cnt += 1;
-                            }
+                        let &this_best_level = best_levels.get(key).unwrap_or(&min_level);
+                        if active_levels.contains(&this_best_level) {
+                            // We hash to the max level because the levelling will be taken care of in the buckets
+                            let h = multilevel_hasher.hash(v, max_level, current_repetition);
+                            session.give((h, (key.clone(), this_best_level as u8)));
+                            cnt += 1;
                         }
                     }
                     log_event!(
@@ -827,6 +823,7 @@ where
     let end_sketch = Instant::now();
     info!("Sketches computed in {:?}", end_sketch - start_sketch);
 
+    let min_level = multilevel_hasher.min_level();
     let max_level = multilevel_hasher.max_level();
     let multilevel_hasher = Arc::clone(&multilevel_hasher);
     let multilevel_hasher_2 = Arc::clone(&multilevel_hasher);
@@ -887,18 +884,13 @@ where
                     let active_levels = multilevel_hasher.levels_at_repetition(current_repetition);
                     let mut cnt = 0;
                     for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
-                        // Here we have that some vectors may not not have a best level. This is because
-                        // those vectors didn't collide with anything in the estimatio of the cost.
-                        // Since we use the same hasher for both the estimation and the actual computation
-                        // we can simply avoid emitting the vectors for which we have no entry in the map.
-                        if let Some(&this_best_level) = best_levels.get(key) {
-                            if active_levels.contains(&this_best_level) {
-                                // We hash to the max level because the levelling will be taken care of in the buckets
-                                let h = multilevel_hasher.hash(v, max_level, current_repetition);
-                                let s = sketches[key].clone();
-                                session.give((h, ((key.clone(), s), this_best_level as u8)));
-                                cnt += 1;
-                            }
+                        let &this_best_level = best_levels.get(key).unwrap_or(&min_level);
+                        if active_levels.contains(&this_best_level) {
+                            // We hash to the max level because the levelling will be taken care of in the buckets
+                            let h = multilevel_hasher.hash(v, max_level, current_repetition);
+                            let s = sketches[key].clone();
+                            session.give((h, ((key.clone(), s), this_best_level as u8)));
+                            cnt += 1;
                         }
                     }
                     log_event!(
@@ -924,13 +916,15 @@ where
 
 type EstimationTimestamp<T: Timestamp> = Product<T, usize>;
 
-fn all_hashes_source<G, T, K, D, H, F>(
+fn all_hashes_source<G, T, K, D, H, F, R>(
     scope: &G,
     vecs: Arc<ChunkedDataset<K, D>>,
+    sampling_probability: f64,
     hasher: Arc<MultilevelHasher<D, H, F>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
     throttling_probe: ProbeHandle<EstimationTimestamp<T>>,
+    mut rng: R,
 ) -> Stream<G, (H, K)>
 where
     G: Scope<Timestamp = EstimationTimestamp<T>>,
@@ -939,10 +933,12 @@ where
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
     K: Data + Debug + Send + Sync + Abomonation + Clone + Route,
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
+    R: Rng + 'static,
 {
     let worker = scope.index() as u64;
     let logger = scope.danny_logger();
     let vecs = Arc::clone(&vecs);
+
     let mut done = false;
     let max_level = hasher.max_level();
     let mut current_repetition = 0;
@@ -960,10 +956,20 @@ where
                         info!("Estimation repetition {}", current_repetition);
                     }
                     let mut session = output.session(cap);
-                    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
+                    let mut cnt = 0;
+                    for (k, v) in vecs
+                        .iter_stripe(matrix, direction, worker)
+                        .filter(|_| rng.gen_bool(sampling_probability))
+                    {
                         let h = hasher.hash(v, max_level, current_repetition);
                         session.give((h, k.clone()));
+                        cnt += 1;
                     }
+                    info!(
+                        "Output just {} hashed points over {}",
+                        cnt,
+                        vecs.stripe_len(matrix, direction, worker)
+                    );
                     current_repetition += 1;
                     cap.downgrade(&cap.time().succ());
                     if current_repetition >= num_repetitions {
@@ -982,9 +988,11 @@ where
 fn count_collisions<G, T, H, K, D, F>(
     left: &Stream<G, (H, K)>,
     right: &Stream<G, (H, K)>,
+    left_sampling_probability: f64,
+    right_sampling_probability: f64,
     hasher: Arc<MultilevelHasher<D, H, F>>,
     probe: ProbeHandle<G::Timestamp>,
-) -> (Stream<G, (K, (u8, usize))>, Stream<G, (K, (u8, usize))>)
+) -> (Stream<G, (K, (u8, f64))>, Stream<G, (K, (u8, f64))>)
 where
     G: Scope<Timestamp = EstimationTimestamp<T>>,
     T: Timestamp,
@@ -994,6 +1002,9 @@ where
     D: ExchangeData + Debug,
 {
     let routing_prefix = hasher.min_level();
+    let l_weight = 1.0 / left_sampling_probability;
+    let r_weight = 1.0 / right_sampling_probability;
+
     let mut builder = OperatorBuilder::new("collision-counter".to_owned(), left.scope());
 
     let mut input_left = builder.new_input(
@@ -1059,21 +1070,21 @@ where
                         hasher.max_level(),
                         |level, lb, rb| {
                             for (_h, l) in lb {
-                                *collisions_left.entry((l.clone(), level)).or_insert(0usize) +=
-                                    rb.len();
+                                *collisions_left.entry((l.clone(), level)).or_insert(0.0) +=
+                                    rb.len() as f64 * r_weight;
                             }
                             for (_h, r) in rb {
-                                *collisions_right.entry((r.clone(), level)).or_insert(0usize) +=
-                                    lb.len();
+                                *collisions_right.entry((r.clone(), level)).or_insert(0.0) +=
+                                    lb.len() as f64 * l_weight;
                             }
                         },
                     );
                     buckets.clear();
-                    for ((k, level), count) in collisions_left.drain() {
-                        session_left.give((k, (level as u8, count)));
+                    for ((k, level), weight) in collisions_left.drain() {
+                        session_left.give((k, (level as u8, weight)));
                     }
-                    for ((k, level), count) in collisions_right.drain() {
-                        session_right.give((k, (level as u8, count)));
+                    for ((k, level), weight) in collisions_right.drain() {
+                        session_right.give((k, (level as u8, weight)));
                     }
                 }
             }
@@ -1103,7 +1114,7 @@ where
 
 /// A balance greater than 0.5 penalizes repetitions
 fn select_minimum<G, T, K, D, H, F>(
-    counts: &Stream<Child<G, EstimationTimestamp<T>>, (K, (u8, usize))>,
+    counts: &Stream<Child<G, EstimationTimestamp<T>>, (K, (u8, f64))>,
     hasher: Arc<MultilevelHasher<D, H, F>>,
     balance: f64,
     iteration_cost: f64,
@@ -1121,10 +1132,10 @@ where
     counts
         .leave()
         .aggregate(
-            |_key, val: (u8, usize), agg: &mut HashMap<u8, usize>| {
-                *agg.entry(val.0).or_insert(0usize) += val.1;
+            |_key, val: (u8, f64), agg: &mut HashMap<u8, f64>| {
+                *agg.entry(val.0).or_insert(0.0) += val.1;
             },
-            move |key, agg: HashMap<u8, usize>| {
+            move |key, agg: HashMap<u8, f64>| {
                 let mut min_work = std::f64::INFINITY;
                 let mut best_level = 0;
                 for (&level, &collisions) in agg.iter() {
@@ -1151,13 +1162,14 @@ where
         })
 }
 
-pub fn find_best_level<G, T, K, D, H, F>(
+pub fn find_best_level<G, T, K, D, H, F, R>(
     mut scope: G,
     left: Arc<ChunkedDataset<K, D>>,
     right: Arc<ChunkedDataset<K, D>>,
     hasher: Arc<MultilevelHasher<D, H, F>>,
     matrix: MatrixDescription,
     balance: f64,
+    rng: R,
 ) -> (Stream<G, (K, usize)>, Stream<G, (K, usize)>)
 where
     G: Scope<Timestamp = T>,
@@ -1167,6 +1179,7 @@ where
     for<'a> H:
         Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + PrefixHash<'a>,
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
+    R: Rng + Clone + 'static,
 {
     // 1. Generate all hash values for all repetitions
     // 2. In each level/repetition pair, build the buckets
@@ -1177,27 +1190,39 @@ where
     let iteration_cost = 1.0;
     info!("The cost of every iteration is {}", iteration_cost);
     let probe = ProbeHandle::new();
+    let left_sampling_probability = 1.0 / (left.global_n as f64).sqrt();
+    let right_sampling_probability = 1.0 / (right.global_n as f64).sqrt();
 
     scope.scoped::<EstimationTimestamp<T>, _, _>("estimation scope", |inner| {
         let l_hashes = all_hashes_source(
             inner,
             left,
+            left_sampling_probability,
             Arc::clone(&hasher),
             matrix,
             MatrixDirection::Rows,
             probe.clone(),
+            rng.clone(),
         );
         let r_hashes = all_hashes_source(
             inner,
             right,
+            right_sampling_probability,
             Arc::clone(&hasher),
             matrix,
             MatrixDirection::Columns,
             probe.clone(),
+            rng.clone(),
         );
 
-        let (left_collisions, right_collisions) =
-            count_collisions(&l_hashes, &r_hashes, Arc::clone(&hasher), probe.clone());
+        let (left_collisions, right_collisions) = count_collisions(
+            &l_hashes,
+            &r_hashes,
+            left_sampling_probability,
+            right_sampling_probability,
+            Arc::clone(&hasher),
+            probe.clone(),
+        );
         (
             select_minimum(
                 &left_collisions,
