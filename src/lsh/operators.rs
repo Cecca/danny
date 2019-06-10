@@ -480,10 +480,12 @@ impl RepetitionStopWatch {
         self.start.replace(Instant::now());
     }
 
-    pub fn maybe_stop(&mut self) {
+    pub fn maybe_stop(&mut self, verbose: bool) {
         if let Some(start) = self.start.take() {
             let elapsed = Instant::now() - start;
-            info!("{} {} ended in {:?}", self.name, self.counter, elapsed);
+            if verbose {
+                info!("{} {} ended in {:?}", self.name, self.counter, elapsed);
+            }
             log_event!(
                 self.logger,
                 LogEvent::Profile(self.counter, 0, self.name.clone(), elapsed)
@@ -521,7 +523,7 @@ where
             let mut done = false;
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
-                    stopwatch.maybe_stop();
+                    stopwatch.maybe_stop(worker == 0);
                     stopwatch.start();
                     if worker == 0 {
                         info!("Repetition {}", current_repetition);
@@ -588,7 +590,7 @@ where
             let mut done = false;
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
-                    stopwatch.maybe_stop();
+                    stopwatch.maybe_stop(worker == 0);
                     stopwatch.start();
                     if worker == 0 {
                         info!("Repetition {} with sketches", current_repetition,);
@@ -752,7 +754,7 @@ where
                 if !best_levels_input.frontier().less_equal(capability.time())
                     && !throttling_probe.less_than(capability.time())
                 {
-                    stopwatch.maybe_stop();
+                    stopwatch.maybe_stop(worker == 0);
                     stopwatch.start();
                     if worker == 0 {
                         info!(
@@ -876,7 +878,7 @@ where
                 if !best_levels_input.frontier().less_equal(capability.time())
                     && !throttling_probe.less_than(capability.time())
                 {
-                    stopwatch.maybe_stop();
+                    stopwatch.maybe_stop(worker == 0);
                     stopwatch.start();
                     if worker == 0 {
                         info!(
@@ -963,7 +965,7 @@ where
         move |output| {
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
-                    stopwatch.maybe_stop();
+                    stopwatch.maybe_stop(false);
                     stopwatch.start();
                     let mut session = output.session(cap);
                     let mut cnt = 0;
