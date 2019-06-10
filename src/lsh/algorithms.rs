@@ -306,6 +306,7 @@ where
 {
     let peers = scope.peers();
     let matrix = MatrixDescription::for_workers(peers as usize);
+    let logger = scope.danny_logger();
 
     let multihash = Arc::new(MultilevelHasher::new(
         min_k,
@@ -356,9 +357,14 @@ where
                 rng.clone(),
             );
             left_hashes
-                .bucket_prefixes(&right_hashes, min_level, move |l, r| {
-                    sketch_predicate.eval(&l.1, &r.1)
-                })
+                .bucket_prefixes(
+                    &right_hashes,
+                    min_level,
+                    move |l, r| sketch_predicate.eval(&l.1, &r.1),
+                    move |t, count| {
+                        log_event!(logger, LogEvent::SketchDiscarded(t.to_step_id(), count));
+                    },
+                )
                 .map(|(l, r)| (l.0, r.0))
         }
         None => {
@@ -382,7 +388,7 @@ where
                 probe.clone(),
                 rng.clone(),
             );
-            left_hashes.bucket_prefixes(&right_hashes, min_level, |_, _| true)
+            left_hashes.bucket_prefixes(&right_hashes, min_level, |_, _| true, |_, _| {})
         }
     }
 }

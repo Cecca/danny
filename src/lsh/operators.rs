@@ -258,14 +258,16 @@ where
         Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + PrefixHash<'a>,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
-    fn bucket_prefixes<P>(
+    fn bucket_prefixes<P, F>(
         &self,
         right: &Self,
         routing_prefix: usize,
         predicate: P,
+        report: F,
     ) -> Stream<G, (K, K)>
     where
-        P: FnMut(&K, &K) -> bool + 'static;
+        P: FnMut(&K, &K) -> bool + 'static,
+        F: FnMut(&T, usize) + 'static;
 }
 
 impl<G, T, H, K> BucketPrefixesStream<G, T, H, K> for Stream<G, (H, (K, u8))>
@@ -277,9 +279,16 @@ where
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     #[allow(clippy::explicit_counter_loop)]
-    fn bucket_prefixes<P>(&self, right: &Self, routing_prefix: usize, pred: P) -> Stream<G, (K, K)>
+    fn bucket_prefixes<P, F>(
+        &self,
+        right: &Self,
+        routing_prefix: usize,
+        pred: P,
+        mut report: F,
+    ) -> Stream<G, (K, K)>
     where
         P: FnMut(&K, &K) -> bool + 'static,
+        F: FnMut(&T, usize) + 'static,
     {
         let mut buckets = HashMap::new();
         let mut pool = BucketPool::default();
@@ -354,15 +363,19 @@ where
                             );
                             let mut session = output.session(time);
                             let mut cnt = 0;
+                            let mut discarded = 0;
                             info!("Starting candidate emission ({})", proc_mem!());
                             let start = Instant::now();
                             buckets.for_prefixes(|l, r| {
                                 if pred(l, r) {
                                     session.give((l.clone(), r.clone()));
                                     cnt += 1;
+                                } else {
+                                    discarded += 1;
                                 }
                             });
                             buckets.clear();
+                            report(time.time(), discarded);
                             let end = Instant::now();
                             info!(
                                 "Emitted {} candidate pairs in {:?} ({}) (repetition {:?})",
