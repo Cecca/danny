@@ -1141,6 +1141,7 @@ where
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
 {
     let logger = counts.scope().danny_logger();
+    let mut trigger = Some(());
     assert!(balance >= 0.0 && balance <= 1.0);
     counts
         .leave()
@@ -1149,6 +1150,9 @@ where
                 *agg.entry(val.0).or_insert(0.0) += val.1;
             },
             move |key, agg: HashMap<u8, f64>| {
+                if let Some(()) = trigger.take() {
+                    info!("Start finding best level");
+                }
                 let mut min_work = std::f64::INFINITY;
                 let mut best_level = 0;
                 for (&level, &collisions) in agg.iter() {
