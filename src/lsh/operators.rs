@@ -1091,14 +1091,14 @@ where
                             panic!(
                                 "Could not find time {:?} (left) {:?}",
                                 time.time(),
-                                frontiers
+                                caps_left
                             )
                         });
                         let cap_right = caps_right.remove(&time.time()).unwrap_or_else(|| {
                             panic!(
                                 "Could not find time {:?} (right) {:?}",
                                 time.time(),
-                                frontiers
+                                caps_right
                             )
                         });
                         let mut session_left = output_left.session(&cap_left);
