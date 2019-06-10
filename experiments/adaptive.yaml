@@ -5,7 +5,7 @@ environment:
   DANNY_BASELINES_PATH: "/mnt/fast_storage/users/mcec/baselines.csv"
   DANNY_COST_BALANCE: 0.5
   DANNY_DATA_DIR: /mnt/fast_storage/users/mcec
-  DANNY_SKETCH_EPSILON: 0.01
+  DANNY_SKETCH_EPSILON: 0.9
 experiments:
 
   - name: Glove adaptive
@@ -19,6 +19,7 @@ experiments:
       --algorithm: lsh
       --range: [0.5,0.7,0.9]
       --measure: cosine
+      --sketch-bits: 1024
       --adaptive-k: 14,18
     arguments:
       - ["{{ dataset('Glove-27-200') }}", "{{ dataset('Glove-27-200') }}"]
@@ -34,6 +35,7 @@ experiments:
       --algorithm: lsh
       --range: [0.5,0.7,0.9]
       --measure: jaccard
+      --sketch-bits: 1024
       --adaptive-k: 3,7
     arguments:
       - ["{{ dataset('AOL') }}", "{{ dataset('AOL') }}"]
