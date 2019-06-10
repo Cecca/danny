@@ -1060,7 +1060,7 @@ where
                     rep_entry.push_left(h, k);
                 }
                 if worker < 8 {
-                    info!("Left notify at {:?} {:?}", t.time(), caps_left);
+                    info!("[{}] Left notify at {:?} {:?}", worker, t.time(), caps_left);
                 }
                 notificator.notify_at(t.retain());
             });
@@ -1076,7 +1076,12 @@ where
                     rep_entry.push_right(h, k);
                 }
                 if worker < 8 {
-                    info!("Right notify at {:?} {:?}", t.time(), caps_right);
+                    info!(
+                        "[{}] Right notify at {:?} {:?}",
+                        worker,
+                        t.time(),
+                        caps_right
+                    );
                 }
                 notificator.notify_at(t.retain());
             });
