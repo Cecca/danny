@@ -965,7 +965,7 @@ where
         move |output| {
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
-                    stopwatch.maybe_stop(worker < 8);
+                    stopwatch.maybe_stop(false);
                     stopwatch.start();
                     let mut session = output.session(cap);
                     let mut cnt = 0;
@@ -985,9 +985,6 @@ where
                     // );
                     current_repetition += 1;
                     cap.downgrade(&cap.time().succ());
-                    if worker < 8 {
-                        info!("Downgraded capability to {:?}", cap);
-                    }
                     if current_repetition >= num_repetitions {
                         done = true;
                     }
@@ -1059,9 +1056,6 @@ where
                 for (h, k) in data.drain(..) {
                     rep_entry.push_left(h, k);
                 }
-                if worker < 8 {
-                    info!("[{}] Left notify at {:?} {:?}", worker, t.time(), caps_left);
-                }
                 notificator.notify_at(t.retain());
             });
             input_right.for_each(|t, data| {
@@ -1074,14 +1068,6 @@ where
                     .or_insert_with(|| pool.get());
                 for (h, k) in data.drain(..) {
                     rep_entry.push_right(h, k);
-                }
-                if worker < 8 {
-                    info!(
-                        "[{}] Right notify at {:?} {:?}",
-                        worker,
-                        t.time(),
-                        caps_right
-                    );
                 }
                 notificator.notify_at(t.retain());
             });
