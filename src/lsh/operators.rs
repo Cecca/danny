@@ -965,9 +965,6 @@ where
                 if !throttling_probe.less_than(cap.time()) {
                     stopwatch.maybe_stop();
                     stopwatch.start();
-                    if worker == 0 {
-                        info!("Estimation repetition {}", current_repetition);
-                    }
                     let mut session = output.session(cap);
                     let mut cnt = 0;
                     for (k, v) in vecs
@@ -978,11 +975,12 @@ where
                         session.give((h, k.clone()));
                         cnt += 1;
                     }
-                    info!(
-                        "Output just {} hashed points over {}",
-                        cnt,
-                        vecs.stripe_len(matrix, direction, worker)
-                    );
+                    // info!(
+                    //     "Output just {} hashed points over {} (sample probability {})",
+                    //     cnt,
+                    //     vecs.stripe_len(matrix, direction, worker),
+                    //     sampling_probability
+                    // );
                     current_repetition += 1;
                     cap.downgrade(&cap.time().succ());
                     if current_repetition >= num_repetitions {
