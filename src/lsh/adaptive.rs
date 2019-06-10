@@ -209,62 +209,62 @@ where
         })
 }
 
-pub fn find_best_level<G, T, K, D, H, F, R>(
-    scope: G,
-    left: Arc<ChunkedDataset<K, D>>,
-    right: Arc<ChunkedDataset<K, D>>,
-    hasher: Arc<MultilevelHasher<D, H, F>>,
-    matrix: MatrixDescription,
-    balance: f64,
-    rng: R,
-) -> (Stream<G, (K, usize)>, Stream<G, (K, usize)>)
-where
-    G: Scope<Timestamp = T>,
-    T: Timestamp + Succ + ToStepId + Debug,
-    D: ExchangeData + Debug,
-    K: ExchangeData + Debug + Route + Hash + Ord,
-    for<'a> H: ExchangeData + Route + Debug + Hash + Ord + PrefixHash<'a>,
-    F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
-    R: Rng + Clone + 'static,
-{
-    let prob_left = 4.0 / (left.global_n as f64).sqrt();
-    let prob_right = 4.0 / (right.global_n as f64).sqrt();
+// pub fn find_best_level<G, T, K, D, H, F, R>(
+//     scope: G,
+//     left: Arc<ChunkedDataset<K, D>>,
+//     right: Arc<ChunkedDataset<K, D>>,
+//     hasher: Arc<MultilevelHasher<D, H, F>>,
+//     matrix: MatrixDescription,
+//     balance: f64,
+//     rng: R,
+// ) -> (Stream<G, (K, usize)>, Stream<G, (K, usize)>)
+// where
+//     G: Scope<Timestamp = T>,
+//     T: Timestamp + Succ + ToStepId + Debug,
+//     D: ExchangeData + Debug,
+//     K: ExchangeData + Debug + Route + Hash + Ord,
+//     for<'a> H: ExchangeData + Route + Debug + Hash + Ord + PrefixHash<'a>,
+//     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
+//     R: Rng + Clone + 'static,
+// {
+//     let prob_left = 4.0 / (left.global_n as f64).sqrt();
+//     let prob_right = 4.0 / (right.global_n as f64).sqrt();
 
-    let sample_left = sample_hashes(
-        &scope,
-        Arc::clone(&left),
-        prob_left,
-        Arc::clone(&hasher),
-        matrix,
-        MatrixDirection::Rows,
-        rng.clone(),
-    );
-    let sample_right = sample_hashes(
-        &scope,
-        Arc::clone(&right),
-        prob_right,
-        Arc::clone(&hasher),
-        matrix,
-        MatrixDirection::Columns,
-        rng.clone(),
-    );
+//     let sample_left = sample_hashes(
+//         &scope,
+//         Arc::clone(&left),
+//         prob_left,
+//         Arc::clone(&hasher),
+//         matrix,
+//         MatrixDirection::Rows,
+//         rng.clone(),
+//     );
+//     let sample_right = sample_hashes(
+//         &scope,
+//         Arc::clone(&right),
+//         prob_right,
+//         Arc::clone(&hasher),
+//         matrix,
+//         MatrixDirection::Columns,
+//         rng.clone(),
+//     );
 
-    let best_left = compute_best_level(
-        &sample_right,
-        Arc::clone(&left),
-        Arc::clone(&hasher),
-        matrix,
-        MatrixDirection::Rows,
-        balance,
-    );
-    let best_right = compute_best_level(
-        &sample_left,
-        Arc::clone(&right),
-        Arc::clone(&hasher),
-        matrix,
-        MatrixDirection::Columns,
-        balance,
-    );
+//     let best_left = compute_best_level(
+//         &sample_right,
+//         Arc::clone(&left),
+//         Arc::clone(&hasher),
+//         matrix,
+//         MatrixDirection::Rows,
+//         balance,
+//     );
+//     let best_right = compute_best_level(
+//         &sample_left,
+//         Arc::clone(&right),
+//         Arc::clone(&hasher),
+//         matrix,
+//         MatrixDirection::Columns,
+//         balance,
+//     );
 
-    (best_left, best_right)
-}
+//     (best_left, best_right)
+// }
