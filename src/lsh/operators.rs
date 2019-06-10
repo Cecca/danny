@@ -965,7 +965,7 @@ where
         move |output| {
             if let Some(cap) = cap.as_mut() {
                 if !throttling_probe.less_than(cap.time()) {
-                    stopwatch.maybe_stop(false);
+                    stopwatch.maybe_stop(worker == 0);
                     stopwatch.start();
                     let mut session = output.session(cap);
                     let mut cnt = 0;
@@ -977,12 +977,12 @@ where
                         session.give((h, k.clone()));
                         cnt += 1;
                     }
-                    // info!(
-                    //     "Output just {} hashed points over {} (sample probability {})",
-                    //     cnt,
-                    //     vecs.stripe_len(matrix, direction, worker),
-                    //     sampling_probability
-                    // );
+                    info!(
+                        "Output just {} hashed points over {} (sample probability {})",
+                        cnt,
+                        vecs.stripe_len(matrix, direction, worker),
+                        sampling_probability
+                    );
                     current_repetition += 1;
                     cap.downgrade(&cap.time().succ());
                     if current_repetition >= num_repetitions {
@@ -1111,6 +1111,8 @@ where
                 .cloned()
                 .collect();
             for t in cleanup_times.iter() {
+                assert!(caps_left.contains_key(t));
+                assert!(caps_right.contains_key(t));
                 caps_left.remove(t).unwrap();
                 caps_right.remove(t).unwrap();
                 let bucket = buckets.remove(t).unwrap();
