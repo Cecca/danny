@@ -1060,7 +1060,7 @@ where
                     rep_entry.push_left(h, k);
                 }
                 if worker < 8 {
-                    info!("Left notify at {:?}", t.time());
+                    info!("Left notify at {:?} {:?}", t.time(), caps_left);
                 }
                 notificator.notify_at(t.retain());
             });
@@ -1076,7 +1076,7 @@ where
                     rep_entry.push_right(h, k);
                 }
                 if worker < 8 {
-                    info!("Right notify at {:?}", t.time());
+                    info!("Right notify at {:?} {:?}", t.time(), caps_right);
                 }
                 notificator.notify_at(t.retain());
             });
@@ -1089,14 +1089,16 @@ where
                         let mut collisions_right = HashMap::new();
                         let cap_left = caps_left.remove(&time.time()).unwrap_or_else(|| {
                             panic!(
-                                "Could not find time {:?} (left) {:?}",
+                                "[{}] Could not find time {:?} (left) {:?}",
+                                worker,
                                 time.time(),
                                 caps_left
                             )
                         });
                         let cap_right = caps_right.remove(&time.time()).unwrap_or_else(|| {
                             panic!(
-                                "Could not find time {:?} (right) {:?}",
+                                "[{}] Could not find time {:?} (right) {:?}",
+                                worker,
                                 time.time(),
                                 caps_right
                             )
