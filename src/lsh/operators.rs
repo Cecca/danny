@@ -842,10 +842,9 @@ where
 
     let max_level = multilevel_hasher.max_level();
     let multilevel_hasher = Arc::clone(&multilevel_hasher);
-    let multilevel_hasher_2 = Arc::clone(&multilevel_hasher);
     let global_vecs_2 = Arc::clone(&global_vecs);
     let logger = scope.danny_logger();
-    let starting_level = multilevel_hasher.min_level();
+    let staring_level = multilevel_hasher.min_level();
     let num_repetitions = multilevel_hasher.repetitions_at_level(max_level);
 
     let mut builder = OperatorBuilder::new("adaptive-source".to_owned(), best_levels.scope());

@@ -30,12 +30,12 @@ use timely::Data;
 use timely::ExchangeData;
 
 #[allow(dead_code, clippy::too_many_arguments)]
-fn sample_sketches<G, K, D, H, F, S, V, R>(
+fn sample_sketches<G, K, D, H, F, V, R>(
     scope: &G,
     vecs: Arc<ChunkedDataset<K, D>>,
     sample_probability: f64,
     hasher: Arc<MultilevelHasher<D, H, F>>,
-    sketcher: Arc<S>,
+    sketches: Arc<HashMap<K, V>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
     mut rng: R,
@@ -44,9 +44,8 @@ where
     G: Scope,
     D: ExchangeData + Debug,
     H: ExchangeData + Route + Debug + Eq + Hash + Ord,
-    K: ExchangeData + Debug + Route,
+    K: ExchangeData + Debug + Route + Eq + Hash,
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
-    S: Sketcher<Input = D, Output = V> + Clone + 'static,
     V: ExchangeData + Debug,
     R: Rng + Clone + 'static,
 {
@@ -55,7 +54,7 @@ where
     let mut done = false;
     let max_level = hasher.max_level();
     let num_repetitions = hasher.repetitions_at_level(max_level);
-    source(&scope, "all-hashes", move |cap| {
+    source(&scope, "all-sketches", move |cap| {
         let logger = scope.danny_logger();
         let hasher = Arc::clone(&hasher);
         let mut cap = Some(cap);
@@ -69,8 +68,8 @@ where
                     .iter_stripe(matrix, direction, worker)
                     .filter(|_| rng.gen_bool(sample_probability))
                 {
-                    let sketch = sketcher.sketch(v);
-                    session.give(sketch);
+                    let sketch = sketches.get(k).expect("Missing sketch for key");
+                    session.give(sketch.clone());
                     cnt += 1;
                 }
                 info!("Sampled {} points", cnt);
@@ -86,15 +85,14 @@ where
 }
 
 #[allow(dead_code, clippy::too_many_arguments)]
-fn compute_best_level<G, K, D, H, F, S, V>(
+fn compute_best_level<G, K, D, H, F, V>(
     sample: &Stream<G, V>,
     vecs: Arc<ChunkedDataset<K, D>>,
     hasher: Arc<MultilevelHasher<D, H, F>>,
-    sketcher: Arc<S>,
+    sketches: Arc<HashMap<K, V>>,
     weight: f64,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-    balance: f64,
 ) -> Stream<G, (K, usize)>
 where
     G: Scope,
@@ -102,11 +100,9 @@ where
     K: ExchangeData + Debug + Route + Hash + Ord,
     for<'a> H: ExchangeData + Route + Debug + Hash + Ord + PrefixHash<'a>,
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
-    S: Sketcher<Input = D, Output = V> + Clone + 'static,
     V: ExchangeData + Debug + SketchEstimate,
 {
     let worker = sample.scope().index() as u64;
-    let num_repetitions = hasher.repetitions_at_level(hasher.max_level());
     let min_level = hasher.min_level();
     let max_level = hasher.max_level();
     let logger = sample.scope().danny_logger();
@@ -134,11 +130,13 @@ where
                     // Find the best level for each point
                     let mut session = output.session(&t);
                     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
-                        let sketch_v = sketcher.sketch(v);
+                        let sketch_v = sketches
+                            .get(k)
+                            .expect("Missing sketch for key (estimation)");
                         let probabilities: Vec<f64> = sampled_sketches
                             .iter()
                             .map(|s| {
-                                let estimated_distance = SketchEstimate::estimate(&sketch_v, s);
+                                let estimated_distance = SketchEstimate::estimate(sketch_v, s);
                                 F::probability_at_range(estimated_distance)
                             })
                             .collect();
@@ -167,14 +165,14 @@ where
         })
 }
 
-pub fn find_best_level<G, T, K, D, H, F, S, V, R>(
+pub fn find_best_level<G, T, K, D, H, F, V, R>(
     scope: G,
     left: Arc<ChunkedDataset<K, D>>,
     right: Arc<ChunkedDataset<K, D>>,
     hasher: Arc<MultilevelHasher<D, H, F>>,
-    sketcher: Arc<S>,
+    sketches_left: Arc<HashMap<K, V>>,
+    sketches_right: Arc<HashMap<K, V>>,
     matrix: MatrixDescription,
-    balance: f64,
     rng: R,
 ) -> (Stream<G, (K, usize)>, Stream<G, (K, usize)>)
 where
@@ -184,7 +182,6 @@ where
     K: ExchangeData + Debug + Route + Hash + Ord,
     for<'a> H: ExchangeData + Route + Debug + Hash + Ord + PrefixHash<'a>,
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
-    S: Sketcher<Input = D, Output = V> + Clone + 'static,
     V: ExchangeData + Debug + SketchEstimate,
     R: Rng + Clone + 'static,
 {
@@ -198,7 +195,7 @@ where
         Arc::clone(&left),
         prob_left,
         Arc::clone(&hasher),
-        Arc::clone(&sketcher),
+        Arc::clone(&sketches_left),
         matrix,
         MatrixDirection::Rows,
         rng.clone(),
@@ -208,7 +205,7 @@ where
         Arc::clone(&right),
         prob_right,
         Arc::clone(&hasher),
-        Arc::clone(&sketcher),
+        Arc::clone(&sketches_right),
         matrix,
         MatrixDirection::Columns,
         rng.clone(),
@@ -218,21 +215,19 @@ where
         &sample_right,
         Arc::clone(&left),
         Arc::clone(&hasher),
-        Arc::clone(&sketcher),
+        Arc::clone(&sketches_left),
         weight_right,
         matrix,
         MatrixDirection::Rows,
-        balance,
     );
     let best_right = compute_best_level(
         &sample_left,
         Arc::clone(&right),
         Arc::clone(&hasher),
-        sketcher,
+        Arc::clone(&sketches_right),
         weight_left,
         matrix,
         MatrixDirection::Columns,
-        balance,
     );
 
     (best_left, best_right)

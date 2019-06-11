@@ -15,6 +15,8 @@ use crate::sketch::*;
 use abomonation::Abomonation;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
+use std::collections::HashMap;
+use std::time::Instant;
 
 use std::clone::Clone;
 
@@ -277,6 +279,32 @@ where
     }
 }
 
+fn build_sketches<D, K, S, SV>(
+    vectors: Arc<ChunkedDataset<K, D>>,
+    sketcher: Arc<S>,
+    worker: u64,
+    matrix: MatrixDescription,
+    direction: MatrixDirection,
+) -> Arc<HashMap<K, SV>>
+where
+    D: ExchangeData,
+    K: ExchangeData + Route + Hash + Eq,
+    S: Sketcher<Input = D, Output = SV> + Clone + 'static,
+    SV: ExchangeData + Debug,
+{
+    let mut sketches: HashMap<K, SV> =
+        HashMap::with_capacity(vectors.stripe_len(matrix, direction, worker));
+    info!("Computing sketches");
+    let start_sketch = Instant::now();
+    for (k, v) in vectors.iter_stripe(matrix, direction, worker) {
+        let s = sketcher.sketch(v);
+        sketches.insert(k.clone(), s);
+    }
+    let end_sketch = Instant::now();
+    info!("Sketches computed in {:?}", end_sketch - start_sketch);
+    Arc::new(sketches)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn generate_candidates_adaptive<K, D, G, T, F, H, S, SV, R, B>(
     left: Arc<ChunkedDataset<K, D>>,
@@ -307,6 +335,27 @@ where
     let peers = scope.peers();
     let matrix = MatrixDescription::for_workers(peers as usize);
     let logger = scope.danny_logger();
+    let worker: u64 = scope.index() as u64;
+    let sketcher = Arc::new(
+        sketcher_pair
+            .clone()
+            .expect("TEST: use the sketcher pair")
+            .0,
+    );
+    let sketches_left = build_sketches(
+        Arc::clone(&left),
+        Arc::clone(&sketcher),
+        worker,
+        matrix,
+        MatrixDirection::Rows,
+    );
+    let sketches_right = build_sketches(
+        Arc::clone(&right),
+        Arc::clone(&sketcher),
+        worker,
+        matrix,
+        MatrixDirection::Rows,
+    );
 
     let multihash = Arc::new(MultilevelHasher::new(
         min_k,
@@ -321,14 +370,9 @@ where
         Arc::clone(&left),
         Arc::clone(&right),
         Arc::clone(&multihash),
-        Arc::new(
-            sketcher_pair
-                .clone()
-                .expect("TEST: use the sketcher pair")
-                .0,
-        ),
+        Arc::clone(&sketches_left),
+        Arc::clone(&sketches_right),
         matrix,
-        cost_balance,
         rng.clone(),
     );
     let levels_left = levels_left
