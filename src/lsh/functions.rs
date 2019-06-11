@@ -155,55 +155,6 @@ impl LSHFunction for Hyperplane {
     }
 }
 
-/// Produces 64 bit hashes of 32 bits values
-#[derive(Clone)]
-pub struct TabulatedHasher {
-    table0: [u64; 256],
-    table1: [u64; 256],
-    table2: [u64; 256],
-    table3: [u64; 256],
-}
-
-impl TabulatedHasher {
-    #[allow(clippy::needless_range_loop)]
-    pub fn new<R>(rng: &mut R) -> TabulatedHasher
-    where
-        R: Rng + ?Sized,
-    {
-        let uniform = Uniform::new(0u64, std::u64::MAX);
-        let mut table0 = [0_u64; 256];
-        let mut table1 = [0_u64; 256];
-        let mut table2 = [0_u64; 256];
-        let mut table3 = [0_u64; 256];
-        for i in 0..256 {
-            table0[i] = uniform.sample(rng);
-        }
-        for i in 0..256 {
-            table1[i] = uniform.sample(rng);
-        }
-        for i in 0..256 {
-            table2[i] = uniform.sample(rng);
-        }
-        for i in 0..256 {
-            table3[i] = uniform.sample(rng);
-        }
-        TabulatedHasher {
-            table0,
-            table1,
-            table2,
-            table3,
-        }
-    }
-
-    pub fn hash(&self, x: u32) -> u64 {
-        let mut h = self.table0[(x & 0xFF) as usize];
-        h ^= self.table1[((x >> 8) & 0xFF) as usize];
-        h ^= self.table2[((x >> 16) & 0xFF) as usize];
-        h ^= self.table3[((x >> 24) & 0xFF) as usize];
-        h
-    }
-}
-
 #[derive(Clone)]
 pub struct MinHash {
     k: usize,
