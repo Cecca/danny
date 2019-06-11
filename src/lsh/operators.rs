@@ -240,7 +240,9 @@ where
                         .cloned()
                         .collect();
                     for t in cleanup_times.iter() {
-                        let bucket = buckets.remove(t).unwrap();
+                        let bucket = buckets
+                            .remove(t)
+                            .expect("No buckets at the requested time!");
                         // put it back into the pool
                         pool.give_back(bucket);
                     }
@@ -400,7 +402,7 @@ where
                         .cloned()
                         .collect();
                     for t in cleanup_times.iter() {
-                        let bucket = buckets.remove(t).unwrap();
+                        let bucket = buckets.remove(t).expect("No buckets at the requested time");
                         // put it back into the pool
                         pool.give_back(bucket);
                     }
@@ -731,7 +733,7 @@ where
     let mut input_best_levels = builder.new_input(&best_levels, Pipeline);
     let (mut output, output_stream) = builder.new_output();
     builder.build(move |mut capabilities| {
-        let mut capability = Some(capabilities.pop().unwrap());
+        let mut capability = Some(capabilities.pop().expect("No capability to pop"));
 
         let mut best_levels: BTreeMap<K, usize> = BTreeMap::new();
         let mut current_repetition = 0;
@@ -851,7 +853,7 @@ where
     let mut input_best_levels = builder.new_input(&best_levels, Pipeline);
     let (mut output, output_stream) = builder.new_output();
     builder.build(move |mut capabilities| {
-        let mut capability = Some(capabilities.pop().unwrap());
+        let mut capability = Some(capabilities.pop().expect("No capability to pop"));
 
         let mut stopwatch = RepetitionStopWatch::new("repetition", logger.clone());
         let mut best_levels: HashMap<K, usize> = HashMap::new();
