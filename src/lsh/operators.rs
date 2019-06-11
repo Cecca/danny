@@ -807,44 +807,30 @@ where
 }
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-pub fn source_hashed_adaptive_sketched<G, T, K, D, F, H, R, S, SV>(
+pub fn source_hashed_adaptive_sketched<G, T, K, D, F, H, SV>(
     scope: &G,
     best_levels: &Stream<G, (K, usize)>,
     global_vecs: Arc<ChunkedDataset<K, D>>,
     multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
-    sketcher: S,
+    sketches: Arc<HashMap<K, SV>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
     throttling_probe: ProbeHandle<G::Timestamp>,
-    rng: R,
 ) -> Stream<G, (H, ((K, SV), u8))>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
-    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
-    K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
-    R: Rng + SeedableRng + Clone + ?Sized + 'static + Sync + Send,
-    S: Sketcher<Input = D, Output = SV> + Clone + 'static,
+    H: ExchangeData + Route + Debug + Eq + Hash + Ord,
+    K: ExchangeData + Debug + Eq + Hash + Route,
     SV: ExchangeData + Debug,
 {
-    let worker: u64 = scope.index() as u64;
-    let mut sketches: HashMap<K, SV> = HashMap::new();
-    info!("Computing sketches");
-    let start_sketch = Instant::now();
-    for (k, v) in global_vecs.iter_stripe(matrix, direction, worker) {
-        let s = sketcher.sketch(v);
-        sketches.insert(k.clone(), s);
-    }
-    let end_sketch = Instant::now();
-    info!("Sketches computed in {:?}", end_sketch - start_sketch);
-
+    let worker = scope.index() as u64;
     let max_level = multilevel_hasher.max_level();
     let multilevel_hasher = Arc::clone(&multilevel_hasher);
     let global_vecs_2 = Arc::clone(&global_vecs);
     let logger = scope.danny_logger();
-    let staring_level = multilevel_hasher.min_level();
     let num_repetitions = multilevel_hasher.repetitions_at_level(max_level);
 
     let mut builder = OperatorBuilder::new("adaptive-source".to_owned(), best_levels.scope());
@@ -907,7 +893,10 @@ where
                             if active_levels.contains(&this_best_level) {
                                 // We hash to the max level because the levelling will be taken care of in the buckets
                                 let h = multilevel_hasher.hash(v, max_level, current_repetition);
-                                let s = sketches[key].clone();
+                                let s = sketches
+                                    .get(key)
+                                    .expect("Missing sketch for key in repetition")
+                                    .clone();
                                 session.give((h, ((key.clone(), s), this_best_level as u8)));
                                 cnt += 1;
                             }

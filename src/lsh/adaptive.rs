@@ -30,11 +30,10 @@ use timely::Data;
 use timely::ExchangeData;
 
 #[allow(dead_code, clippy::too_many_arguments)]
-fn sample_sketches<G, K, D, H, F, V, R>(
+fn sample_sketches<G, K, D, V, R>(
     scope: &G,
     vecs: Arc<ChunkedDataset<K, D>>,
     sample_probability: f64,
-    hasher: Arc<MultilevelHasher<D, H, F>>,
     sketches: Arc<HashMap<K, V>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
@@ -43,20 +42,15 @@ fn sample_sketches<G, K, D, H, F, V, R>(
 where
     G: Scope,
     D: ExchangeData + Debug,
-    H: ExchangeData + Route + Debug + Eq + Hash + Ord,
     K: ExchangeData + Debug + Route + Eq + Hash,
-    F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
     V: ExchangeData + Debug,
     R: Rng + Clone + 'static,
 {
     let worker = scope.index() as u64;
     let vecs = Arc::clone(&vecs);
     let mut done = false;
-    let max_level = hasher.max_level();
-    let num_repetitions = hasher.repetitions_at_level(max_level);
     source(&scope, "all-sketches", move |cap| {
         let logger = scope.danny_logger();
-        let hasher = Arc::clone(&hasher);
         let mut cap = Some(cap);
         move |output| {
             let logger = logger.clone();
@@ -64,11 +58,13 @@ where
                 let _pg = ProfileGuard::new(logger.clone(), 0, 0, "cost_estimation_sketching");
                 let mut session = output.session(cap);
                 let mut cnt = 0;
-                for (k, v) in vecs
+                for (k, _) in vecs
                     .iter_stripe(matrix, direction, worker)
                     .filter(|_| rng.gen_bool(sample_probability))
                 {
-                    let sketch = sketches.get(k).expect("Missing sketch for key");
+                    let sketch = sketches
+                        .get(k)
+                        .expect("Missing sketch for key (during sampling)");
                     session.give(sketch.clone());
                     cnt += 1;
                 }
@@ -165,6 +161,7 @@ where
         })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn find_best_level<G, T, K, D, H, F, V, R>(
     scope: G,
     left: Arc<ChunkedDataset<K, D>>,
@@ -194,7 +191,6 @@ where
         &scope,
         Arc::clone(&left),
         prob_left,
-        Arc::clone(&hasher),
         Arc::clone(&sketches_left),
         matrix,
         MatrixDirection::Rows,
@@ -204,7 +200,6 @@ where
         &scope,
         Arc::clone(&right),
         prob_right,
-        Arc::clone(&hasher),
         Arc::clone(&sketches_right),
         matrix,
         MatrixDirection::Columns,

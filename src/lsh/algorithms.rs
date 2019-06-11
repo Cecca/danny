@@ -354,7 +354,7 @@ where
         Arc::clone(&sketcher),
         worker,
         matrix,
-        MatrixDirection::Rows,
+        MatrixDirection::Columns,
     );
 
     let multihash = Arc::new(MultilevelHasher::new(
@@ -389,22 +389,20 @@ where
                 &levels_left,
                 Arc::clone(&left),
                 Arc::clone(&multihash),
-                sketcher.clone(),
+                Arc::clone(&sketches_left),
                 matrix,
                 MatrixDirection::Rows,
                 probe.clone(),
-                rng.clone(),
             );
             let right_hashes = source_hashed_adaptive_sketched(
                 &scope,
                 &levels_right,
                 Arc::clone(&right),
                 Arc::clone(&multihash),
-                sketcher.clone(),
+                Arc::clone(&sketches_right),
                 matrix,
                 MatrixDirection::Columns,
                 probe.clone(),
-                rng.clone(),
             );
             left_hashes
                 .bucket_prefixes(
