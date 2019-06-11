@@ -60,6 +60,10 @@ where
         self.left.is_empty() && self.right.is_empty()
     }
 
+    pub fn has_empty_side(&self) -> bool {
+        self.left.is_empty() || self.right.is_empty()
+    }
+
     pub fn push_left(&mut self, h: H, k: K) {
         self.left.push((h, k));
     }
