@@ -367,13 +367,11 @@ where
                             info!("Starting candidate emission ({})", proc_mem!());
                             let start = Instant::now();
                             buckets.for_prefixes(|l, r| {
-                                if cnt < 100 {
-                                    if pred(l, r) {
-                                        session.give((l.clone(), r.clone()));
-                                        cnt += 1;
-                                    } else {
-                                        discarded += 1;
-                                    }
+                                if pred(l, r) {
+                                    session.give((l.clone(), r.clone()));
+                                    cnt += 1;
+                                } else {
+                                    discarded += 1;
                                 }
                             });
                             buckets.clear();
