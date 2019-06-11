@@ -5,6 +5,7 @@ use crate::operators::Route;
 use crate::operators::*;
 use crate::types::*;
 use abomonation::Abomonation;
+use packed_simd::u32x8;
 use rand::distributions::{Distribution, Normal, Uniform};
 use rand::{Rng, SeedableRng};
 use std::clone::Clone;
@@ -167,7 +168,6 @@ impl MinHash {
     where
         R: Rng + ?Sized,
     {
-        // let mut hashers = Vec::with_capacity(k);
         let uniform = Uniform::new(0u64, std::u64::MAX);
         let mut alphas = Vec::with_capacity(k);
         let mut betas = Vec::with_capacity(k);
