@@ -935,234 +935,234 @@ where
     output_stream
 }
 
-type EstimationTimestamp<T: Timestamp> = Product<T, usize>;
+// type EstimationTimestamp<T: Timestamp> = Product<T, usize>;
 
-fn all_hashes_source<G, T, K, D, H, F>(
-    scope: &G,
-    vecs: Arc<ChunkedDataset<K, D>>,
-    hasher: Arc<MultilevelHasher<D, H, F>>,
-    matrix: MatrixDescription,
-    direction: MatrixDirection,
-    throttling_probe: ProbeHandle<EstimationTimestamp<T>>,
-) -> Stream<G, (H, K)>
-where
-    G: Scope<Timestamp = EstimationTimestamp<T>>,
-    T: Timestamp + Debug + Succ + ToStepId,
-    D: ExchangeData + Debug,
-    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
-    K: Data + Debug + Send + Sync + Abomonation + Clone + Route,
-    F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
-{
-    let worker = scope.index() as u64;
-    let logger = scope.danny_logger();
-    let vecs = Arc::clone(&vecs);
-    let mut done = false;
-    let max_level = hasher.max_level();
-    let mut current_repetition = 0;
-    let num_repetitions = hasher.repetitions_at_level(max_level);
-    let mut stopwatch = RepetitionStopWatch::new("cost_estimation", logger.clone());
-    source(&scope, "all-hashes", move |cap| {
-        let hasher = Arc::clone(&hasher);
-        let mut cap = Some(cap);
-        move |output| {
-            if let Some(cap) = cap.as_mut() {
-                if !throttling_probe.less_than(cap.time()) {
-                    stopwatch.maybe_stop();
-                    stopwatch.start();
-                    if worker == 0 {
-                        info!("Estimation repetition {}", current_repetition);
-                    }
-                    let mut session = output.session(cap);
-                    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
-                        let h = hasher.hash(v, max_level, current_repetition);
-                        session.give((h, k.clone()));
-                    }
-                    current_repetition += 1;
-                    cap.downgrade(&cap.time().succ());
-                    if current_repetition >= num_repetitions {
-                        done = true;
-                    }
-                }
-            }
+// fn all_hashes_source<G, T, K, D, H, F>(
+//     scope: &G,
+//     vecs: Arc<ChunkedDataset<K, D>>,
+//     hasher: Arc<MultilevelHasher<D, H, F>>,
+//     matrix: MatrixDescription,
+//     direction: MatrixDirection,
+//     throttling_probe: ProbeHandle<EstimationTimestamp<T>>,
+// ) -> Stream<G, (H, K)>
+// where
+//     G: Scope<Timestamp = EstimationTimestamp<T>>,
+//     T: Timestamp + Debug + Succ + ToStepId,
+//     D: ExchangeData + Debug,
+//     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
+//     K: Data + Debug + Send + Sync + Abomonation + Clone + Route,
+//     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
+// {
+//     let worker = scope.index() as u64;
+//     let logger = scope.danny_logger();
+//     let vecs = Arc::clone(&vecs);
+//     let mut done = false;
+//     let max_level = hasher.max_level();
+//     let mut current_repetition = 0;
+//     let num_repetitions = hasher.repetitions_at_level(max_level);
+//     let mut stopwatch = RepetitionStopWatch::new("cost_estimation", logger.clone());
+//     source(&scope, "all-hashes", move |cap| {
+//         let hasher = Arc::clone(&hasher);
+//         let mut cap = Some(cap);
+//         move |output| {
+//             if let Some(cap) = cap.as_mut() {
+//                 if !throttling_probe.less_than(cap.time()) {
+//                     stopwatch.maybe_stop();
+//                     stopwatch.start();
+//                     if worker == 0 {
+//                         info!("Estimation repetition {}", current_repetition);
+//                     }
+//                     let mut session = output.session(cap);
+//                     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
+//                         let h = hasher.hash(v, max_level, current_repetition);
+//                         session.give((h, k.clone()));
+//                     }
+//                     current_repetition += 1;
+//                     cap.downgrade(&cap.time().succ());
+//                     if current_repetition >= num_repetitions {
+//                         done = true;
+//                     }
+//                 }
+//             }
 
-            if done {
-                cap = None;
-            }
-        }
-    })
-}
+//             if done {
+//                 cap = None;
+//             }
+//         }
+//     })
+// }
 
-fn count_collisions<G, T, H, K, D, F>(
-    left: &Stream<G, (H, K)>,
-    right: &Stream<G, (H, K)>,
-    hasher: Arc<MultilevelHasher<D, H, F>>,
-    probe: ProbeHandle<G::Timestamp>,
-) -> (Stream<G, (K, (u8, usize))>, Stream<G, (K, (u8, usize))>)
-where
-    G: Scope<Timestamp = EstimationTimestamp<T>>,
-    T: Timestamp,
-    K: ExchangeData + Hash + Eq + Debug + Ord,
-    for<'a> H: ExchangeData + Ord + Route + Debug + PrefixHash<'a> + Hash + Eq,
-    F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
-    D: ExchangeData + Debug,
-{
-    let routing_prefix = hasher.min_level();
-    let mut builder = OperatorBuilder::new("collision-counter".to_owned(), left.scope());
+// fn count_collisions<G, T, H, K, D, F>(
+//     left: &Stream<G, (H, K)>,
+//     right: &Stream<G, (H, K)>,
+//     hasher: Arc<MultilevelHasher<D, H, F>>,
+//     probe: ProbeHandle<G::Timestamp>,
+// ) -> (Stream<G, (K, (u8, usize))>, Stream<G, (K, (u8, usize))>)
+// where
+//     G: Scope<Timestamp = EstimationTimestamp<T>>,
+//     T: Timestamp,
+//     K: ExchangeData + Hash + Eq + Debug + Ord,
+//     for<'a> H: ExchangeData + Ord + Route + Debug + PrefixHash<'a> + Hash + Eq,
+//     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
+//     D: ExchangeData + Debug,
+// {
+//     let routing_prefix = hasher.min_level();
+//     let mut builder = OperatorBuilder::new("collision-counter".to_owned(), left.scope());
 
-    let mut input_left = builder.new_input(
-        &left,
-        ExchangePact::new(move |pair: &(H, K)| pair.0.prefix(routing_prefix).route()),
-    );
-    let mut input_right = builder.new_input(
-        &right,
-        ExchangePact::new(move |pair: &(H, K)| pair.0.prefix(routing_prefix).route()),
-    );
-    let (mut output_left, stream_left) = builder.new_output();
-    let (mut output_right, stream_right) = builder.new_output();
+//     let mut input_left = builder.new_input(
+//         &left,
+//         ExchangePact::new(move |pair: &(H, K)| pair.0.prefix(routing_prefix).route()),
+//     );
+//     let mut input_right = builder.new_input(
+//         &right,
+//         ExchangePact::new(move |pair: &(H, K)| pair.0.prefix(routing_prefix).route()),
+//     );
+//     let (mut output_left, stream_left) = builder.new_output();
+//     let (mut output_right, stream_right) = builder.new_output();
 
-    let mut pool = BucketPool::default();
-    let mut buckets = HashMap::new();
-    let mut caps_left = HashMap::new();
-    let mut caps_right = HashMap::new();
+//     let mut pool = BucketPool::default();
+//     let mut buckets = HashMap::new();
+//     let mut caps_left = HashMap::new();
+//     let mut caps_right = HashMap::new();
 
-    builder.build(move |_| {
-        move |frontiers| {
-            let mut input_left = FrontieredInputHandle::new(&mut input_left, &frontiers[0]);
-            let mut input_right = FrontieredInputHandle::new(&mut input_right, &frontiers[0]);
-            let mut output_left = output_left.activate();
-            let mut output_right = output_right.activate();
+//     builder.build(move |_| {
+//         move |frontiers| {
+//             let mut input_left = FrontieredInputHandle::new(&mut input_left, &frontiers[0]);
+//             let mut input_right = FrontieredInputHandle::new(&mut input_right, &frontiers[0]);
+//             let mut output_left = output_left.activate();
+//             let mut output_right = output_right.activate();
 
-            input_left.for_each(|t, data| {
-                let mut data = data.replace(Vec::new());
-                caps_left
-                    .entry(t.time().clone())
-                    .or_insert_with(|| t.delayed_for_output(t.time(), 0));
-                let rep_entry = buckets
-                    .entry(t.time().clone())
-                    .or_insert_with(|| pool.get());
-                for (h, k) in data.drain(..) {
-                    rep_entry.push_left(h, k);
-                }
-            });
-            input_right.for_each(|t, data| {
-                let mut data = data.replace(Vec::new());
-                caps_right
-                    .entry(t.time().clone())
-                    .or_insert_with(|| t.delayed_for_output(t.time(), 1));
-                let rep_entry = buckets
-                    .entry(t.time().clone())
-                    .or_insert_with(|| pool.get());
-                for (h, k) in data.drain(..) {
-                    rep_entry.push_right(h, k);
-                }
-            });
+//             input_left.for_each(|t, data| {
+//                 let mut data = data.replace(Vec::new());
+//                 caps_left
+//                     .entry(t.time().clone())
+//                     .or_insert_with(|| t.delayed_for_output(t.time(), 0));
+//                 let rep_entry = buckets
+//                     .entry(t.time().clone())
+//                     .or_insert_with(|| pool.get());
+//                 for (h, k) in data.drain(..) {
+//                     rep_entry.push_left(h, k);
+//                 }
+//             });
+//             input_right.for_each(|t, data| {
+//                 let mut data = data.replace(Vec::new());
+//                 caps_right
+//                     .entry(t.time().clone())
+//                     .or_insert_with(|| t.delayed_for_output(t.time(), 1));
+//                 let rep_entry = buckets
+//                     .entry(t.time().clone())
+//                     .or_insert_with(|| pool.get());
+//                 for (h, k) in data.drain(..) {
+//                     rep_entry.push_right(h, k);
+//                 }
+//             });
 
-            let frontiers = &[input_left.frontier(), input_right.frontier()];
-            for (time, buckets) in buckets.iter_mut() {
-                if frontiers.iter().all(|f| !f.less_equal(time)) {
-                    let mut collisions_left = HashMap::new();
-                    let mut collisions_right = HashMap::new();
-                    let mut session_left = output_left.session(&caps_left[time]);
-                    let mut session_right = output_right.session(&caps_right[time]);
-                    let actual_min_level = *hasher.levels_at_repetition(time.inner).start();
-                    // It is OK for a point not to collide on all levels if we
-                    // are not doing a self join
-                    buckets.for_all_prefixes(
-                        actual_min_level,
-                        hasher.max_level(),
-                        |level, lb, rb| {
-                            for (_h, l) in lb {
-                                *collisions_left.entry((l.clone(), level)).or_insert(0usize) +=
-                                    rb.len();
-                            }
-                            for (_h, r) in rb {
-                                *collisions_right.entry((r.clone(), level)).or_insert(0usize) +=
-                                    lb.len();
-                            }
-                        },
-                    );
-                    buckets.clear();
-                    for ((k, level), count) in collisions_left.drain() {
-                        session_left.give((k, (level as u8, count)));
-                    }
-                    for ((k, level), count) in collisions_right.drain() {
-                        session_right.give((k, (level as u8, count)));
-                    }
-                }
-            }
+//             let frontiers = &[input_left.frontier(), input_right.frontier()];
+//             for (time, buckets) in buckets.iter_mut() {
+//                 if frontiers.iter().all(|f| !f.less_equal(time)) {
+//                     let mut collisions_left = HashMap::new();
+//                     let mut collisions_right = HashMap::new();
+//                     let mut session_left = output_left.session(&caps_left[time]);
+//                     let mut session_right = output_right.session(&caps_right[time]);
+//                     let actual_min_level = *hasher.levels_at_repetition(time.inner).start();
+//                     // It is OK for a point not to collide on all levels if we
+//                     // are not doing a self join
+//                     buckets.for_all_prefixes(
+//                         actual_min_level,
+//                         hasher.max_level(),
+//                         |level, lb, rb| {
+//                             for (_h, l) in lb {
+//                                 *collisions_left.entry((l.clone(), level)).or_insert(0usize) +=
+//                                     rb.len();
+//                             }
+//                             for (_h, r) in rb {
+//                                 *collisions_right.entry((r.clone(), level)).or_insert(0usize) +=
+//                                     lb.len();
+//                             }
+//                         },
+//                     );
+//                     buckets.clear();
+//                     for ((k, level), count) in collisions_left.drain() {
+//                         session_left.give((k, (level as u8, count)));
+//                     }
+//                     for ((k, level), count) in collisions_right.drain() {
+//                         session_right.give((k, (level as u8, count)));
+//                     }
+//                 }
+//             }
 
-            // Cleanup exhausted buckets, returning buckets to the pool,
-            // so to reuse the allocated memory in the future
-            let cleanup_times: Vec<G::Timestamp> = buckets
-                .iter()
-                .filter(|(_, b)| b.is_empty())
-                .map(|p| p.0)
-                .cloned()
-                .collect();
-            for t in cleanup_times.iter() {
-                caps_left.remove(t).unwrap();
-                caps_right.remove(t).unwrap();
-                let bucket = buckets.remove(t).unwrap();
-                // put it back into the pool
-                pool.give_back(bucket);
-            }
-        }
-    });
-    (
-        stream_left.probe_with(&mut probe.clone()),
-        stream_right.probe_with(&mut probe.clone()),
-    )
-}
+//             // Cleanup exhausted buckets, returning buckets to the pool,
+//             // so to reuse the allocated memory in the future
+//             let cleanup_times: Vec<G::Timestamp> = buckets
+//                 .iter()
+//                 .filter(|(_, b)| b.is_empty())
+//                 .map(|p| p.0)
+//                 .cloned()
+//                 .collect();
+//             for t in cleanup_times.iter() {
+//                 caps_left.remove(t).unwrap();
+//                 caps_right.remove(t).unwrap();
+//                 let bucket = buckets.remove(t).unwrap();
+//                 // put it back into the pool
+//                 pool.give_back(bucket);
+//             }
+//         }
+//     });
+//     (
+//         stream_left.probe_with(&mut probe.clone()),
+//         stream_right.probe_with(&mut probe.clone()),
+//     )
+// }
 
-/// A balance greater than 0.5 penalizes repetitions
-fn select_minimum<G, T, K, D, H, F>(
-    counts: &Stream<Child<G, EstimationTimestamp<T>>, (K, (u8, usize))>,
-    hasher: Arc<MultilevelHasher<D, H, F>>,
-    balance: f64,
-    iteration_cost: f64,
-) -> Stream<G, (K, usize)>
-where
-    G: Scope<Timestamp = T>,
-    T: Timestamp,
-    D: ExchangeData + Debug,
-    K: ExchangeData + Route + Hash + Eq + Debug,
-    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
-    F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
-{
-    let logger = counts.scope().danny_logger();
-    assert!(balance >= 0.0 && balance <= 1.0);
-    counts
-        .leave()
-        .aggregate(
-            |_key, val: (u8, usize), agg: &mut HashMap<u8, usize>| {
-                *agg.entry(val.0).or_insert(0usize) += val.1;
-            },
-            move |key, agg: HashMap<u8, usize>| {
-                let mut min_work = std::f64::INFINITY;
-                let mut best_level = 0;
-                for (&level, &collisions) in agg.iter() {
-                    let reps = hasher.repetitions_at_level(level as usize);
-                    let work = balance * iteration_cost * reps as f64
-                        + (1.0 - balance) * collisions as f64;
-                    if work < min_work {
-                        min_work = work;
-                        best_level = level;
-                    }
-                }
-                (key, best_level as usize)
-            },
-            Route::route,
-        )
-        .inspect_batch(move |_, d| {
-            let mut levels = HashMap::new();
-            for (_, level) in d.iter() {
-                *levels.entry(level).or_insert(0) += 1;
-            }
-            for (&level, count) in levels {
-                log_event!(logger, LogEvent::AdaptiveLevelHistogram(level, count));
-            }
-        })
-}
+// /// A balance greater than 0.5 penalizes repetitions
+// fn select_minimum<G, T, K, D, H, F>(
+//     counts: &Stream<Child<G, EstimationTimestamp<T>>, (K, (u8, usize))>,
+//     hasher: Arc<MultilevelHasher<D, H, F>>,
+//     balance: f64,
+//     iteration_cost: f64,
+// ) -> Stream<G, (K, usize)>
+// where
+//     G: Scope<Timestamp = T>,
+//     T: Timestamp,
+//     D: ExchangeData + Debug,
+//     K: ExchangeData + Route + Hash + Eq + Debug,
+//     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
+//     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
+// {
+//     let logger = counts.scope().danny_logger();
+//     assert!(balance >= 0.0 && balance <= 1.0);
+//     counts
+//         .leave()
+//         .aggregate(
+//             |_key, val: (u8, usize), agg: &mut HashMap<u8, usize>| {
+//                 *agg.entry(val.0).or_insert(0usize) += val.1;
+//             },
+//             move |key, agg: HashMap<u8, usize>| {
+//                 let mut min_work = std::f64::INFINITY;
+//                 let mut best_level = 0;
+//                 for (&level, &collisions) in agg.iter() {
+//                     let reps = hasher.repetitions_at_level(level as usize);
+//                     let work = balance * iteration_cost * reps as f64
+//                         + (1.0 - balance) * collisions as f64;
+//                     if work < min_work {
+//                         min_work = work;
+//                         best_level = level;
+//                     }
+//                 }
+//                 (key, best_level as usize)
+//             },
+//             Route::route,
+//         )
+//         .inspect_batch(move |_, d| {
+//             let mut levels = HashMap::new();
+//             for (_, level) in d.iter() {
+//                 *levels.entry(level).or_insert(0) += 1;
+//             }
+//             for (&level, count) in levels {
+//                 log_event!(logger, LogEvent::AdaptiveLevelHistogram(level, count));
+//             }
+//         })
+// }
 
 // pub fn find_best_level<G, T, K, D, H, F>(
 //     mut scope: G,

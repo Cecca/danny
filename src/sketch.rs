@@ -3,6 +3,8 @@ use crate::measure::*;
 use crate::types::*;
 use rand::distributions::{Distribution, Normal};
 use rand::Rng;
+use std::collections::HashMap;
+use std::iter::Iterator;
 
 pub trait BitBasedSketch {
     fn bits(&self) -> &Vec<u32>;

@@ -321,6 +321,12 @@ where
         Arc::clone(&left),
         Arc::clone(&right),
         Arc::clone(&multihash),
+        Arc::new(
+            sketcher_pair
+                .clone()
+                .expect("TEST: use the sketcher pair")
+                .0,
+        ),
         matrix,
         cost_balance,
         rng.clone(),
