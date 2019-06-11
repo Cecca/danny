@@ -1,6 +1,8 @@
 use crate::lsh::*;
 use crate::measure::*;
 use crate::types::*;
+use packed_simd::u32x8;
+use packed_simd::u32x4;
 use rand::distributions::{Distribution, Normal, Uniform};
 use rand::Rng;
 
@@ -51,12 +53,21 @@ where
     /// within the similarity threshold this predicate was built with
     pub fn eval(&self, a: &T, b: &T) -> bool {
         let threshold = self.bit_threshold;
-        let different_bits: usize = a
-            .bits()
+        let ca = a.bits().chunks_exact(4);
+        let cb = b.bits().chunks_exact(4);
+        let rem = ca
+            .remainder()
             .iter()
-            .zip(b.bits().iter())
-            .map(|(x, y)| (x ^ y).count_ones() as usize)
-            .sum();
+            .zip(cb.remainder().iter())
+            .map(|(x, y)| (x ^ y).count_ones())
+            .sum::<u32>();
+        let different_bits = rem as usize
+            + ca.map(u32x4::from_slice_unaligned)
+                .zip(cb.map(u32x4::from_slice_unaligned))
+                .map(|(x, y)| (x ^ y).count_ones())
+                .sum::<u32x4>()
+                .wrapping_sum() as usize;
+
         different_bits <= threshold
     }
 }
