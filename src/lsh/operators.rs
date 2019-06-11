@@ -123,9 +123,15 @@ where
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)>;
-    fn bucket_pred<P>(&self, right: &Stream<G, (H, K)>, pre: P) -> Stream<G, (K, K)>
+    fn bucket_pred<P, PD>(
+        &self,
+        right: &Stream<G, (H, K)>,
+        pre: P,
+        distinct_pre: PD,
+    ) -> Stream<G, (K, K)>
     where
-        P: FnMut(&K, &K) -> bool + 'static;
+        P: FnMut(&K, &K) -> bool + 'static,
+        PD: FnMut(&K, &K) -> bool + 'static;
 }
 
 impl<G, T, H, K> BucketStream<G, T, H, K> for Stream<G, (H, K)>
@@ -136,13 +142,19 @@ where
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)> {
-        self.bucket_pred(right, |_, _| true)
+        self.bucket_pred(right, |_, _| true, |_, _| true)
     }
 
     #[allow(clippy::explicit_counter_loop)]
-    fn bucket_pred<P>(&self, right: &Stream<G, (H, K)>, pred: P) -> Stream<G, (K, K)>
+    fn bucket_pred<P, PD>(
+        &self,
+        right: &Stream<G, (H, K)>,
+        mut pred: P,
+        mut distinct_pred: PD,
+    ) -> Stream<G, (K, K)>
     where
         P: FnMut(&K, &K) -> bool + 'static,
+        PD: FnMut(&K, &K) -> bool + 'static,
     {
         let mut buckets = HashMap::new();
         let mut pool = BucketPool::default();
@@ -154,7 +166,7 @@ where
             ExchangePact::new(|pair: &(H, K)| pair.0.route()),
             "bucket",
             move |_, _| {
-                let mut pred = pred;
+                // let mut pred = pred;
                 move |left_in, right_in, output| {
                     left_in.for_each(|t, d| {
                         let _pg = ProfileGuard::new(
@@ -217,16 +229,32 @@ where
                             );
                             let mut session = output.session(time);
                             let mut cnt = 0;
+                            let mut sketch_cnt = 0;
+                            let mut bloom_cnt = 0;
                             buckets.for_all(|l, r| {
                                 if pred(l, r) {
-                                    session.give((l.clone(), r.clone()));
-                                    cnt += 1;
+                                    if distinct_pred(l, r) {
+                                        session.give((l.clone(), r.clone()));
+                                        cnt += 1;
+                                    } else {
+                                        bloom_cnt += 1;
+                                    }
+                                } else {
+                                    sketch_cnt += 1;
                                 }
                             });
                             buckets.clear();
                             log_event!(
                                 logger,
                                 LogEvent::GeneratedPairs(time.time().to_step_id(), cnt)
+                            );
+                            log_event!(
+                                logger,
+                                LogEvent::SketchDiscarded(time.time().to_step_id(), sketch_cnt)
+                            );
+                            log_event!(
+                                logger,
+                                LogEvent::DuplicatesDiscarded(time.time().to_step_id(), bloom_cnt)
                             );
                         }
                     }

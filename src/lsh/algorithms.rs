@@ -131,6 +131,7 @@ where
                     scope.clone(),
                     hash_collection_builder,
                     sketcher_pair,
+                    Arc::clone(&bloom_filter_pre_communication),
                     probe.clone(),
                     &mut rng,
                 ),
@@ -214,6 +215,7 @@ fn generate_candidates_global_k<K, D, G, T, F, H, S, SV, R, B>(
     scope: G,
     hash_collection_builder: B,
     sketcher_pair: Option<(S, SketchPredicate<SV>)>,
+    filter: Arc<AtomicBloomFilter<K>>,
     probe: ProbeHandle<T>,
     rng: &mut R,
 ) -> Stream<G, (K, K)>
@@ -258,8 +260,12 @@ where
                 probe.clone(),
             );
             left_hashes
-                .bucket(&right_hashes)
-                .filter_sketches(sketch_predicate)
+                .bucket_pred(
+                    &right_hashes,
+                    move |a, b| sketch_predicate.eval(&a.0, &b.0),
+                    move |a, b| !filter.test_and_insert(&(a.1, b.1)),
+                )
+                .map(|(l, r)| (l.1, r.1))
         }
         None => {
             let left_hashes = source_hashed(
