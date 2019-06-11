@@ -125,13 +125,30 @@ where
     where
         F: FnMut(&K, &K) -> (),
     {
+        assert!(!self.left.is_empty() && !self.right.is_empty());
         let min_level: u8 = *std::cmp::min(
-            self.left.iter().map(|(_, (_, l))| l).min().unwrap(),
-            self.right.iter().map(|(_, (_, l))| l).min().unwrap(),
+            self.left
+                .iter()
+                .map(|(_, (_, l))| l)
+                .min()
+                .expect("Could not get left minimum from the bucket"),
+            self.right
+                .iter()
+                .map(|(_, (_, l))| l)
+                .min()
+                .expect("Could not get right minimum from the bucket"),
         );
         let max_level: u8 = *std::cmp::max(
-            self.left.iter().map(|(_, (_, l))| l).max().unwrap(),
-            self.right.iter().map(|(_, (_, l))| l).max().unwrap(),
+            self.left
+                .iter()
+                .map(|(_, (_, l))| l)
+                .max()
+                .expect("Could not get left maximum from the bucket"),
+            self.right
+                .iter()
+                .map(|(_, (_, l))| l)
+                .max()
+                .expect("Could not get right maximum from the bucket"),
         );
         let prefix_range = min_level..=max_level;
         self.left.sort_unstable_by(|p1, p2| p1.0.lex_cmp(&p2.0));

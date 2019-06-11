@@ -171,7 +171,7 @@ where
         }
         if network_summaries.is_some() {
             network_summaries
-                .unwrap()
+                .expect("cannot get newtwork summaries")
                 .iter()
                 .for_each(|n| n.report(experiment));
         }
