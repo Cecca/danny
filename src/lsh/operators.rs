@@ -368,7 +368,7 @@ where
                             let mut discarded = 0;
                             info!("Starting candidate emission ({})", proc_mem!());
                             let start = Instant::now();
-                            if buckets.has_empty_side() {
+                            if !buckets.has_empty_side() {
                                 buckets.for_prefixes(|l, r| {
                                     if pred(l, r) {
                                         session.give((l.clone(), r.clone()));
