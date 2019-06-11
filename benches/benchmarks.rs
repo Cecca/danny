@@ -87,6 +87,35 @@ fn bench_jaccard_sketch(c: &mut Criterion) {
         },
         &[128, 256, 512, 1024],
     );
+
+    c.bench_function_over_inputs(
+        "jaccard sketch comparison",
+        |bencher, &&k| {
+            let mut rng = XorShiftRng::seed_from_u64(124);
+            let a = BagOfWords::random(10000, 100.0, &mut rng);
+            let b = BagOfWords::random(10000, 100.0, &mut rng);
+            let sketcher = OneBitMinHash::new(k, &mut rng);
+            let sa = sketcher.sketch(&a);
+            let sb = sketcher.sketch(&b);
+            let predicate = SketchPredicate::jaccard(k, 0.5, 0.5);
+            bencher.iter(|| predicate.eval(&sa, &sb));
+        },
+        &[128, 256, 512, 1024],
+    );
+
+    c.bench_function_over_inputs(
+        "jaccard sketch estimation",
+        |bencher, &&k| {
+            let mut rng = XorShiftRng::seed_from_u64(124);
+            let a = BagOfWords::random(10000, 100.0, &mut rng);
+            let b = BagOfWords::random(10000, 100.0, &mut rng);
+            let sketcher = OneBitMinHash::new(k, &mut rng);
+            let sa = sketcher.sketch(&a);
+            let sb = sketcher.sketch(&b);
+            bencher.iter(|| SketchEstimate::estimate(&sa, &sb));
+        },
+        &[128, 256, 512, 1024],
+    );
 }
 
 criterion_group!(
