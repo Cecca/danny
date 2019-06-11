@@ -1,7 +1,9 @@
 use crate::lsh::*;
 use crate::measure::*;
 use crate::types::*;
-use rand::distributions::{Distribution, Normal};
+use packed_simd::u32x8;
+use packed_simd::u32x4;
+use rand::distributions::{Distribution, Normal, Uniform};
 use rand::Rng;
 
 pub trait BitBasedSketch {
@@ -51,12 +53,21 @@ where
     /// within the similarity threshold this predicate was built with
     pub fn eval(&self, a: &T, b: &T) -> bool {
         let threshold = self.bit_threshold;
-        let different_bits: usize = a
-            .bits()
+        let ca = a.bits().chunks_exact(4);
+        let cb = b.bits().chunks_exact(4);
+        let rem = ca
+            .remainder()
             .iter()
-            .zip(b.bits().iter())
-            .map(|(x, y)| (x ^ y).count_ones() as usize)
-            .sum();
+            .zip(cb.remainder().iter())
+            .map(|(x, y)| (x ^ y).count_ones())
+            .sum::<u32>();
+        let different_bits = rem as usize
+            + ca.map(u32x4::from_slice_unaligned)
+                .zip(cb.map(u32x4::from_slice_unaligned))
+                .map(|(x, y)| (x ^ y).count_ones())
+                .sum::<u32x4>()
+                .wrapping_sum() as usize;
+
         different_bits <= threshold
     }
 }
@@ -180,7 +191,8 @@ impl Sketcher for LongSimHash {
 #[derive(Clone)]
 pub struct OneBitMinHash {
     k: usize,
-    hashers: Vec<TabulatedHasher>,
+    alphas: Vec<u64>,
+    betas: Vec<u64>,
 }
 
 #[derive(Abomonation, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -193,11 +205,14 @@ impl OneBitMinHash {
     where
         R: Rng + ?Sized,
     {
-        let mut hashers = Vec::with_capacity(k);
+        let uniform = Uniform::new(0u64, std::u64::MAX);
+        let mut alphas = Vec::with_capacity(k);
+        let mut betas = Vec::with_capacity(k);
         for _ in 0..k {
-            hashers.push(TabulatedHasher::new(rng));
+            alphas.push(uniform.sample(rng));
+            betas.push(uniform.sample(rng));
         }
-        OneBitMinHash { k, hashers }
+        OneBitMinHash { k, alphas, betas }
     }
 }
 
@@ -210,12 +225,17 @@ impl Sketcher for OneBitMinHash {
         let mut bits = Vec::with_capacity(num_elems);
         let mut part = 0u32;
 
-        for (i, hasher) in self.hashers.iter().enumerate() {
+        for (i, (alpha, beta)) in self.alphas.iter().zip(self.betas.iter()).enumerate() {
             if i % 32 == 0 && i > 0 {
                 bits.push(part);
                 part = 0;
             }
-            let h = v.words().iter().map(|w| hasher.hash(*w)).min().unwrap();
+            let h = v
+                .words()
+                .iter()
+                .map(|w| (alpha.wrapping_mul(u64::from(*w))).wrapping_add(*beta) >> 32)
+                .min()
+                .unwrap();
             part = (part << 1) | (1 & h) as u32;
         }
         if bits.len() < num_elems {
