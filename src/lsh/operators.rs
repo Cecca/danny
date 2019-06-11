@@ -258,16 +258,16 @@ where
         Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + PrefixHash<'a>,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
-    fn bucket_prefixes<P, F>(
+    fn bucket_prefixes<P, PD>(
         &self,
         right: &Self,
         routing_prefix: usize,
-        predicate: P,
-        report: F,
+        proximity_predicate: P,
+        distinct_predicate: PD,
     ) -> Stream<G, (K, K)>
     where
         P: FnMut(&K, &K) -> bool + 'static,
-        F: FnMut(&T, usize) + 'static;
+        PD: FnMut(&K, &K) -> bool + 'static;
 }
 
 impl<G, T, H, K> BucketPrefixesStream<G, T, H, K> for Stream<G, (H, (K, u8))>
@@ -279,16 +279,16 @@ where
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     #[allow(clippy::explicit_counter_loop)]
-    fn bucket_prefixes<P, F>(
+    fn bucket_prefixes<P, PD>(
         &self,
         right: &Self,
         routing_prefix: usize,
-        pred: P,
-        mut report: F,
+        mut sketch_pred: P,
+        mut distinct_predicate: PD,
     ) -> Stream<G, (K, K)>
     where
         P: FnMut(&K, &K) -> bool + 'static,
-        F: FnMut(&T, usize) + 'static,
+        PD: FnMut(&K, &K) -> bool + 'static,
     {
         let mut buckets = HashMap::new();
         let mut pool = BucketPool::default();
@@ -300,7 +300,6 @@ where
             ExchangePact::new(move |pair: &(H, (K, u8))| pair.0.prefix(routing_prefix).route()),
             "bucket",
             move |_, _| {
-                let mut pred = pred;
                 move |left_in, right_in, output| {
                     left_in.for_each(|t, d| {
                         let _pg = ProfileGuard::new(
@@ -363,19 +362,23 @@ where
                             );
                             let mut session = output.session(time);
                             let mut cnt = 0;
-                            let mut discarded = 0;
+                            let mut bloom_discarded = 0;
+                            let mut sketch_discarded = 0;
                             info!("Starting candidate emission ({})", proc_mem!());
                             let start = Instant::now();
                             buckets.for_prefixes(|l, r| {
-                                if pred(l, r) {
-                                    session.give((l.clone(), r.clone()));
-                                    cnt += 1;
+                                if sketch_pred(l, r) {
+                                    if distinct_predicate(l, r) {
+                                        session.give((l.clone(), r.clone()));
+                                        cnt += 1;
+                                    } else {
+                                        bloom_discarded += 1;
+                                    }
                                 } else {
-                                    discarded += 1;
+                                    sketch_discarded += 1;
                                 }
                             });
                             buckets.clear();
-                            report(time.time(), discarded);
                             let end = Instant::now();
                             info!(
                                 "Emitted {} candidate pairs in {:?} ({}) (repetition {:?})",
@@ -387,6 +390,20 @@ where
                             log_event!(
                                 logger,
                                 LogEvent::GeneratedPairs(time.time().to_step_id(), cnt)
+                            );
+                            log_event!(
+                                logger,
+                                LogEvent::SketchDiscarded(
+                                    time.time().to_step_id(),
+                                    sketch_discarded
+                                )
+                            );
+                            log_event!(
+                                logger,
+                                LogEvent::DuplicatesDiscarded(
+                                    time.time().to_step_id(),
+                                    bloom_discarded
+                                )
                             );
                         }
                     }

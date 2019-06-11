@@ -86,11 +86,14 @@ where
     let cost_balance = config.get_cost_balance();
 
     let bloom_filter = Arc::new(AtomicBloomFilter::<u32>::from_config(&config, rng.clone()));
+    let bloom_filter_pre_communication =
+        Arc::new(AtomicBloomFilter::<u32>::from_config(&config, rng.clone()));
 
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
         let global_left = Arc::clone(&global_left);
         let global_right = Arc::clone(&global_right);
         let bloom_filter = Arc::clone(&bloom_filter);
+        let bloom_filter_pre_communication = Arc::clone(&bloom_filter_pre_communication);
         let hash_collection_builder = hash_collection_builder.clone();
         let mut rng = rng.clone();
         let execution_summary = init_event_logging(&worker);
@@ -117,6 +120,7 @@ where
                     scope.clone(),
                     hash_collection_builder,
                     sketcher_pair,
+                    Arc::clone(&bloom_filter_pre_communication),
                     probe.clone(),
                     &mut rng,
                 ),
@@ -316,11 +320,12 @@ fn generate_candidates_adaptive<K, D, G, T, F, H, S, SV, R, B>(
     scope: G,
     hash_collection_builder: B,
     sketcher_pair: Option<(S, SketchPredicate<SV>)>,
+    filter: Arc<AtomicBloomFilter<K>>,
     probe: ProbeHandle<T>,
     rng: &mut R,
 ) -> Stream<G, (K, K)>
 where
-    K: Data + Sync + Send + Clone + Abomonation + Debug + Route + Hash + Eq + Ord,
+    K: ExchangeData + Debug + Route + Hash + Eq + Ord + Into<u64> + Copy,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId,
@@ -409,9 +414,7 @@ where
                     &right_hashes,
                     min_level,
                     move |l, r| sketch_predicate.eval(&l.1, &r.1),
-                    move |t, count| {
-                        log_event!(logger, LogEvent::SketchDiscarded(t.to_step_id(), count));
-                    },
+                    move |l: &(K, SV), r: &(K, SV)| !filter.test_and_insert(&(l.0, r.0)),
                 )
                 .map(|(l, r)| (l.0, r.0))
         }
@@ -436,7 +439,7 @@ where
                 probe.clone(),
                 rng.clone(),
             );
-            left_hashes.bucket_prefixes(&right_hashes, min_level, |_, _| true, |_, _| {})
+            left_hashes.bucket_prefixes(&right_hashes, min_level, |_, _| true, |_, _| true)
         }
     }
 }

@@ -479,6 +479,12 @@ impl FrozenExecutionSummary {
             append_step_counter!(self, experiment, step, generated_pairs);
             append_step_counter!(self, experiment, step, generated_hashes);
         }
+        info!(
+            "Generated pairs {}  discarded {}  deduplicated {}",
+            self.generated_hashes.iter().map(|p| p.1).sum::<usize>(),
+            self.sketch_discarded.iter().map(|p| p.1).sum::<usize>(),
+            self.duplicates_discarded.iter().map(|p| p.1).sum::<usize>(),
+        );
         let mut hist = std::collections::BTreeMap::new();
         for (level, count) in self.adaptive_histogram.iter() {
             experiment.append(

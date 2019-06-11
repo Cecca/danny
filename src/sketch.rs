@@ -1,8 +1,8 @@
 use crate::lsh::*;
 use crate::measure::*;
 use crate::types::*;
-use packed_simd::u32x8;
 use packed_simd::u32x4;
+use packed_simd::u32x8;
 use rand::distributions::{Distribution, Normal, Uniform};
 use rand::Rng;
 use std::collections::HashMap;
