@@ -93,10 +93,14 @@ where
         self.sort_inner();
         let buckets_iter = BucketsIter::new(&self.left, &self.right);
         for (lb, rb) in buckets_iter {
-            for l in lb {
-                for r in rb {
-                    debug_assert!(l.0 == r.0);
-                    action(&l.1, &r.1);
+            for l_tile in lb.chunks(8) {
+                for r_tile in rb.chunks(8) {
+                    for l in l_tile {
+                        for r in r_tile {
+                            debug_assert!(l.0 == r.0);
+                            action(&l.1, &r.1);
+                        }
+                    }
                 }
             }
         }

@@ -170,7 +170,7 @@ fn main() {
                 total_time as f64 / 1000.0,
             )
             .expect("Could not compute the speedup! Missing entry in the baseline file?");
-        debug!(
+        info!(
             "Pairs above similarity {} are {} (time {:?}, recall {}, speedup {})",
             args.threshold, count, total_time_d, recall, speedup
         );
