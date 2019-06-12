@@ -266,7 +266,7 @@ mod tests {
         let mut sum_preds = 0.0;
 
         for _ in 0..samples {
-            let sketcher = OneBitMinHash::new(k, &mut rng);
+            let sketcher = LongOneBitMinHash::new(k, &mut rng);
             let h1 = sketcher.sketch(&s1);
             let h2 = sketcher.sketch(&s2);
             let predicted = SketchEstimate::estimate(&h1, &h2);

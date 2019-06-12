@@ -106,7 +106,7 @@ fn main() {
             "jaccard" => {
                 let k = args.k.expect("K is needed on the command line");
                 let threshold = args.threshold;
-                let hash_funs_builder = lsh::MinHash::collection_builder(threshold);
+                let hash_funs_builder = lsh::OneBitMinHash::collection_builder(threshold);
                 lsh::local_lsh::<BagOfWords, _, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,

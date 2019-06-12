@@ -214,82 +214,6 @@ impl LSHFunction for OneBitMinHash {
     }
 }
 
-#[derive(Clone)]
-pub struct MinHash {
-    k: usize,
-    alphas: Vec<u64>,
-    betas: Vec<u64>,
-}
-
-impl MinHash {
-    fn new<R>(k: usize, rng: &mut R) -> MinHash
-    where
-        R: Rng + ?Sized,
-    {
-        let uniform = Uniform::new(0u64, std::u64::MAX);
-        let mut alphas = Vec::with_capacity(k);
-        let mut betas = Vec::with_capacity(k);
-        for _ in 0..k {
-            alphas.push(uniform.sample(rng));
-            betas.push(uniform.sample(rng));
-        }
-        MinHash { k, alphas, betas }
-    }
-
-    pub fn collection<R>(
-        k: usize,
-        repetitions: usize,
-        rng: &mut R,
-    ) -> LSHCollection<MinHash, Vec<u32>>
-    where
-        R: Rng + ?Sized,
-    {
-        let mut functions = Vec::with_capacity(repetitions);
-        for _ in 0..repetitions {
-            functions.push(MinHash::new(k, rng));
-        }
-        LSHCollection { functions }
-    }
-
-    pub fn collection_builder<R>(
-        threshold: f64,
-    ) -> impl Fn(usize, &mut R) -> LSHCollection<MinHash, Vec<u32>> + Clone
-    where
-        R: Rng + ?Sized,
-    {
-        let threshold = threshold;
-        move |k: usize, rng: &mut R| {
-            let repetitions = MinHash::repetitions_at_range(threshold, k);
-            Self::collection(k, repetitions, rng)
-        }
-    }
-}
-
-impl LSHFunction for MinHash {
-    type Input = BagOfWords;
-    type Output = Vec<u32>;
-
-    fn hash(&self, v: &BagOfWords) -> Vec<u32> {
-        let mut result = Vec::with_capacity(self.k);
-        for (alpha, beta) in self.alphas.iter().zip(self.betas.iter()) {
-            assert!(!v.words().is_empty(), "The collection of words is empty");
-            let min_w = v
-                .words()
-                .iter()
-                .map(|w| (alpha.wrapping_mul(u64::from(*w))).wrapping_add(*beta) >> 32)
-                .min()
-                .expect("No minimum");
-            // The hash value has already been masked to 32 bits at this point
-            result.push(min_w as u32);
-        }
-        result
-    }
-
-    fn probability_at_range(range: f64) -> f64 {
-        range
-    }
-}
-
 /// Structure that allows to hash a vector at the desired level k. In this respect,
 /// it is somehow the multi-level counterpart of LSHCollection
 pub struct MultilevelHasher<D, H, F>
@@ -405,7 +329,7 @@ mod tests {
     #[test]
     fn test_minhash() {
         let mut rng = StdRng::seed_from_u64(1232);
-        let hasher = MinHash::new(20, &mut rng);
+        let hasher = OneBitMinHash::new(20, &mut rng);
         let a = BagOfWords::new(10, vec![1, 3, 4]);
         let ha = hasher.hash(&a);
         let b = BagOfWords::new(10, vec![0, 1]);
@@ -424,17 +348,18 @@ mod tests {
             let a = BagOfWords::random(3000, 0.01, &mut rng);
             let b = BagOfWords::random(3000, 0.01, &mut rng);
             let similarity = Jaccard::jaccard(&a, &b);
+            let expected = OneBitMinHash::probability_at_range(similarity);
             let mut collisions = 0;
             let samples = 10000;
             for _ in 0..samples {
-                let h = MinHash::new(1, &mut rng);
+                let h = OneBitMinHash::new(1, &mut rng);
                 if h.hash(&a) == h.hash(&b) {
                     collisions += 1;
                 }
             }
             let p = collisions as f64 / samples as f64;
             assert!(
-                (p - similarity).abs() <= 0.05,
+                (p - expected).abs() <= 0.05,
                 "estimated p={}, expected={}",
                 p,
                 similarity
@@ -450,11 +375,11 @@ mod tests {
             let a = BagOfWords::random(3000, 0.01, &mut rng);
             let b = BagOfWords::random(3000, 0.01, &mut rng);
             let similarity = Jaccard::jaccard(&a, &b);
-            let expected = similarity.powi(k as i32);
+            let expected = OneBitMinHash::probability_at_range(similarity).powi(k as i32);
             let mut collisions = 0;
-            let samples = 1000;
+            let samples = 10000;
             for _ in 0..samples {
-                let h = MinHash::new(k, &mut rng);
+                let h = OneBitMinHash::new(k, &mut rng);
                 if h.hash(&a) == h.hash(&b) {
                     collisions += 1;
                 }
