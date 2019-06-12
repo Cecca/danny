@@ -129,7 +129,6 @@ where
                             let mut cnt = 0;
                             let mut sketch_cnt = 0;
                             let mut bloom_cnt = 0;
-                            info!("Bucket left {} and {} ({})", buckets.len_left(), buckets.len_right(), proc_mem!());
                             let start = Instant::now();
                             // buckets.for_all(|l, r| {
                             //     if pred(l, r) {
@@ -439,7 +438,7 @@ where
                     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
                         let h = hash_fns.hash(v, current_repetition as usize);
                         let s = sketches.get(k).expect("Missing sketch");
-                        session.give((h, (s.clone(), k.clone())));
+                        // session.give((h, (s.clone(), k.clone())));
                     }
                     current_repetition += 1;
                     cap.downgrade(&cap.time().succ());
