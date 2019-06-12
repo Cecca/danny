@@ -5,7 +5,7 @@ use crate::experiment::*;
 use crate::io::*;
 use crate::logging::*;
 use crate::lsh::functions::*;
-
+use crate::types::*;
 use crate::operators::*;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
@@ -44,7 +44,7 @@ where
 
     let (global_left, global_right) = load_vectors(left_path, right_path, &config);
 
-    let bloom_filter = Arc::new(AtomicBloomFilter::<u32>::new(
+    let bloom_filter = Arc::new(AtomicBloomFilter::<ElementId>::new(
         4usize.gb_to_bits(),
         5,
         rng.clone(),

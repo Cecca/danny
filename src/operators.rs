@@ -1,7 +1,7 @@
 use crate::bloom::*;
 use crate::logging::*;
 use abomonation::Abomonation;
-
+use crate::types::*;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -97,6 +97,13 @@ impl Route for u32 {
     #[inline(always)]
     fn route(&self) -> u64 {
         A_RAND.wrapping_mul(*self as u64).wrapping_add(B_RAND)
+    }
+}
+
+impl Route for ElementId {
+    #[inline(always)]
+    fn route(&self) -> u64 {
+        self.0 as u64
     }
 }
 

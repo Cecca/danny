@@ -71,9 +71,9 @@ where
     );
     let (global_left, global_right) = load_vectors(left_path, right_path, &config);
 
-    let bloom_filter = Arc::new(AtomicBloomFilter::<u32>::from_config(&config, rng.clone()));
+    let bloom_filter = Arc::new(AtomicBloomFilter::<ElementId>::from_config(&config, rng.clone()));
     let bloom_filter_pre_communication =
-        Arc::new(AtomicBloomFilter::<u32>::from_config(&config, rng.clone()));
+        Arc::new(AtomicBloomFilter::<ElementId>::from_config(&config, rng.clone()));
 
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
         let global_left = Arc::clone(&global_left);

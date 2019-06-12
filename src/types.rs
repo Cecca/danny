@@ -28,6 +28,15 @@ pub struct VectorWithNorm {
     norm: f64,
 }
 
+#[derive(Clone, Default, Eq, Ord, Hash, PartialEq, PartialOrd, Abomonation, Copy, Debug)]
+pub struct ElementId(pub u32);
+
+impl Into<u64> for ElementId {
+    fn into(self) -> u64 {
+        self.0.into()
+    }
+}
+
 unsafe_abomonate!(VectorWithNorm: data, norm);
 
 impl Debug for VectorWithNorm {
