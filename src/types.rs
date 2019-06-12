@@ -11,9 +11,8 @@ use std::hash::Hash;
 use timely::ExchangeData;
 
 /// Composite trait for keys. Basically everything that behaves like an integer
-/// FIXME: Add the Copy trait to the mix
-pub trait KeyData: ExchangeData + Hash + Eq + Ord + Route {}
-impl<T: ExchangeData + Hash + Eq + Ord + Route> KeyData for T {}
+pub trait KeyData: ExchangeData + Hash + Eq + Ord + Copy + Route {}
+impl<T: ExchangeData + Hash + Eq + Ord + Copy + Route> KeyData for T {}
 
 /// Composite trait for hash values
 pub trait HashData: ExchangeData + Hash + Eq + Ord + Route {}
