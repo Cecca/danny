@@ -1,4 +1,6 @@
 use crate::measure::{InnerProduct, Jaccard};
+use crate::operators::Route;
+use crate::sketch::{BitBasedSketch, SketchEstimate};
 use abomonation::Abomonation;
 use rand::distributions::{Distribution, Exp, Normal, Uniform};
 use rand::Rng;
@@ -7,12 +9,11 @@ use std::fmt;
 use std::fmt::Debug;
 use std::hash::Hash;
 use timely::ExchangeData;
-use crate::operators::Route;
-use crate::sketch::{BitBasedSketch, SketchEstimate};
 
 /// Composite trait for keys. Basically everything that behaves like an integer
-pub trait KeyData: ExchangeData + Copy + Hash + Eq + Ord + Route {}
-impl<T: ExchangeData + Copy + Hash + Eq + Ord + Route> KeyData for T {}
+/// FIXME: Add the Copy trait to the mix
+pub trait KeyData: ExchangeData + Hash + Eq + Ord + Route {}
+impl<T: ExchangeData + Hash + Eq + Ord + Route> KeyData for T {}
 
 /// Composite trait for hash values
 pub trait HashData: ExchangeData + Hash + Eq + Ord + Route {}

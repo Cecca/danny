@@ -1,5 +1,4 @@
 use crate::bloom::*;
-use crate::types::*;
 use crate::config::*;
 use crate::dataset::ChunkedDataset;
 use crate::experiment::Experiment;
@@ -13,6 +12,7 @@ use crate::lsh::prefix_hash::*;
 use crate::operators::Route;
 use crate::operators::*;
 use crate::sketch::*;
+use crate::types::*;
 use abomonation::Abomonation;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
@@ -54,14 +54,12 @@ pub fn fixed_param_lsh<D, F, H, O, S, V, B, R>(
     experiment: &mut Experiment,
 ) -> usize
 where
-    for<'de> D:
-        ReadBinaryFile + Deserialize<'de> + Data + Sync + Send + Clone + Abomonation + Debug,
+    for<'de> D: ReadBinaryFile + Deserialize<'de> + ExchangeData + Debug,
     F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
     H: LSHFunction<Input = D, Output = O> + Sync + Send + Clone + 'static,
-    for<'a> O:
-        Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash + Ord + PrefixHash<'a>,
+    for<'a> O: HashData + PrefixHash<'a> + Debug,
     S: Sketcher<Input = D, Output = V> + Send + Sync + Clone + 'static,
-    V: Data + Debug + Sync + Send + Clone + Abomonation + SketchEstimate + BitBasedSketch,
+    V: SketchData + Debug,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
     B: Fn(usize, &mut R) -> LSHCollection<H, O> + Sized + Send + Sync + Clone + 'static,
 {
@@ -205,14 +203,14 @@ fn generate_candidates_global_k<K, D, G, T, F, H, S, SV, R, B>(
     rng: &mut R,
 ) -> Stream<G, (K, K)>
 where
-    K: KeyData + Debug + Into<u64>,
-    D: Data + Sync + Send + Clone + Abomonation + Debug,
+    K: KeyData + Debug + Into<u64> + Copy,
+    D: ExchangeData + Debug,
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
-    H: Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash + Ord,
+    H: HashData + Debug,
     S: Sketcher<Input = D, Output = SV> + Send + Sync + Clone + 'static,
-    SV: Data + Debug + Sync + Send + Clone + Abomonation + SketchEstimate + BitBasedSketch,
+    SV: SketchData + Debug,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
     B: Fn(usize, &mut R) -> LSHCollection<F, H> + Sized + Send + Sync + Clone + 'static,
 {
@@ -277,9 +275,9 @@ fn build_sketches<D, K, S, SV>(
 ) -> Arc<HashMap<K, SV>>
 where
     D: ExchangeData,
-    K: ExchangeData + Route + Hash + Eq,
+    K: KeyData + Debug,
     S: Sketcher<Input = D, Output = SV> + Clone + 'static,
-    SV: ExchangeData + Debug,
+    SV: SketchData + Debug,
 {
     let mut sketches: HashMap<K, SV> =
         HashMap::with_capacity(vectors.stripe_len(matrix, direction, worker));
@@ -309,15 +307,14 @@ fn generate_candidates_adaptive<K, D, G, T, F, H, S, SV, R, B>(
     rng: &mut R,
 ) -> Stream<G, (K, K)>
 where
-    K: ExchangeData + Debug + Route + Hash + Eq + Ord + Into<u64> + Copy,
-    D: Data + Sync + Send + Clone + Abomonation + Debug,
+    K: KeyData + Debug + Into<u64> + Copy,
+    D: ExchangeData + Debug,
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
-    for<'a> H:
-        Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash + Ord + PrefixHash<'a>,
+    for<'a> H: HashData + Debug + PrefixHash<'a>,
     S: Sketcher<Input = D, Output = SV> + Send + Sync + Clone + 'static,
-    SV: Data + Debug + Sync + Send + Clone + Abomonation + SketchEstimate + BitBasedSketch,
+    SV: SketchData + Debug,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
     B: Fn(usize, &mut R) -> LSHCollection<F, H> + Sized + Send + Sync + Clone + 'static,
 {
