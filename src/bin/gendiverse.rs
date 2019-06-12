@@ -13,7 +13,6 @@ extern crate serde;
 
 use danny::io::*;
 
-
 use danny::types::*;
 use rand::distributions::Exp1;
 use rand::distributions::Normal;

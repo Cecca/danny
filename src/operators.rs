@@ -2,13 +2,10 @@ use crate::bloom::*;
 use crate::logging::*;
 use abomonation::Abomonation;
 
-
-
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Add;
-
 
 use std::sync::Arc;
 use timely::dataflow::channels::pact::ParallelizationContract;
@@ -373,7 +370,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     use std::sync::mpsc;
     use std::sync::{Arc, Mutex};
     use timely::dataflow::operators::capture::event::Event;

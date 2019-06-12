@@ -36,18 +36,19 @@ fn main() {
                 let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
                 let threshold = args.threshold;
                 let hash_funs_builder = lsh::Hyperplane::collection_builder(threshold, dim);
-                let sketcher_pair = args.sketch_bits.map(|bits| {
+                let (sketcher, sketch_predicate) = args.sketch_bits.map(|bits| {
                     (
                         LongSimHash::new(bits, dim, &mut rng),
                         SketchPredicate::cosine(bits, threshold, config.get_sketch_epsilon()),
                     )
-                });
+                }).expect("FIXME: Make the sketches mandatory");
                 lsh::fixed_param_lsh::<UnitNormVector, _, _, _, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,
                     k,
                     hash_funs_builder,
-                    sketcher_pair,
+                    sketcher,
+                    sketch_predicate,
                     move |a, b| InnerProduct::cosine(a, b) >= threshold,
                     &mut rng,
                     &config,
@@ -58,18 +59,19 @@ fn main() {
                 let k = args.k.expect("K is needed on the command line");
                 let threshold = args.threshold;
                 let hash_funs_builder = lsh::MinHash::collection_builder(threshold);
-                let sketcher_pair = args.sketch_bits.map(|bits| {
+                let (sketcher, sketch_predicate) = args.sketch_bits.map(|bits| {
                     (
                         OneBitMinHash::new(bits, &mut rng),
                         SketchPredicate::jaccard(bits, threshold, config.get_sketch_epsilon()),
                     )
-                });
+                }).expect("FIXME: Make the sketches mandatory");
                 lsh::fixed_param_lsh::<BagOfWords, _, _, _, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,
                     k,
                     hash_funs_builder,
-                    sketcher_pair,
+                    sketcher,
+                    sketch_predicate,
                     move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
                     &mut rng,
                     &config,

@@ -18,17 +18,15 @@ use std::time::Instant;
 
 use timely::dataflow::channels::pact::{Exchange as ExchangePact, Pipeline};
 
-
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::dataflow::operators::generic::source;
-use timely::dataflow::operators::generic::{FrontieredInputHandle};
+use timely::dataflow::operators::generic::FrontieredInputHandle;
 use timely::dataflow::operators::Capability;
 
 use timely::dataflow::operators::*;
 
 use timely::dataflow::*;
 use timely::logging::Logger;
-
 
 use timely::progress::Timestamp;
 use timely::Data;

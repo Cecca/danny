@@ -121,17 +121,17 @@ impl<T: Into<u64> + Copy> Debug for AtomicBloomFilter<T> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use rand::RngCore;
-    use std::mem::size_of;
     use probabilistic_collections::hyperloglog::HyperLogLog;
+    use rand::RngCore;
     use rand::SeedableRng;
     use rand_xorshift::XorShiftRng;
+    use std::hash::Hash;
+    use std::hash::Hasher;
+    use std::hash::SipHasher;
+    use std::mem::size_of;
     use std::sync::atomic::AtomicUsize;
     use std::sync::{Arc, Barrier};
     use std::thread;
-    use std::hash::SipHasher;
-    use std::hash::Hasher;
-    use std::hash::Hash;
 
     pub struct BloomFilter<T> {
         num_bits: usize,

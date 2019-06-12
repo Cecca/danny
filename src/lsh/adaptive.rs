@@ -11,19 +11,13 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
 
-use timely::dataflow::channels::pact::{Pipeline};
-
-
+use timely::dataflow::channels::pact::Pipeline;
 
 use timely::dataflow::operators::generic::source;
-
-
 
 use timely::dataflow::operators::*;
 
 use timely::dataflow::*;
-
-
 
 use timely::progress::Timestamp;
 

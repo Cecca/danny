@@ -9,7 +9,6 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use timely::Data;
 
-
 pub trait LSHFunction {
     type Input;
     type Output;

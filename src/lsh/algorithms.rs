@@ -45,7 +45,8 @@ pub fn fixed_param_lsh<D, F, H, O, S, V, B, R>(
     right_path: &str,
     k: ParamK,
     hash_collection_builder: B,
-    sketcher_pair: Option<(S, SketchPredicate<V>)>,
+    sketcher: S,
+    sketch_predicate: SketchPredicate<V>,
     sim_pred: F,
     rng: &mut R,
     config: &Config,
@@ -102,12 +103,11 @@ where
             .expect("Cannot get lock on output channel")
             .clone();
         let sim_pred = sim_pred.clone();
-
-        let sketcher_pair = sketcher_pair.clone();
+        let sketch_predicate = sketch_predicate.clone();
+        let sketcher = sketcher.clone();
 
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
             let mut probe = ProbeHandle::new();
-            let sketcher_pair = sketcher_pair;
 
             let candidates = match k {
                 ParamK::Adaptive(min_k, max_k) => generate_candidates_adaptive(
@@ -115,11 +115,10 @@ where
                     Arc::clone(&global_right),
                     min_k,
                     max_k,
-                    estimator_samples,
-                    cost_balance,
                     scope.clone(),
                     hash_collection_builder,
-                    sketcher_pair,
+                    sketcher,
+                    sketch_predicate,
                     Arc::clone(&bloom_filter_pre_communication),
                     probe.clone(),
                     &mut rng,
@@ -130,7 +129,8 @@ where
                     k,
                     scope.clone(),
                     hash_collection_builder,
-                    sketcher_pair,
+                    sketcher,
+                    sketch_predicate,
                     Arc::clone(&bloom_filter_pre_communication),
                     probe.clone(),
                     &mut rng,
@@ -200,7 +200,8 @@ fn generate_candidates_global_k<K, D, G, T, F, H, S, SV, R, B>(
     k: ParamK,
     scope: G,
     hash_collection_builder: B,
-    sketcher_pair: Option<(S, SketchPredicate<SV>)>,
+    sketcher: S,
+    sketch_predicate: SketchPredicate<SV>,
     filter: Arc<AtomicBloomFilter<K>>,
     probe: ProbeHandle<T>,
     rng: &mut R,
@@ -225,54 +226,31 @@ where
         ParamK::Adaptive(_, _) => panic!("You should not be here!!"),
     };
 
-    match sketcher_pair {
-        Some((sketcher, sketch_predicate)) => {
-            let left_hashes = source_hashed_sketched(
-                &scope,
-                Arc::clone(&left),
-                hash_fn.clone(),
-                sketcher.clone(),
-                matrix,
-                MatrixDirection::Rows,
-                probe.clone(),
-            );
-            let right_hashes = source_hashed_sketched(
-                &scope,
-                Arc::clone(&right),
-                hash_fn.clone(),
-                sketcher.clone(),
-                matrix,
-                MatrixDirection::Rows,
-                probe.clone(),
-            );
-            left_hashes
-                .bucket_pred(
-                    &right_hashes,
-                    move |a, b| sketch_predicate.eval(&a.0, &b.0),
-                    move |a, b| !filter.test_and_insert(&(a.1, b.1)),
-                )
-                .map(|(l, r)| (l.1, r.1))
-        }
-        None => {
-            let left_hashes = source_hashed(
-                &scope,
-                Arc::clone(&left),
-                hash_fn.clone(),
-                matrix,
-                MatrixDirection::Rows,
-                probe.clone(),
-            );
-            let right_hashes = source_hashed(
-                &scope,
-                Arc::clone(&right),
-                hash_fn.clone(),
-                matrix,
-                MatrixDirection::Columns,
-                probe.clone(),
-            );
-            left_hashes.bucket(&right_hashes)
-        }
-    }
+    let left_hashes = source_hashed_sketched(
+        &scope,
+        Arc::clone(&left),
+        hash_fn.clone(),
+        sketcher.clone(),
+        matrix,
+        MatrixDirection::Rows,
+        probe.clone(),
+    );
+    let right_hashes = source_hashed_sketched(
+        &scope,
+        Arc::clone(&right),
+        hash_fn.clone(),
+        sketcher.clone(),
+        matrix,
+        MatrixDirection::Rows,
+        probe.clone(),
+    );
+    left_hashes
+        .bucket_pred(
+            &right_hashes,
+            move |a, b| sketch_predicate.eval(&a.0, &b.0),
+            move |a, b| !filter.test_and_insert(&(a.1, b.1)),
+        )
+        .map(|(l, r)| (l.1, r.1))
 }
 
 fn build_sketches<D, K, S, SV>(
@@ -307,11 +285,10 @@ fn generate_candidates_adaptive<K, D, G, T, F, H, S, SV, R, B>(
     right: Arc<ChunkedDataset<K, D>>,
     min_k: usize,
     max_k: usize,
-    _sample_size: usize,
-    _cost_balance: f64,
     scope: G,
     hash_collection_builder: B,
-    sketcher_pair: Option<(S, SketchPredicate<SV>)>,
+    sketcher: S,
+    sketch_predicate: SketchPredicate<SV>,
     filter: Arc<AtomicBloomFilter<K>>,
     probe: ProbeHandle<T>,
     rng: &mut R,
@@ -333,12 +310,7 @@ where
     let matrix = MatrixDescription::for_workers(peers as usize);
     let _logger = scope.danny_logger();
     let worker: u64 = scope.index() as u64;
-    let sketcher = Arc::new(
-        sketcher_pair
-            .clone()
-            .expect("TEST: use the sketcher pair")
-            .0,
-    );
+    let sketcher = Arc::new(sketcher);
     let sketches_left = build_sketches(
         Arc::clone(&left),
         Arc::clone(&sketcher),
@@ -379,61 +351,34 @@ where
         .matrix_distribute(MatrixDirection::Columns, matrix)
         .map(|triplet| (triplet.1, triplet.2));
 
-    match sketcher_pair {
-        Some((_sketcher, sketch_predicate)) => {
-            let left_hashes = source_hashed_adaptive_sketched(
-                &scope,
-                &levels_left,
-                Arc::clone(&left),
-                Arc::clone(&multihash),
-                Arc::clone(&sketches_left),
-                matrix,
-                MatrixDirection::Rows,
-                probe.clone(),
-            );
-            let right_hashes = source_hashed_adaptive_sketched(
-                &scope,
-                &levels_right,
-                Arc::clone(&right),
-                Arc::clone(&multihash),
-                Arc::clone(&sketches_right),
-                matrix,
-                MatrixDirection::Columns,
-                probe.clone(),
-            );
-            left_hashes
-                .bucket_prefixes(
-                    &right_hashes,
-                    min_level,
-                    move |l, r| sketch_predicate.eval(&l.1, &r.1),
-                    move |l: &(K, SV), r: &(K, SV)| !filter.test_and_insert(&(l.0, r.0)),
-                )
-                .map(|(l, r)| (l.0, r.0))
-        }
-        None => {
-            let left_hashes = source_hashed_adaptive(
-                &scope,
-                &levels_left,
-                Arc::clone(&left),
-                Arc::clone(&multihash),
-                matrix,
-                MatrixDirection::Rows,
-                probe.clone(),
-                rng.clone(),
-            );
-            let right_hashes = source_hashed_adaptive(
-                &scope,
-                &levels_right,
-                Arc::clone(&right),
-                Arc::clone(&multihash),
-                matrix,
-                MatrixDirection::Columns,
-                probe.clone(),
-                rng.clone(),
-            );
-            left_hashes.bucket_prefixes(&right_hashes, min_level, |_, _| true, |_, _| true)
-        }
-    }
+    let left_hashes = source_hashed_adaptive_sketched(
+        &scope,
+        &levels_left,
+        Arc::clone(&left),
+        Arc::clone(&multihash),
+        Arc::clone(&sketches_left),
+        matrix,
+        MatrixDirection::Rows,
+        probe.clone(),
+    );
+    let right_hashes = source_hashed_adaptive_sketched(
+        &scope,
+        &levels_right,
+        Arc::clone(&right),
+        Arc::clone(&multihash),
+        Arc::clone(&sketches_right),
+        matrix,
+        MatrixDirection::Columns,
+        probe.clone(),
+    );
+    left_hashes
+        .bucket_prefixes(
+            &right_hashes,
+            min_level,
+            move |l, r| sketch_predicate.eval(&l.1, &r.1),
+            move |l: &(K, SV), r: &(K, SV)| !filter.test_and_insert(&(l.0, r.0)),
+        )
+        .map(|(l, r)| (l.0, r.0))
 }
 
 fn candidates_filter_count<G, T, K, D, F>(
