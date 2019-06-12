@@ -10,10 +10,21 @@ pub trait PrefixHash<'a> {
     fn prefix_eq(&'a self, other: &'a Self, n: usize) -> bool {
         self.prefix(n) == other.prefix(n)
     }
+    fn longest_common_prefix(&self, other: &Self) -> u8;
 }
 
 impl<'a> PrefixHash<'a> for u32 {
     type PrefixType = u32;
+
+    fn longest_common_prefix(&self, other: &Self) -> u8 {
+        let mut mask = 1u32;
+        let mut len = 0u8;
+        while ((self & mask) == (other & mask)) && len <= 32 {
+            len += 1;
+            mask = (mask << 1) | 1;
+        }
+        len
+    }
 
     fn prefix(&'a self, n: usize) -> Self::PrefixType {
         assert!(n <= 32);
@@ -43,19 +54,6 @@ impl<'a> PrefixHash<'a> for u32 {
         // We should never get here, we have an early return
         // before the loop for the equality case
         Ordering::Equal
-    }
-}
-
-impl<'a> PrefixHash<'a> for Vec<u32> {
-    type PrefixType = &'a [u32];
-
-    fn prefix(&'a self, n: usize) -> Self::PrefixType {
-        assert!(n <= self.len());
-        &self[0..n]
-    }
-
-    fn lex_cmp(&self, other: &Self) -> Ordering {
-        self.cmp(other)
     }
 }
 

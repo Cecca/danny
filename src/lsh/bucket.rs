@@ -125,36 +125,17 @@ where
     where
         F: FnMut(&K, &K) -> (),
     {
-        let min_level: u8 = *std::cmp::min(
-            self.left.iter().map(|(_, (_, l))| l).min().unwrap(),
-            self.right.iter().map(|(_, (_, l))| l).min().unwrap(),
-        );
-        let max_level: u8 = *std::cmp::max(
-            self.left.iter().map(|(_, (_, l))| l).max().unwrap(),
-            self.right.iter().map(|(_, (_, l))| l).max().unwrap(),
-        );
-        let prefix_range = min_level..=max_level;
-        self.left.sort_unstable_by(|p1, p2| p1.0.lex_cmp(&p2.0));
-        self.right.sort_unstable_by(|p1, p2| p1.0.lex_cmp(&p2.0));
-        for p in prefix_range {
-            let buckets_iter = BucketsPrefixIter::new(&self.left, &self.right, p as usize);
-            for (lb, rb) in buckets_iter {
-                for l in lb {
-                    let l_level = (l.1).1;
-                    if l_level >= p {
-                        for r in rb {
-                            let r_level = (r.1).1;
-                            if r_level >= p {
-                                assert!(l.0.prefix_eq(&r.0, p as usize));
-                                if l_level == p || r_level == p {
-                                    action(&(l.1).0, &(r.1).0);
-                                }
-                            }
-                        }
-                    }
+        let mut emitted = 0;
+        for (hl, (l, l_best)) in &self.left {
+            for (hr, (r, r_best)) in &self.right {
+                let common = hl.longest_common_prefix(hr);
+                if common >= *l_best || common >= *r_best {
+                    action(l, r);
+                    emitted += 1;
                 }
             }
         }
+        info!("Emitted {} over {}", emitted, self.left.len() * self.right.len());
     }
 }
 
