@@ -126,36 +126,40 @@ where
         F: FnMut(&K, &K) -> (),
     {
         let mut emitted = 0;
-        for (hl, (l, l_best)) in &self.left {
-            for (hr, (r, r_best)) in &self.right {
-                let common = hl.longest_common_prefix(hr);
-                if common >= *l_best || common >= *r_best {
-                    action(l, r);
-                    emitted += 1;
+        let mut seen = 0;
+        self.left.sort_unstable_by(|p1, p2| p1.0.lex_cmp(&p2.0));
+        self.right.sort_unstable_by(|p1, p2| p1.0.lex_cmp(&p2.0));
+        let min_prefix_len = std::cmp::min(
+            self.left
+                .iter()
+                .map(|p| (p.1).1)
+                .min()
+                .expect("The left appears to be empty"),
+            self.right
+                .iter()
+                .map(|p| (p.1).1)
+                .min()
+                .expect("The right appers to be empty"),
+        );
+        let iter = BucketsPrefixIter::new(&self.left, &self.right, min_prefix_len as usize);
+        for (l_vecs, r_vecs) in iter {
+            for (hl, (l, l_best)) in l_vecs {
+                for (hr, (r, r_best)) in r_vecs {
+                    let common = hl.longest_common_prefix(hr);
+                    if common >= *l_best || common >= *r_best {
+                        action(l, r);
+                        emitted += 1;
+                    }
+                    seen += 1;
                 }
             }
         }
-        info!("Emitted {} over {}", emitted, self.left.len() * self.right.len());
-    }
-}
-
-impl<H, K> Bucket<H, K>
-where
-    for<'a> H: Ord + PrefixHash<'a> + Debug + Clone,
-    K: Debug + Clone,
-{
-    pub fn for_all_prefixes<F>(&mut self, min_level: usize, max_level: usize, mut action: F)
-    where
-        F: FnMut(usize, &[(H, K)], &[(H, K)]) -> (),
-    {
-        self.left.sort_unstable_by(|p1, p2| p1.0.lex_cmp(&p2.0));
-        self.right.sort_unstable_by(|p1, p2| p1.0.lex_cmp(&p2.0));
-        for p in min_level..=max_level {
-            let buckets_iter = BucketsPrefixIter::new(&self.left, &self.right, p as usize);
-            for (lb, rb) in buckets_iter {
-                action(p, lb, rb);
-            }
-        }
+        info!(
+            "Emitted {} over {} (total pairs {})",
+            emitted,
+            seen,
+            self.left.len() * self.right.len()
+        );
     }
 }
 

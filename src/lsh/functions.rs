@@ -162,11 +162,7 @@ impl OneBitMinHash {
         OneBitMinHash { k, alphas, betas }
     }
 
-    pub fn collection<R>(
-        k: usize,
-        repetitions: usize,
-        rng: &mut R,
-    ) -> LSHCollection<OneBitMinHash>
+    pub fn collection<R>(k: usize, repetitions: usize, rng: &mut R) -> LSHCollection<OneBitMinHash>
     where
         R: Rng + ?Sized,
     {

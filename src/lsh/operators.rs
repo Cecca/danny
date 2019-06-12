@@ -49,7 +49,6 @@ where
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
-
     #[allow(clippy::explicit_counter_loop)]
     fn bucket_pred<P, PD>(
         &self,
