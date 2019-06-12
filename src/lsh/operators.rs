@@ -435,10 +435,14 @@ where
                         debug!("Repetition {} with sketches", current_repetition,);
                     }
                     let mut session = output.session(&cap);
+                    let mut sent = false;
                     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
                         let h = hash_fns.hash(v, current_repetition as usize);
                         let s = sketches.get(k).expect("Missing sketch");
-                        // session.give((h, (s.clone(), k.clone())));
+                        if !sent{
+                            session.give((h, (s.clone(), k.clone())));
+                            sent = true;
+                        }
                     }
                     current_repetition += 1;
                     cap.downgrade(&cap.time().succ());
