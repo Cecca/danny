@@ -254,7 +254,7 @@ where
                             LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
                         );
                         let rep_entry = buckets.entry(t.retain()).or_insert_with(|| pool.get());
-                        for (h, k) in data.drain(..) {
+                        for (h, k) in data.drain(..1) {
                             rep_entry.push_left(h, k);
                         }
                     });
@@ -276,7 +276,7 @@ where
                             LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
                         );
                         let rep_entry = buckets.entry(t.retain()).or_insert_with(|| pool.get());
-                        for (h, k) in data.drain(..) {
+                        for (h, k) in data.drain(..1) {
                             rep_entry.push_right(h, k);
                         }
                     });
@@ -439,14 +439,10 @@ where
                         debug!("Repetition {} with sketches", current_repetition,);
                     }
                     let mut session = output.session(&cap);
-                    let mut sent = false;
                     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
                         let h = hash_fns.hash(v, current_repetition as usize);
                         let s = sketches.get(k).expect("Missing sketch");
-                        if !sent{
-                            session.give((h, (s.clone(), k.clone())));
-                            sent = true;
-                        }
+                        session.give((h, (s.clone(), k.clone())));
                     }
                     current_repetition += 1;
                     cap.downgrade(&cap.time().succ());
