@@ -369,15 +369,17 @@ struct RepetitionStopWatch {
     counter: usize,
     name: String,
     logger: Option<Logger<LogEvent>>,
+    verbose: bool
 }
 
 impl RepetitionStopWatch {
-    pub fn new(name: &str, logger: Option<Logger<LogEvent>>) -> Self {
+    pub fn new(name: &str, verbose: bool, logger: Option<Logger<LogEvent>>) -> Self {
         Self {
             start: None,
             counter: 0usize,
             name: name.to_owned(),
             logger: logger,
+            verbose
         }
     }
 
@@ -388,7 +390,9 @@ impl RepetitionStopWatch {
     pub fn maybe_stop(&mut self) {
         if let Some(start) = self.start.take() {
             let elapsed = Instant::now() - start;
-            debug!("{} {} ended in {:?}", self.name, self.counter, elapsed);
+            if self.verbose {
+                info!("{} {} ended in {:?}", self.name, self.counter, elapsed);
+            }
             log_event!(
                 self.logger,
                 LogEvent::Profile(self.counter, 0, self.name.clone(), elapsed)
@@ -421,7 +425,7 @@ where
     let repetitions = hash_fns.repetitions();
     let mut current_repetition = 0usize;
     let vecs = Arc::clone(&global_vecs);
-    let mut stopwatch = RepetitionStopWatch::new("repetition", logger);
+    let mut stopwatch = RepetitionStopWatch::new("repetition", worker == 0, logger);
 
     source(scope, "hashed source", move |capability| {
         let mut cap = Some(capability);
@@ -491,7 +495,7 @@ where
     builder.build(move |mut capabilities| {
         let mut capability = Some(capabilities.pop().unwrap());
 
-        let mut stopwatch = RepetitionStopWatch::new("repetition", logger.clone());
+        let mut stopwatch = RepetitionStopWatch::new("repetition", worker == 0, logger.clone());
         let mut best_levels: HashMap<K, usize> = HashMap::new();
         // We start from the starting level of the hasher, even though the minimum level might be higher.
         // This is to synchronize the left and right generators. They might have different
