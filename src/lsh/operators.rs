@@ -254,7 +254,7 @@ where
                             LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
                         );
                         let rep_entry = buckets.entry(t.retain()).or_insert_with(|| pool.get());
-                        for (h, k) in data.drain(..1) {
+                        for (h, k) in data.drain(..) {
                             rep_entry.push_left(h, k);
                         }
                     });
@@ -276,7 +276,7 @@ where
                             LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
                         );
                         let rep_entry = buckets.entry(t.retain()).or_insert_with(|| pool.get());
-                        for (h, k) in data.drain(..1) {
+                        for (h, k) in data.drain(..) {
                             rep_entry.push_right(h, k);
                         }
                     });
@@ -302,16 +302,16 @@ where
                             debug!("Starting candidate emission ({})", proc_mem!());
                             let start = Instant::now();
                             buckets.for_prefixes(|l, r| {
-                                if sketch_pred(l, r) {
-                                    if distinct_predicate(l, r) {
-                                        session.give((l.clone(), r.clone()));
-                                        cnt += 1;
-                                    } else {
-                                        bloom_discarded += 1;
-                                    }
-                                } else {
-                                    sketch_discarded += 1;
-                                }
+                                // if sketch_pred(l, r) {
+                                //     if distinct_predicate(l, r) {
+                                //         session.give((l.clone(), r.clone()));
+                                //         cnt += 1;
+                                //     } else {
+                                //         bloom_discarded += 1;
+                                //     }
+                                // } else {
+                                //     sketch_discarded += 1;
+                                // }
                             });
                             buckets.clear();
                             let end = Instant::now();
@@ -438,15 +438,12 @@ where
                     if worker == 0 {
                         debug!("Repetition {} with sketches", current_repetition,);
                     }
-                    let start = Instant::now();
                     let mut session = output.session(&cap);
                     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
                         let h = hash_fns.hash(v, current_repetition as usize);
                         let s = sketches.get(k).expect("Missing sketch");
                         session.give((h, (s.clone(), k.clone())));
                     }
-                    let stop = Instant::now();
-                    info!("Time to push hashes on the network {:?}", stop - start);
                     current_repetition += 1;
                     cap.downgrade(&cap.time().succ());
                     done = current_repetition >= repetitions;
