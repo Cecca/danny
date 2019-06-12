@@ -250,8 +250,7 @@ where
         .bucket_pred(
             &right_hashes,
             move |a, b| sketch_predicate.eval(&a.0, &b.0),
-            // move |a, b| !filter.test_and_insert(&(a.1, b.1)),
-            |_, _| true,
+            move |a, b| !filter.test_and_insert(&(a.1, b.1)),
         )
         .map(|(l, r)| (l.1, r.1))
 }
