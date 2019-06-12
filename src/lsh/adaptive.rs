@@ -88,7 +88,7 @@ where
     G: Scope,
     D: ExchangeData + Debug,
     K: ExchangeData + Debug + Route + Hash + Ord,
-    for<'a> H: ExchangeData + Route + Debug + Hash + Ord + PrefixHash<'a>,
+    H: ExchangeData + Route + Debug + Hash + Ord + PrefixHash,
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
     V: ExchangeData + Debug + SketchEstimate,
 {
@@ -171,7 +171,7 @@ where
     T: Timestamp + Succ + ToStepId + Debug,
     D: ExchangeData + Debug,
     K: ExchangeData + Debug + Route + Hash + Ord,
-    for<'a> H: ExchangeData + Route + Debug + Hash + Ord + PrefixHash<'a>,
+    H: ExchangeData + Route + Debug + Hash + Ord + PrefixHash,
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
     V: ExchangeData + Debug + SketchEstimate,
     R: Rng + Clone + 'static,

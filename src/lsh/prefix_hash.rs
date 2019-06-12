@@ -3,17 +3,17 @@
 use crate::operators::Route;
 use std::cmp::Ordering;
 
-pub trait PrefixHash<'a> {
+pub trait PrefixHash {
     type PrefixType: Eq + Ord + Clone + Route;
-    fn prefix(&'a self, n: usize) -> Self::PrefixType;
+    fn prefix(&self, n: usize) -> Self::PrefixType;
     fn lex_cmp(&self, other: &Self) -> Ordering;
-    fn prefix_eq(&'a self, other: &'a Self, n: usize) -> bool {
+    fn prefix_eq(&self, other: &Self, n: usize) -> bool {
         self.prefix(n) == other.prefix(n)
     }
     fn longest_common_prefix(&self, other: &Self) -> u8;
 }
 
-impl<'a> PrefixHash<'a> for u32 {
+impl PrefixHash for u32 {
     type PrefixType = u32;
 
     fn longest_common_prefix(&self, other: &Self) -> u8 {
@@ -26,7 +26,7 @@ impl<'a> PrefixHash<'a> for u32 {
         len
     }
 
-    fn prefix(&'a self, n: usize) -> Self::PrefixType {
+    fn prefix(&self, n: usize) -> Self::PrefixType {
         assert!(n <= 32);
         let mut mask: u32 = 0;
         for _ in 0..n {
@@ -34,6 +34,7 @@ impl<'a> PrefixHash<'a> for u32 {
         }
         self & mask
     }
+
     fn lex_cmp(&self, other: &Self) -> Ordering {
         let mut a: u32 = *self;
         let mut b: u32 = *other;

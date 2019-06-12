@@ -185,8 +185,8 @@ pub trait BucketPrefixesStream<G, T, H, K>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp,
-    for<'a> H:
-        Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + PrefixHash<'a>,
+     H:
+        Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + PrefixHash,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     fn bucket_prefixes<P, PD>(
@@ -205,8 +205,8 @@ impl<G, T, H, K> BucketPrefixesStream<G, T, H, K> for Stream<G, (H, (K, u8))>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + ToStepId,
-    for<'a> H:
-        Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + PrefixHash<'a>,
+    H:
+        Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + PrefixHash,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     #[allow(clippy::explicit_counter_loop)]

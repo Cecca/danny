@@ -116,7 +116,7 @@ where
 
 impl<H, K> Bucket<H, (K, u8)>
 where
-    for<'a> H: Ord + PrefixHash<'a> + Debug,
+    H: Ord + PrefixHash + Debug,
     K: Debug,
 {
     /// This method can be applied just to buckets such that information about the
@@ -244,7 +244,7 @@ where
 
 pub struct BucketsPrefixIter<'a, H, K1, K2>
 where
-    H: PartialOrd + PrefixHash<'a>,
+    H: PartialOrd + PrefixHash,
     K1: Debug,
     K2: Debug,
 {
@@ -257,7 +257,7 @@ where
 
 impl<'a, H, K1, K2> BucketsPrefixIter<'a, H, K1, K2>
 where
-    H: PartialOrd + PrefixHash<'a>,
+    H: PartialOrd + PrefixHash,
     K1: Debug,
     K2: Debug,
 {
@@ -280,26 +280,11 @@ where
     }
 }
 
-// impl<'a, H, K> FindBucketEnd<'a, H, K> for BucketsPrefixIter<'a, H, K>
-// where
-//     H: PartialOrd + PrefixHash<'a> + Debug,
-//     K: Debug,
-// {
-//     fn find_bucket_end(&self, items: &'a [(H, K)], start: usize) -> (&'a H, usize) {
-//         let start_hash = &items[start].0;
-//         let mut end = start + 1;
-//         while end < items.len() && items[end].0.prefix_eq(start_hash, self.prefix_len) {
-//             end += 1;
-//         }
-//         (start_hash, end)
-//     }
-// }
-
 impl<'a, H, K1, K2> Iterator for BucketsPrefixIter<'a, H, K1, K2>
 where
     K1: Debug,
     K2: Debug,
-    H: PartialOrd + PrefixHash<'a> + Debug,
+    H: PartialOrd + PrefixHash + Debug,
 {
     // TODO: This can be merged with the other, specializing just on find_bucket end
     type Item = (&'a [(H, K1)], &'a [(H, K2)]);

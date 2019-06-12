@@ -9,35 +9,24 @@ use crate::lsh::adaptive::*;
 use crate::lsh::functions::*;
 use crate::lsh::operators::*;
 use crate::lsh::prefix_hash::*;
-use crate::operators::Route;
 use crate::operators::*;
 use crate::sketch::*;
 use crate::types::*;
-use abomonation::Abomonation;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
-use std::collections::HashMap;
-use std::time::Instant;
-
 use std::clone::Clone;
-
+use std::collections::HashMap;
 use std::fmt::Debug;
-use std::hash::Hash;
-
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
-
 use std::time::Duration;
-
+use std::time::Instant;
 use timely::dataflow::channels::pact::Exchange as ExchangePact;
 use timely::dataflow::channels::pact::Pipeline as PipelinePact;
 use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
 use timely::dataflow::operators::*;
-
 use timely::dataflow::*;
-
 use timely::progress::timestamp::Timestamp;
-use timely::Data;
 use timely::ExchangeData;
 
 #[allow(clippy::too_many_arguments)]
@@ -57,7 +46,7 @@ where
     for<'de> D: ReadBinaryFile + Deserialize<'de> + ExchangeData + Debug,
     F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
     H: LSHFunction<Input = D, Output = O> + Sync + Send + Clone + 'static,
-    for<'a> O: HashData + PrefixHash<'a> + Debug,
+    O: HashData + PrefixHash + Debug,
     S: Sketcher<Input = D, Output = V> + Send + Sync + Clone + 'static,
     V: SketchData + Debug,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
@@ -203,7 +192,7 @@ fn generate_candidates_global_k<K, D, G, T, F, H, S, SV, R, B>(
     rng: &mut R,
 ) -> Stream<G, (K, K)>
 where
-    K: KeyData + Debug + Into<u64> + Copy,
+    K: KeyData + Debug + Into<u64>,
     D: ExchangeData + Debug,
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId,
@@ -307,12 +296,12 @@ fn generate_candidates_adaptive<K, D, G, T, F, H, S, SV, R, B>(
     rng: &mut R,
 ) -> Stream<G, (K, K)>
 where
-    K: KeyData + Debug + Into<u64> + Copy,
+    K: KeyData + Debug + Into<u64>,
     D: ExchangeData + Debug,
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
-    for<'a> H: HashData + Debug + PrefixHash<'a>,
+    H: HashData + Debug + PrefixHash,
     S: Sketcher<Input = D, Output = SV> + Send + Sync + Clone + 'static,
     SV: SketchData + Debug,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
@@ -403,8 +392,8 @@ fn candidates_filter_count<G, T, K, D, F>(
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId,
-    K: Data + Route + Sync + Send + Clone + Abomonation + Debug + Hash + Into<u64> + Copy,
-    D: Data + Sync + Send + Clone + Abomonation + Debug,
+    K: KeyData + Debug + Into<u64>,
+    D: ExchangeData + Debug,
     F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
 {
     let peers = candidates.scope().peers();
