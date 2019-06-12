@@ -1,3 +1,4 @@
+use crate::types::*;
 use crate::dataset::*;
 use crate::logging::*;
 use crate::lsh::bucket::*;
@@ -185,9 +186,8 @@ pub trait BucketPrefixesStream<G, T, H, K>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp,
-     H:
-        Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + PrefixHash,
-    K: Data + Debug + Send + Sync + Abomonation + Clone,
+    H: HashData + PrefixHash,
+    K: ExchangeData,
 {
     fn bucket_prefixes<P, PD>(
         &self,
@@ -205,9 +205,8 @@ impl<G, T, H, K> BucketPrefixesStream<G, T, H, K> for Stream<G, (H, (K, u8))>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + ToStepId,
-    H:
-        Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord + PrefixHash,
-    K: Data + Debug + Send + Sync + Abomonation + Clone,
+    H: HashData + Debug  + PrefixHash,
+    K: ExchangeData + Debug ,
 {
     #[allow(clippy::explicit_counter_loop)]
     fn bucket_prefixes<P, PD>(
@@ -406,9 +405,9 @@ where
     T: Timestamp + Succ,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
-    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
-    K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
-    V: Data + Debug + Send + Sync + Abomonation + Clone,
+    H: HashData + Debug,
+    K: KeyData + Debug ,
+    V: SketchData + Debug ,
 {
     let worker: u64 = scope.index() as u64;
     let logger = scope.danny_logger();
@@ -464,9 +463,9 @@ where
     T: Timestamp + Succ + ToStepId,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
-    H: ExchangeData + Route + Debug + Eq + Hash + Ord,
-    K: ExchangeData + Debug + Eq + Hash + Route,
-    SV: ExchangeData + Debug,
+    H: HashData + Debug ,
+    K: KeyData + Debug ,
+    SV: SketchData + Debug,
 {
     let worker = scope.index() as u64;
     let max_level = multilevel_hasher.max_level();
