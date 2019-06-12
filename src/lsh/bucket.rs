@@ -125,8 +125,6 @@ where
     where
         F: FnMut(&K, &K) -> (),
     {
-        let mut emitted = 0;
-        let mut seen = 0;
         self.left.sort_unstable_by(|p1, p2| p1.0.lex_cmp(&p2.0));
         self.right.sort_unstable_by(|p1, p2| p1.0.lex_cmp(&p2.0));
         let min_prefix_len = std::cmp::min(
@@ -148,18 +146,10 @@ where
                     let common = hl.longest_common_prefix(hr);
                     if common >= *l_best || common >= *r_best {
                         action(l, r);
-                        emitted += 1;
                     }
-                    seen += 1;
                 }
             }
         }
-        info!(
-            "Emitted {} over {} (total pairs {})",
-            emitted,
-            seen,
-            self.left.len() * self.right.len()
-        );
     }
 }
 
