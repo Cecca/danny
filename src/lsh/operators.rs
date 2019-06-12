@@ -301,7 +301,7 @@ where
                             let mut sketch_discarded = 0;
                             debug!("Starting candidate emission ({})", proc_mem!());
                             let start = Instant::now();
-                            buckets.for_prefixes(|l, r| {
+                            // buckets.for_prefixes(|l, r| {
                                 // if sketch_pred(l, r) {
                                 //     if distinct_predicate(l, r) {
                                 //         session.give((l.clone(), r.clone()));
@@ -312,7 +312,7 @@ where
                                 // } else {
                                 //     sketch_discarded += 1;
                                 // }
-                            });
+                            // });
                             buckets.clear();
                             let end = Instant::now();
                             log_event!(
