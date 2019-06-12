@@ -1,4 +1,5 @@
 use crate::bloom::*;
+use crate::types::*;
 use crate::config::*;
 use crate::dataset::ChunkedDataset;
 use crate::experiment::Experiment;
@@ -204,7 +205,7 @@ fn generate_candidates_global_k<K, D, G, T, F, H, S, SV, R, B>(
     rng: &mut R,
 ) -> Stream<G, (K, K)>
 where
-    K: ExchangeData + Debug + Route + Hash + Eq + Copy + Into<u64>,
+    K: KeyData + Debug + Into<u64>,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId,
