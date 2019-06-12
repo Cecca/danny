@@ -133,7 +133,7 @@ where
                             buckets.for_all(|l, r| {
                                 if pred(l, r) {
                                     if distinct_pred(l, r) {
-                                        // session.give((l.clone(), r.clone()));
+                                        session.give((l.clone(), r.clone()));
                                         cnt += 1;
                                     } else {
                                         bloom_cnt += 1;
