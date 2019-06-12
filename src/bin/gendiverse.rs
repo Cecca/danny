@@ -12,8 +12,8 @@ extern crate rayon;
 extern crate serde;
 
 use danny::io::*;
-use danny::logging::ProgressLogger;
-use danny::measure::*;
+
+
 use danny::types::*;
 use rand::distributions::Exp1;
 use rand::distributions::Normal;
@@ -24,7 +24,7 @@ use rand_xorshift::XorShiftRng;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
-use std::io::BufWriter;
+
 use std::io::Write;
 use std::path::PathBuf;
 

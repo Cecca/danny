@@ -1,10 +1,6 @@
 use crate::config::Config;
-use probabilistic_collections::hyperloglog::HyperLogLog;
 use rand::Rng;
-use siphasher::sip::SipHasher;
 use std::fmt::{Debug, Formatter};
-use std::hash::{Hash, Hasher};
-use std::mem::size_of;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 pub trait ToBits
@@ -126,11 +122,16 @@ impl<T: Into<u64> + Copy> Debug for AtomicBloomFilter<T> {
 mod test {
     use super::*;
     use rand::RngCore;
+    use std::mem::size_of;
+    use probabilistic_collections::hyperloglog::HyperLogLog;
     use rand::SeedableRng;
     use rand_xorshift::XorShiftRng;
     use std::sync::atomic::AtomicUsize;
     use std::sync::{Arc, Barrier};
     use std::thread;
+    use std::hash::SipHasher;
+    use std::hash::Hasher;
+    use std::hash::Hash;
 
     pub struct BloomFilter<T> {
         num_bits: usize,
@@ -202,7 +203,7 @@ mod test {
         pub fn contains(&self, x: &T) -> bool {
             let word_length = size_of::<usize>() * 8;
             for hasher in self.hashers.iter() {
-                let mut hasher = *hasher;
+                let mut hasher = hasher.clone();
                 x.hash(&mut hasher);
                 let h = hasher.finish() as usize;
                 let bit = h % self.num_bits;
@@ -216,9 +217,9 @@ mod test {
         }
 
         pub fn insert(&mut self, x: &T) {
-            let word_length = size_of::<usize>() * 8;
+            let word_length = std::mem::size_of::<usize>() * 8;
             for hasher in self.hashers.iter() {
-                let mut hasher = *hasher;
+                let mut hasher = hasher.clone();
                 x.hash(&mut hasher);
                 let h = hasher.finish() as usize;
                 let bit = h % self.num_bits;
@@ -227,15 +228,6 @@ mod test {
                 self.bits[word_idx] |= mask;
             }
             self.estimated_elements.insert(x);
-        }
-
-        pub fn assert_size(&self) {
-            assert!(
-                (self.estimated_elements.len().ceil() as usize) < self.expected_elements,
-                "Estimated elements {} > {} expected",
-                self.estimated_elements.len(),
-                self.expected_elements
-            );
         }
 
         fn fpp(&self) -> f64 {

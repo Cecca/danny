@@ -5,11 +5,11 @@ use crate::experiment::*;
 use crate::io::*;
 use crate::logging::*;
 use crate::lsh::functions::*;
-use crate::lsh::operators::*;
+
 use crate::operators::*;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
-use std::collections::HashMap;
+
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::{Arc, Mutex};
@@ -127,8 +127,8 @@ fn run_local<K, D, F, H, O>(
     col: usize,
     row: usize,
     hash_fns: LSHCollection<H, O>,
-    sim_pred: F,
-    bloom: Arc<AtomicBloomFilter<K>>,
+    _sim_pred: F,
+    _bloom: Arc<AtomicBloomFilter<K>>,
 ) -> usize
 where
     K: Route + Eq + Hash + Copy + Into<u64>,
@@ -136,7 +136,7 @@ where
     H: LSHFunction<Input = D, Output = O> + Sync + Send + Clone + 'static,
     O: Eq + Hash + Ord + Clone,
 {
-    let mut count = 0;
+    let count = 0;
     for repetition in 0..hash_fns.repetitions() {
         info!(
             "Start repetition {}/{} (memory {})",

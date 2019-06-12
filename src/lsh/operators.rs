@@ -15,21 +15,21 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Instant;
-use timely::communication::Push;
+
 use timely::dataflow::channels::pact::{Exchange as ExchangePact, Pipeline};
-use timely::dataflow::operators::aggregation::Aggregate;
-use timely::dataflow::operators::aggregation::StateMachine;
+
+
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::dataflow::operators::generic::source;
-use timely::dataflow::operators::generic::{FrontieredInputHandle, OutputHandle};
+use timely::dataflow::operators::generic::{FrontieredInputHandle};
 use timely::dataflow::operators::Capability;
-use timely::dataflow::operators::Leave;
+
 use timely::dataflow::operators::*;
-use timely::dataflow::scopes::Child;
+
 use timely::dataflow::*;
 use timely::logging::Logger;
-use timely::order::Product;
-use timely::progress::timestamp::PathSummary;
+
+
 use timely::progress::Timestamp;
 use timely::Data;
 use timely::ExchangeData;
@@ -537,7 +537,7 @@ pub fn source_hashed_adaptive<G, T, K, D, F, H, R>(
     matrix: MatrixDescription,
     direction: MatrixDirection,
     throttling_probe: ProbeHandle<G::Timestamp>,
-    rng: R,
+    _rng: R,
 ) -> Stream<G, (H, (K, u8))>
 where
     G: Scope<Timestamp = T>,

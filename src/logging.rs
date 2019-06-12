@@ -128,7 +128,7 @@ impl NetworkSummary {
         let (send, recv) = std::sync::mpsc::channel();
         let send = Arc::new(Mutex::new(send));
         let this = Arc::new(Mutex::new(Some(self)));
-        timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
+        timely::execute::execute_from(timely_builder.0, timely_builder.1, move |worker| {
             let send = Arc::clone(&send);
             let (mut input, probe) = worker.dataflow::<u32, _, _>(move |scope| {
                 let send = send.lock().unwrap().clone();

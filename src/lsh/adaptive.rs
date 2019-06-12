@@ -3,30 +3,30 @@ use crate::logging::*;
 use crate::lsh::*;
 use crate::operators::*;
 use crate::sketch::*;
-use abomonation::Abomonation;
+
 use rand::Rng;
-use std::collections::BTreeMap;
+
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
-use timely::communication::Push;
-use timely::dataflow::channels::pact::{Exchange as ExchangePact, Pipeline};
-use timely::dataflow::operators::aggregation::Aggregate;
-use timely::dataflow::operators::aggregation::StateMachine;
-use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
+
+use timely::dataflow::channels::pact::{Pipeline};
+
+
+
 use timely::dataflow::operators::generic::source;
-use timely::dataflow::operators::generic::{FrontieredInputHandle, OutputHandle};
-use timely::dataflow::operators::Capability;
-use timely::dataflow::operators::Leave;
+
+
+
 use timely::dataflow::operators::*;
-use timely::dataflow::scopes::Child;
+
 use timely::dataflow::*;
-use timely::logging::Logger;
-use timely::order::Product;
-use timely::progress::timestamp::PathSummary;
+
+
+
 use timely::progress::Timestamp;
-use timely::Data;
+
 use timely::ExchangeData;
 
 #[allow(dead_code, clippy::too_many_arguments)]
@@ -125,7 +125,7 @@ where
                         .expect("There should be the entry for this time!");
                     // Find the best level for each point
                     let mut session = output.session(&t);
-                    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
+                    for (k, _v) in vecs.iter_stripe(matrix, direction, worker) {
                         let sketch_v = sketches
                             .get(k)
                             .expect("Missing sketch for key (estimation)");

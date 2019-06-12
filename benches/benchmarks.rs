@@ -60,20 +60,20 @@ fn bench_bloom(c: &mut Criterion) {
         });
     });
 
-    c.bench_function("Standard Bloom filter", move |bencher| {
-        let mut rng = XorShiftRng::seed_from_u64(124);
-        let mut bloom = BloomFilter::from_params(elements, bits, k, &mut rng);
-        let mut elems = Vec::with_capacity(elements);
-        for _ in 0..elements {
-            elems.push(rng.next_u64());
-        }
-        bencher.iter(|| {
-            for x in elems.iter() {
-                let x = (*x, *x);
-                bloom.insert(&x);
-            }
-        });
-    });
+    // c.bench_function("Standard Bloom filter", move |bencher| {
+    //     let mut rng = XorShiftRng::seed_from_u64(124);
+    //     let mut bloom = BloomFilter::from_params(elements, bits, k, &mut rng);
+    //     let mut elems = Vec::with_capacity(elements);
+    //     for _ in 0..elements {
+    //         elems.push(rng.next_u64());
+    //     }
+    //     bencher.iter(|| {
+    //         for x in elems.iter() {
+    //             let x = (*x, *x);
+    //             bloom.insert(&x);
+    //         }
+    //     });
+    // });
 }
 
 fn bench_jaccard_sketch(c: &mut Criterion) {

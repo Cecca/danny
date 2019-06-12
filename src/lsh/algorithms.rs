@@ -307,8 +307,8 @@ fn generate_candidates_adaptive<K, D, G, T, F, H, S, SV, R, B>(
     right: Arc<ChunkedDataset<K, D>>,
     min_k: usize,
     max_k: usize,
-    sample_size: usize,
-    cost_balance: f64,
+    _sample_size: usize,
+    _cost_balance: f64,
     scope: G,
     hash_collection_builder: B,
     sketcher_pair: Option<(S, SketchPredicate<SV>)>,
@@ -331,7 +331,7 @@ where
 {
     let peers = scope.peers();
     let matrix = MatrixDescription::for_workers(peers as usize);
-    let logger = scope.danny_logger();
+    let _logger = scope.danny_logger();
     let worker: u64 = scope.index() as u64;
     let sketcher = Arc::new(
         sketcher_pair
@@ -380,7 +380,7 @@ where
         .map(|triplet| (triplet.1, triplet.2));
 
     match sketcher_pair {
-        Some((sketcher, sketch_predicate)) => {
+        Some((_sketcher, sketch_predicate)) => {
             let left_hashes = source_hashed_adaptive_sketched(
                 &scope,
                 &levels_left,

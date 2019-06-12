@@ -71,7 +71,7 @@ pub trait Jaccard {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::distributions::{Distribution, Exp, Normal, Uniform};
+    use rand::distributions::{Distribution, Normal};
     use rand::SeedableRng;
     use rand_xorshift::XorShiftRng;
 
