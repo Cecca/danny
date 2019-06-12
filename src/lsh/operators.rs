@@ -5,7 +5,6 @@ use crate::lsh::functions::*;
 use crate::lsh::prefix_hash::*;
 use crate::operators::Route;
 use crate::operators::*;
-use crate::sketch::*;
 use abomonation::Abomonation;
 use std::clone::Clone;
 use std::collections::HashMap;
@@ -398,22 +397,20 @@ impl RepetitionStopWatch {
     }
 }
 
-pub fn source_hashed_sketched<G, T, K, D, F, S, H, V>(
+pub fn source_hashed_sketched<G, T, K, D, F, H, V>(
     scope: &G,
     global_vecs: Arc<ChunkedDataset<K, D>>,
     hash_fns: LSHCollection<F, H>,
-    sketcher: S,
+    sketches: Arc<HashMap<K, V>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
     throttling_probe: ProbeHandle<G::Timestamp>,
 ) -> Stream<G, (H, (V, K))>
 where
-    // G: Scope<Timestamp = Product<u32, u32>>,
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
-    S: Sketcher<Input = D, Output = V> + Clone + 'static,
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
     K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
     V: Data + Debug + Send + Sync + Abomonation + Clone,
@@ -423,15 +420,6 @@ where
     let repetitions = hash_fns.repetitions();
     let mut current_repetition = 0usize;
     let vecs = Arc::clone(&global_vecs);
-    let mut sketches: HashMap<K, V> = HashMap::new();
-    info!("Computing sketches");
-    let start_sketch = Instant::now();
-    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
-        let s = sketcher.sketch(v);
-        sketches.insert(k.clone(), s);
-    }
-    let end_sketch = Instant::now();
-    info!("Sketches computed in {:?}", end_sketch - start_sketch);
     let mut stopwatch = RepetitionStopWatch::new("repetition", logger);
 
     source(scope, "hashed source", move |capability| {

@@ -215,8 +215,25 @@ where
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
     B: Fn(usize, &mut R) -> LSHCollection<F, H> + Sized + Send + Sync + Clone + 'static,
 {
+    let worker = scope.index() as u64;
     let peers = scope.peers();
     let matrix = MatrixDescription::for_workers(peers as usize);
+    let sketcher = Arc::new(sketcher);
+    
+    let sketches_left = build_sketches(
+        Arc::clone(&left),
+        Arc::clone(&sketcher),
+        worker,
+        matrix,
+        MatrixDirection::Rows,
+    );
+    let sketches_right = build_sketches(
+        Arc::clone(&right),
+        Arc::clone(&sketcher),
+        worker,
+        matrix,
+        MatrixDirection::Columns,
+    );
 
     let hash_fn = match k {
         ParamK::Fixed(k) => hash_collection_builder(k, rng),
@@ -227,7 +244,7 @@ where
         &scope,
         Arc::clone(&left),
         hash_fn.clone(),
-        sketcher.clone(),
+        sketches_left,
         matrix,
         MatrixDirection::Rows,
         probe.clone(),
@@ -236,7 +253,7 @@ where
         &scope,
         Arc::clone(&right),
         hash_fn.clone(),
-        sketcher.clone(),
+        sketches_right,
         matrix,
         MatrixDirection::Rows,
         probe.clone(),
