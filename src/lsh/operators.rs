@@ -302,6 +302,7 @@ where
                             debug!("Starting candidate emission ({})", proc_mem!());
                             let start = Instant::now();
                             buckets.for_prefixes(|l, r| {
+                                cnt += 1;
                                 // if sketch_pred(l, r) {
                                 //     if distinct_predicate(l, r) {
                                 //         session.give((l.clone(), r.clone()));
