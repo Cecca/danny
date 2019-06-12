@@ -95,7 +95,7 @@ where
         for (lb, rb) in buckets_iter {
             for l in lb {
                 for r in rb {
-                    assert!(l.0 == r.0);
+                    debug_assert!(l.0 == r.0);
                     action(&l.1, &r.1);
                 }
             }

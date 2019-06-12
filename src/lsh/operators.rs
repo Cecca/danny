@@ -133,6 +133,7 @@ where
                             buckets.for_all(|l, r| {
                                 if pred(l, r) {
                                     if distinct_pred(l, r) {
+                                        // FIXME: Reactivate the pair emission
                                         // session.give((l.clone(), r.clone()));
                                         cnt += 1;
                                     } else {
