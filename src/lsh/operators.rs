@@ -129,19 +129,20 @@ where
                             let mut cnt = 0;
                             let mut sketch_cnt = 0;
                             let mut bloom_cnt = 0;
+                            info!("Bucket left {} and {} ({})", buckets.len_left(), buckets.len_right(), proc_mem!());
                             let start = Instant::now();
-                            buckets.for_all(|l, r| {
-                                if pred(l, r) {
-                                    if distinct_pred(l, r) {
-                                        session.give((l.clone(), r.clone()));
-                                        cnt += 1;
-                                    } else {
-                                        bloom_cnt += 1;
-                                    }
-                                } else {
-                                    sketch_cnt += 1;
-                                }
-                            });
+                            // buckets.for_all(|l, r| {
+                            //     if pred(l, r) {
+                            //         if distinct_pred(l, r) {
+                            //             session.give((l.clone(), r.clone()));
+                            //             cnt += 1;
+                            //         } else {
+                            //             bloom_cnt += 1;
+                            //         }
+                            //     } else {
+                            //         sketch_cnt += 1;
+                            //     }
+                            // });
                             buckets.clear();
                             let end = Instant::now();
                             log_event!(
