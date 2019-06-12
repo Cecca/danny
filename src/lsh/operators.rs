@@ -131,16 +131,17 @@ where
                             let mut bloom_cnt = 0;
                             let start = Instant::now();
                             buckets.for_all(|l, r| {
-                                if pred(l, r) {
-                                    if distinct_pred(l, r) {
-                                        session.give((l.clone(), r.clone()));
-                                        cnt += 1;
-                                    } else {
-                                        bloom_cnt += 1;
-                                    }
-                                } else {
-                                    sketch_cnt += 1;
-                                }
+                                cnt += 1;
+                                // if pred(l, r) {
+                                //     if distinct_pred(l, r) {
+                                //         session.give((l.clone(), r.clone()));
+                                //         cnt += 1;
+                                //     } else {
+                                //         bloom_cnt += 1;
+                                //     }
+                                // } else {
+                                //     sketch_cnt += 1;
+                                // }
                             });
                             buckets.clear();
                             let end = Instant::now();
