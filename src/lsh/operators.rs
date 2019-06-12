@@ -130,18 +130,19 @@ where
                             let mut sketch_cnt = 0;
                             let mut bloom_cnt = 0;
                             let start = Instant::now();
-                            // buckets.for_all(|l, r| {
-                            //     if pred(l, r) {
-                            //         if distinct_pred(l, r) {
-                            //             session.give((l.clone(), r.clone()));
-                            //             cnt += 1;
-                            //         } else {
-                            //             bloom_cnt += 1;
-                            //         }
-                            //     } else {
-                            //         sketch_cnt += 1;
-                            //     }
-                            // });
+                            buckets.for_all(|l, r| {
+                                cnt += 1;
+                                // if pred(l, r) {
+                                //     if distinct_pred(l, r) {
+                                //         session.give((l.clone(), r.clone()));
+                                //         cnt += 1;
+                                //     } else {
+                                //         bloom_cnt += 1;
+                                //     }
+                                // } else {
+                                //     sketch_cnt += 1;
+                                // }
+                            });
                             buckets.clear();
                             let end = Instant::now();
                             log_event!(
@@ -302,17 +303,16 @@ where
                             debug!("Starting candidate emission ({})", proc_mem!());
                             let start = Instant::now();
                             buckets.for_prefixes(|l, r| {
-                                cnt += 1;
-                                // if sketch_pred(l, r) {
-                                //     if distinct_predicate(l, r) {
-                                //         session.give((l.clone(), r.clone()));
-                                //         cnt += 1;
-                                //     } else {
-                                //         bloom_discarded += 1;
-                                //     }
-                                // } else {
-                                //     sketch_discarded += 1;
-                                // }
+                                if sketch_pred(l, r) {
+                                    if distinct_predicate(l, r) {
+                                        session.give((l.clone(), r.clone()));
+                                        cnt += 1;
+                                    } else {
+                                        bloom_discarded += 1;
+                                    }
+                                } else {
+                                    sketch_discarded += 1;
+                                }
                             });
                             buckets.clear();
                             let end = Instant::now();
