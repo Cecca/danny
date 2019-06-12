@@ -142,6 +142,7 @@ where
                                     sketch_cnt += 1;
                                 }
                             });
+                            let total_pairs = cnt + bloom_cnt + sketch_cnt;
                             buckets.clear();
                             let end = Instant::now();
                             log_event!(
@@ -157,7 +158,8 @@ where
                                 LogEvent::DuplicatesDiscarded(time.time().to_step_id(), bloom_cnt)
                             );
                             info!(
-                                "Candidates: Emitted {} / Discarded {} / Duplicates {} in {:?} ({}) (repetition {:?})",
+                                "Candidates {}: Emitted {} / Discarded {} / Duplicates {} in {:?} ({}) (repetition {:?})",
+                                total_pairs,
                                 cnt,
                                 sketch_cnt,
                                 bloom_cnt,
