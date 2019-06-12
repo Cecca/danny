@@ -438,12 +438,15 @@ where
                     if worker == 0 {
                         debug!("Repetition {} with sketches", current_repetition,);
                     }
+                    let start = Instant::now();
                     let mut session = output.session(&cap);
                     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
                         let h = hash_fns.hash(v, current_repetition as usize);
                         let s = sketches.get(k).expect("Missing sketch");
                         session.give((h, (s.clone(), k.clone())));
                     }
+                    let stop = Instant::now();
+                    info!("Time to push hashes on the network {:?}", stop - start);
                     current_repetition += 1;
                     cap.downgrade(&cap.time().succ());
                     done = current_repetition >= repetitions;
