@@ -66,7 +66,7 @@ fn main() {
                     .sketch_bits
                     .map(|bits| {
                         (
-                            OneBitMinHash::new(bits, &mut rng),
+                            LongOneBitMinHash::new(bits, &mut rng),
                             SketchPredicate::jaccard(bits, threshold, config.get_sketch_epsilon()),
                         )
                     })

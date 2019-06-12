@@ -92,7 +92,7 @@ impl SketchEstimate for SimHashValue {
     }
 }
 
-impl BitBasedSketch for OneBitMinHashValue {
+impl BitBasedSketch for LongOneBitMinHashValue {
     fn bits(&self) -> &Vec<u32> {
         &self.bits
     }
@@ -104,9 +104,9 @@ impl BitBasedSketch for SimHashValue {
     }
 }
 
-impl SketchEstimate for OneBitMinHashValue {
+impl SketchEstimate for LongOneBitMinHashValue {
     #[allow(clippy::cast_lossless)]
-    fn estimate(a: &OneBitMinHashValue, b: &OneBitMinHashValue) -> f64 {
+    fn estimate(a: &LongOneBitMinHashValue, b: &LongOneBitMinHashValue) -> f64 {
         let p = a
             .bits
             .iter()
@@ -191,18 +191,18 @@ impl Sketcher for LongSimHash {
 }
 
 #[derive(Clone)]
-pub struct OneBitMinHash {
+pub struct LongOneBitMinHash {
     k: usize,
     alphas: Vec<u64>,
     betas: Vec<u64>,
 }
 
 #[derive(Abomonation, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct OneBitMinHashValue {
+pub struct LongOneBitMinHashValue {
     bits: Vec<u32>,
 }
 
-impl OneBitMinHash {
+impl LongOneBitMinHash {
     pub fn new<R>(k: usize, rng: &mut R) -> Self
     where
         R: Rng + ?Sized,
@@ -214,15 +214,15 @@ impl OneBitMinHash {
             alphas.push(uniform.sample(rng));
             betas.push(uniform.sample(rng));
         }
-        OneBitMinHash { k, alphas, betas }
+        LongOneBitMinHash { k, alphas, betas }
     }
 }
 
-impl Sketcher for OneBitMinHash {
+impl Sketcher for LongOneBitMinHash {
     type Input = BagOfWords;
-    type Output = OneBitMinHashValue;
+    type Output = LongOneBitMinHashValue;
 
-    fn sketch(&self, v: &BagOfWords) -> OneBitMinHashValue {
+    fn sketch(&self, v: &BagOfWords) -> LongOneBitMinHashValue {
         let num_elems = (self.k as f32 / 32.0).ceil() as usize;
         let mut bits = Vec::with_capacity(num_elems);
         let mut part = 0u32;
@@ -244,7 +244,7 @@ impl Sketcher for OneBitMinHash {
             bits.push(part);
         }
 
-        OneBitMinHashValue { bits }
+        LongOneBitMinHashValue { bits }
     }
 }
 
