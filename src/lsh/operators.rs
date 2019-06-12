@@ -396,7 +396,7 @@ impl RepetitionStopWatch {
 pub fn source_hashed_sketched<G, T, K, D, F, H, V>(
     scope: &G,
     global_vecs: Arc<ChunkedDataset<K, D>>,
-    hash_fns: LSHCollection<F, H>,
+    hash_fns: LSHCollection<F>,
     sketches: Arc<HashMap<K, V>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,

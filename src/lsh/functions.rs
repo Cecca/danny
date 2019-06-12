@@ -24,18 +24,18 @@ pub trait LSHFunction {
 }
 
 #[derive(Clone)]
-pub struct LSHCollection<F, H>
+pub struct LSHCollection<F>
 where
-    F: LSHFunction<Output = H> + Clone,
-    H: Clone,
+    F: LSHFunction + Clone,
+    F::Output: Clone,
 {
     functions: Vec<F>,
 }
 
-impl<F, H> LSHCollection<F, H>
+impl<F> LSHCollection<F>
 where
-    F: LSHFunction<Output = H> + Clone,
-    H: Clone,
+    F: LSHFunction + Clone,
+    F::Output: Clone,
 {
     pub fn for_each_hash<L>(&self, v: &F::Input, mut logic: L)
     where
@@ -91,7 +91,7 @@ impl Hyperplane {
         repetitions: usize,
         dim: usize,
         rng: &mut R,
-    ) -> LSHCollection<Hyperplane, u32>
+    ) -> LSHCollection<Hyperplane>
     where
         R: Rng + ?Sized,
     {
@@ -105,7 +105,7 @@ impl Hyperplane {
     pub fn collection_builder<R>(
         threshold: f64,
         dim: usize,
-    ) -> impl Fn(usize, &mut R) -> LSHCollection<Hyperplane, u32> + Clone
+    ) -> impl Fn(usize, &mut R) -> LSHCollection<Hyperplane> + Clone
     where
         R: Rng + ?Sized,
     {
@@ -166,7 +166,7 @@ impl OneBitMinHash {
         k: usize,
         repetitions: usize,
         rng: &mut R,
-    ) -> LSHCollection<OneBitMinHash, u32>
+    ) -> LSHCollection<OneBitMinHash>
     where
         R: Rng + ?Sized,
     {
@@ -179,7 +179,7 @@ impl OneBitMinHash {
 
     pub fn collection_builder<R>(
         threshold: f64,
-    ) -> impl Fn(usize, &mut R) -> LSHCollection<OneBitMinHash, u32> + Clone
+    ) -> impl Fn(usize, &mut R) -> LSHCollection<OneBitMinHash> + Clone
     where
         R: Rng + ?Sized,
     {
@@ -222,7 +222,7 @@ where
     H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,
     F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
 {
-    hashers: HashMap<usize, LSHCollection<F, H>>,
+    hashers: HashMap<usize, LSHCollection<F>>,
 }
 
 impl<D, H, F> MultilevelHasher<D, H, F>
@@ -233,7 +233,7 @@ where
 {
     pub fn new<B, R>(min_level: usize, max_level: usize, builder: B, rng: &mut R) -> Self
     where
-        B: Fn(usize, &mut R) -> LSHCollection<F, H>,
+        B: Fn(usize, &mut R) -> LSHCollection<F>,
         R: Rng + SeedableRng + Send + Clone + ?Sized + 'static,
     {
         info!(

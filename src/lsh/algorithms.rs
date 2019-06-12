@@ -61,7 +61,7 @@ where
     S: Sketcher<Input = D, Output = V> + Send + Sync + Clone + 'static,
     V: SketchData + Debug,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
-    B: Fn(usize, &mut R) -> LSHCollection<H, O> + Sized + Send + Sync + Clone + 'static,
+    B: Fn(usize, &mut R) -> LSHCollection<H> + Sized + Send + Sync + Clone + 'static,
 {
     let network = NetworkGauge::start();
     let timely_builder = config.get_timely_builder();
@@ -212,7 +212,7 @@ where
     S: Sketcher<Input = D, Output = SV> + Send + Sync + Clone + 'static,
     SV: SketchData + Debug,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
-    B: Fn(usize, &mut R) -> LSHCollection<F, H> + Sized + Send + Sync + Clone + 'static,
+    B: Fn(usize, &mut R) -> LSHCollection<F> + Sized + Send + Sync + Clone + 'static,
 {
     let worker = scope.index() as u64;
     let peers = scope.peers();
@@ -316,7 +316,7 @@ where
     S: Sketcher<Input = D, Output = SV> + Send + Sync + Clone + 'static,
     SV: SketchData + Debug,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
-    B: Fn(usize, &mut R) -> LSHCollection<F, H> + Sized + Send + Sync + Clone + 'static,
+    B: Fn(usize, &mut R) -> LSHCollection<F> + Sized + Send + Sync + Clone + 'static,
 {
     let peers = scope.peers();
     let matrix = MatrixDescription::for_workers(peers as usize);

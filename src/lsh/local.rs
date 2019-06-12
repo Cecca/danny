@@ -35,7 +35,7 @@ where
     H: LSHFunction<Input = D, Output = O> + Sync + Send + Clone + 'static,
     O: ExchangeData + Eq + Hash + Ord + Clone,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
-    B: Fn(usize, &mut R) -> LSHCollection<H, O> + Sized + Send + Sync + Clone + 'static,
+    B: Fn(usize, &mut R) -> LSHCollection<H> + Sized + Send + Sync + Clone + 'static,
 {
     let timely_builder = config.get_timely_builder();
     // This channel is used to get the results
@@ -126,7 +126,7 @@ fn run_local<K, D, F, H, O>(
     right: Arc<ChunkedDataset<K, D>>,
     col: usize,
     row: usize,
-    hash_fns: LSHCollection<H, O>,
+    hash_fns: LSHCollection<H>,
     _sim_pred: F,
     _bloom: Arc<AtomicBloomFilter<K>>,
 ) -> usize
