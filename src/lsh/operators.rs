@@ -31,7 +31,6 @@ where
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
-    fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)>;
     fn bucket_pred<P, PD>(
         &self,
         right: &Stream<G, (H, K)>,
@@ -50,9 +49,6 @@ where
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
-    fn bucket(&self, right: &Stream<G, (H, K)>) -> Stream<G, (K, K)> {
-        self.bucket_pred(right, |_, _| true, |_, _| true)
-    }
 
     #[allow(clippy::explicit_counter_loop)]
     fn bucket_pred<P, PD>(
