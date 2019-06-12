@@ -15,11 +15,10 @@ pub trait KeyData: ExchangeData + Hash + Eq + Ord + Copy + Route {}
 impl<T: ExchangeData + Hash + Eq + Ord + Copy + Route> KeyData for T {}
 
 /// Composite trait for hash values
-pub trait HashData: ExchangeData + Hash + Eq + Ord + Route {}
-impl<T: ExchangeData + Hash + Eq + Ord + Route> HashData for T {}
+pub trait HashData: ExchangeData + Hash + Eq + Copy + Ord + Route {}
+impl<T: ExchangeData + Hash + Eq + Copy + Ord + Route> HashData for T {}
 
 /// Composite trait for sketch data.
-/// FIXME: Add the Copy trait to the mix
 pub trait SketchData: ExchangeData + Hash + Eq + SketchEstimate + BitBasedSketch {}
 impl<T: ExchangeData + Hash + Eq + SketchEstimate + BitBasedSketch> SketchData for T {}
 
