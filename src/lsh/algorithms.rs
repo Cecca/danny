@@ -83,9 +83,6 @@ where
     );
     let (global_left, global_right) = load_vectors(left_path, right_path, &config);
 
-    let estimator_samples = config.get_estimator_samples();
-    let cost_balance = config.get_cost_balance();
-
     let bloom_filter = Arc::new(AtomicBloomFilter::<u32>::from_config(&config, rng.clone()));
     let bloom_filter_pre_communication =
         Arc::new(AtomicBloomFilter::<u32>::from_config(&config, rng.clone()));

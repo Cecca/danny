@@ -7,27 +7,20 @@ use crate::operators::Route;
 use crate::operators::*;
 use crate::sketch::*;
 use abomonation::Abomonation;
-use rand::{Rng, SeedableRng};
 use std::clone::Clone;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Instant;
-
 use timely::dataflow::channels::pact::{Exchange as ExchangePact, Pipeline};
-
 use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::generic::FrontieredInputHandle;
 use timely::dataflow::operators::Capability;
-
 use timely::dataflow::operators::*;
-
 use timely::dataflow::*;
 use timely::logging::Logger;
-
 use timely::progress::Timestamp;
 use timely::Data;
 use timely::ExchangeData;
@@ -83,7 +76,6 @@ where
             ExchangePact::new(|pair: &(H, K)| pair.0.route()),
             "bucket",
             move |_, _| {
-                // let mut pred = pred;
                 move |left_in, right_in, output| {
                     left_in.for_each(|t, d| {
                         let _pg = ProfileGuard::new(
@@ -406,59 +398,6 @@ impl RepetitionStopWatch {
     }
 }
 
-pub fn source_hashed<G, T, K, D, F, H>(
-    scope: &G,
-    global_vecs: Arc<ChunkedDataset<K, D>>,
-    hash_fns: LSHCollection<F, H>,
-    matrix: MatrixDescription,
-    direction: MatrixDirection,
-    throttling_probe: ProbeHandle<G::Timestamp>,
-) -> Stream<G, (H, K)>
-where
-    G: Scope<Timestamp = T>,
-    T: Timestamp + Succ,
-    D: Data + Sync + Send + Clone + Abomonation + Debug,
-    F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
-    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash,
-    K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route,
-{
-    let worker: u64 = scope.index() as u64;
-    let logger = scope.danny_logger();
-    let repetitions = hash_fns.repetitions();
-    let mut current_repetition = 0usize;
-    let mut stopwatch = RepetitionStopWatch::new("repetition", logger);
-    source(scope, "hashed source", move |capability| {
-        let mut cap = Some(capability);
-        let vecs = Arc::clone(&global_vecs);
-        move |output| {
-            let mut done = false;
-            if let Some(cap) = cap.as_mut() {
-                if !throttling_probe.less_than(cap.time()) {
-                    stopwatch.maybe_stop();
-                    stopwatch.start();
-                    if worker == 0 {
-                        info!("Repetition {}", current_repetition);
-                    }
-                    let mut session = output.session(&cap);
-                    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
-                        let h = hash_fns.hash(v, current_repetition as usize);
-                        session.give((h, k.clone()));
-                    }
-                    current_repetition += 1;
-                    cap.downgrade(&cap.time().succ());
-                    done = current_repetition >= repetitions;
-                }
-            }
-
-            if done {
-                // Drop the capability to signal that we will send no more data
-                cap = None;
-                info!("Generated all repetitions");
-            }
-        }
-    })
-}
-
 pub fn source_hashed_sketched<G, T, K, D, F, S, H, V>(
     scope: &G,
     global_vecs: Arc<ChunkedDataset<K, D>>,
@@ -524,115 +463,6 @@ where
             }
         }
     })
-}
-
-#[allow(clippy::too_many_arguments, clippy::type_complexity)]
-pub fn source_hashed_adaptive<G, T, K, D, F, H, R>(
-    scope: &G,
-    best_levels: &Stream<G, (K, usize)>,
-    global_vecs: Arc<ChunkedDataset<K, D>>,
-    multilevel_hasher: Arc<MultilevelHasher<D, H, F>>,
-    matrix: MatrixDescription,
-    direction: MatrixDirection,
-    throttling_probe: ProbeHandle<G::Timestamp>,
-    _rng: R,
-) -> Stream<G, (H, (K, u8))>
-where
-    G: Scope<Timestamp = T>,
-    T: Timestamp + Succ + ToStepId,
-    D: Data + Sync + Send + Clone + Abomonation + Debug,
-    F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
-    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
-    K: Data + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Route + Ord,
-    R: Rng + SeedableRng + Clone + ?Sized + 'static + Sync + Send,
-{
-    let worker: u64 = scope.index() as u64;
-    let max_level = multilevel_hasher.max_level();
-    let num_repetitions = multilevel_hasher.repetitions_at_level(max_level);
-    let multilevel_hasher = Arc::clone(&multilevel_hasher);
-    let global_vecs_2 = Arc::clone(&global_vecs);
-    let logger = scope.danny_logger();
-
-    let mut builder = OperatorBuilder::new("adaptive-source".to_owned(), best_levels.scope());
-    let mut input_best_levels = builder.new_input(&best_levels, Pipeline);
-    let (mut output, output_stream) = builder.new_output();
-    builder.build(move |mut capabilities| {
-        let mut capability = Some(capabilities.pop().unwrap());
-
-        let mut best_levels: BTreeMap<K, usize> = BTreeMap::new();
-        let mut current_repetition = 0;
-        let mut done = false;
-        let vecs = Arc::clone(&global_vecs_2);
-        let mut stopwatch = RepetitionStopWatch::new("repetition", logger.clone());
-
-        move |frontiers| {
-            let mut best_levels_input =
-                FrontieredInputHandle::new(&mut input_best_levels, &frontiers[0]);
-            let mut output = output.activate();
-
-            best_levels_input.for_each(|_t, data| {
-                let mut data = data.replace(Vec::new());
-                for (key, level) in data.drain(..) {
-                    best_levels.insert(key, level);
-                }
-            });
-            if let Some(capability) = capability.as_mut() {
-                if !best_levels_input.frontier().less_equal(capability.time())
-                    && !throttling_probe.less_than(capability.time())
-                {
-                    stopwatch.maybe_stop();
-                    stopwatch.start();
-                    if worker == 0 {
-                        info!(
-                            "Repetition {}/{} (current memory {}, previous iter)",
-                            current_repetition,
-                            num_repetitions,
-                            proc_mem!(),
-                        );
-                    }
-                    let _pg = ProfileGuard::new(
-                        logger.clone(),
-                        capability.time().to_step_id(),
-                        1,
-                        "hash_generation",
-                    );
-
-                    let mut cnt = 0;
-                    let mut session = output.session(&capability);
-                    let active_levels = multilevel_hasher.levels_at_repetition(current_repetition);
-                    for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
-                        // Here we have that some vectors may not not have a best level. This is because
-                        // those vectors didn't collide with anything in the estimatio of the cost.
-                        // Since we use the same hasher for both the estimation and the actual computation
-                        // we can simply avoid emitting the vectors for which we have no entry in the map.
-                        if let Some(&this_best_level) = best_levels.get(key) {
-                            if active_levels.contains(&this_best_level) {
-                                // We hash to the max level because the levelling will be taken care of in the buckets
-                                let h = multilevel_hasher.hash(v, max_level, current_repetition);
-                                session.give((h, (key.clone(), this_best_level as u8)));
-                                cnt += 1;
-                            }
-                        }
-                    }
-                    log_event!(
-                        logger,
-                        LogEvent::GeneratedHashes(capability.time().to_step_id(), cnt)
-                    );
-                    capability.downgrade(&capability.time().succ());
-                    current_repetition += 1;
-                    if current_repetition >= num_repetitions {
-                        done = true;
-                    }
-                }
-            }
-            if done {
-                // Drop the capability to signal that we will send no more data
-                capability = None;
-            }
-        }
-    });
-
-    output_stream
 }
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
