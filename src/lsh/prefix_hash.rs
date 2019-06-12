@@ -66,33 +66,6 @@ mod test {
         let hash = 0b010101100u32;
         assert_eq!(hash.prefix(3), 0b100);
         assert_eq!(hash.prefix(7), 0b0101100);
-        let hash = vec![19, 32, 124, 41];
-        assert_eq!(hash.prefix(3), &[19, 32, 124]);
-        let expected: &[u32] = &[];
-        assert_eq!(hash.prefix(0), expected);
-        assert_eq!(hash.prefix(4), &[19, 32, 124, 41]);
-        assert_eq!(hash.prefix(1), &[19]);
     }
 
-    #[test]
-    fn test_prefix_sort() {
-        let mut hashes = vec![
-            vec![1, 3, 7, 2110],
-            vec![0, 1, 3, 5],
-            vec![1, 3, 5, 10],
-            vec![3, 1, 5, 8],
-            vec![30, 1, 5, 8],
-            vec![3, 2, 5, 8],
-        ];
-        let expected = vec![
-            vec![0, 1, 3, 5],
-            vec![1, 3, 5, 10],
-            vec![1, 3, 7, 2110],
-            vec![3, 1, 5, 8],
-            vec![3, 2, 5, 8],
-            vec![30, 1, 5, 8],
-        ];
-        hashes.sort_unstable_by(|a, b| a.lex_cmp(&b));
-        assert_eq!(hashes, expected);
-    }
 }

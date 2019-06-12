@@ -90,10 +90,13 @@ impl Route for i32 {
     }
 }
 
+const A_RAND: u64 = 24350182643958693;
+const B_RAND: u64 = 39659187924864187;
+
 impl Route for u32 {
     #[inline(always)]
     fn route(&self) -> u64 {
-        u64::from(*self)
+        A_RAND.wrapping_mul(*self as u64).wrapping_add(B_RAND)
     }
 }
 
