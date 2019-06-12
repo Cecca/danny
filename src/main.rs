@@ -23,8 +23,8 @@ fn main() {
     let args = CmdlineConfig::get();
     let mut experiment = Experiment::from_config(&config, &args);
 
-    info!("Starting...");
-    info!("Initial memory {}", proc_mem!());
+    debug!("Starting...");
+    debug!("Initial memory {}", proc_mem!());
     let mut rng = config.get_random_generator(0);
 
     let threshold = args.threshold;
@@ -170,7 +170,7 @@ fn main() {
                 total_time as f64 / 1000.0,
             )
             .expect("Could not compute the speedup! Missing entry in the baseline file?");
-        info!(
+        debug!(
             "Pairs above similarity {} are {} (time {:?}, recall {}, speedup {})",
             args.threshold, count, total_time_d, recall, speedup
         );

@@ -62,7 +62,7 @@ where
                     session.give(sketch.clone());
                     cnt += 1;
                 }
-                info!("Sampled {} points", cnt);
+                debug!("Sampled {} points", cnt);
                 log_event!(logger, LogEvent::AdaptiveSampledPoints(cnt));
                 done = true;
             }

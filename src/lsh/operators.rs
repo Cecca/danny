@@ -125,16 +125,11 @@ where
                                 1,
                                 "candidate_emission",
                             );
-                            // Emit some output pairs
-                            info!(
-                                "Outputting pairs out of buckets from {} left and {} right vectors",
-                                buckets.len_left(),
-                                buckets.len_right()
-                            );
                             let mut session = output.session(time);
                             let mut cnt = 0;
                             let mut sketch_cnt = 0;
                             let mut bloom_cnt = 0;
+                            let start = Instant::now();
                             buckets.for_all(|l, r| {
                                 if pred(l, r) {
                                     if distinct_pred(l, r) {
@@ -148,6 +143,7 @@ where
                                 }
                             });
                             buckets.clear();
+                            let end = Instant::now();
                             log_event!(
                                 logger,
                                 LogEvent::GeneratedPairs(time.time().to_step_id(), cnt)
@@ -159,6 +155,15 @@ where
                             log_event!(
                                 logger,
                                 LogEvent::DuplicatesDiscarded(time.time().to_step_id(), bloom_cnt)
+                            );
+                            info!(
+                                "Candidates: Emitted {} / Discarded {} / Duplicates {} in {:?} ({}) (repetition {:?})",
+                                cnt,
+                                sketch_cnt,
+                                bloom_cnt,
+                                end - start,
+                                proc_mem!(),
+                                time.time()
                             );
                         }
                     }
@@ -285,7 +290,7 @@ where
                                 "candidate_emission",
                             );
                             // Emit some output pairs
-                            info!(
+                            debug!(
                                 "Outputting pairs out of buckets from {} left and {} right vectors",
                                 buckets.len_left(),
                                 buckets.len_right()
@@ -294,7 +299,7 @@ where
                             let mut cnt = 0;
                             let mut bloom_discarded = 0;
                             let mut sketch_discarded = 0;
-                            info!("Starting candidate emission ({})", proc_mem!());
+                            debug!("Starting candidate emission ({})", proc_mem!());
                             let start = Instant::now();
                             buckets.for_prefixes(|l, r| {
                                 if sketch_pred(l, r) {
@@ -310,13 +315,6 @@ where
                             });
                             buckets.clear();
                             let end = Instant::now();
-                            info!(
-                                "Emitted {} candidate pairs in {:?} ({}) (repetition {:?})",
-                                cnt,
-                                end - start,
-                                proc_mem!(),
-                                time.time()
-                            );
                             log_event!(
                                 logger,
                                 LogEvent::GeneratedPairs(time.time().to_step_id(), cnt)
@@ -334,6 +332,15 @@ where
                                     time.time().to_step_id(),
                                     bloom_discarded
                                 )
+                            );
+                            info!(
+                                "Candidates: Emitted {} / Discarded {} / Duplicates {} in {:?} ({}) (repetition {:?})",
+                                cnt,
+                                sketch_discarded,
+                                bloom_discarded,
+                                end - start,
+                                proc_mem!(),
+                                time.time()
                             );
                         }
                     }
@@ -381,7 +388,7 @@ impl RepetitionStopWatch {
     pub fn maybe_stop(&mut self) {
         if let Some(start) = self.start.take() {
             let elapsed = Instant::now() - start;
-            info!("{} {} ended in {:?}", self.name, self.counter, elapsed);
+            debug!("{} {} ended in {:?}", self.name, self.counter, elapsed);
             log_event!(
                 self.logger,
                 LogEvent::Profile(self.counter, 0, self.name.clone(), elapsed)
@@ -425,7 +432,7 @@ where
                     stopwatch.maybe_stop();
                     stopwatch.start();
                     if worker == 0 {
-                        info!("Repetition {} with sketches", current_repetition,);
+                        debug!("Repetition {} with sketches", current_repetition,);
                     }
                     let mut session = output.session(&cap);
                     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
@@ -508,7 +515,7 @@ where
                     stopwatch.maybe_stop();
                     stopwatch.start();
                     if worker == 0 {
-                        info!(
+                        debug!(
                             "Repetition {}/{} (current memory {})",
                             current_repetition,
                             num_repetitions,

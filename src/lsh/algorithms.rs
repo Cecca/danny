@@ -64,7 +64,7 @@ where
     let hash_collection_builder = hash_collection_builder.clone();
     let rng = rng.clone();
 
-    info!(
+    debug!(
         "Left dataset has {} points, right has {}",
         D::num_elements(left_path.into()),
         D::num_elements(right_path.into())
@@ -270,14 +270,14 @@ where
 {
     let mut sketches: HashMap<K, SV> =
         HashMap::with_capacity(vectors.stripe_len(matrix, direction, worker));
-    info!("Computing sketches");
+    debug!("Computing sketches");
     let start_sketch = Instant::now();
     for (k, v) in vectors.iter_stripe(matrix, direction, worker) {
         let s = sketcher.sketch(v);
         sketches.insert(k.clone(), s);
     }
     let end_sketch = Instant::now();
-    info!("Sketches computed in {:?}", end_sketch - start_sketch);
+    debug!("Sketches computed in {:?}", end_sketch - start_sketch);
     Arc::new(sketches)
 }
 

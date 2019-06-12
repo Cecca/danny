@@ -31,7 +31,7 @@ where
         let k = k as f64;
         let delta = (3.0 / (p * k) * (1.0 / epsilon).ln()).sqrt();
         let bit_threshold = ((1.0 + delta) * p * k).ceil() as usize;
-        info!(
+        debug!(
             "Using bit thresold {} of different bits to reject (delta {} epsilon {})",
             bit_threshold, delta, epsilon
         );

@@ -18,7 +18,7 @@ pub trait LSHFunction {
     fn repetitions_at_range(range: f64, k: usize) -> usize {
         let p = Self::probability_at_range(range);
         let reps = (2.0 * (1_f64 / p).powi(k as i32)).ceil() as usize;
-        info!("Probability at range {} is {} (reps: {})", range, p, reps);
+        debug!("Probability at range {} is {} (reps: {})", range, p, reps);
         reps
     }
 }
@@ -232,7 +232,7 @@ where
         B: Fn(usize, &mut R) -> LSHCollection<F>,
         R: Rng + SeedableRng + Send + Clone + ?Sized + 'static,
     {
-        info!(
+        debug!(
             "Building MultiLevelHasher with minimum level {} and maximum level {}",
             min_level, max_level
         );
