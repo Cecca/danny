@@ -254,7 +254,7 @@ where
         hash_fn.clone(),
         sketches_right,
         matrix,
-        MatrixDirection::Rows,
+        MatrixDirection::Columns,
         probe.clone(),
     );
     left_hashes
