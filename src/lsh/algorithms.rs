@@ -219,7 +219,7 @@ where
     let peers = scope.peers();
     let matrix = MatrixDescription::for_workers(peers as usize);
     let sketcher = Arc::new(sketcher);
-    
+
     let sketches_left = build_sketches(
         Arc::clone(&left),
         Arc::clone(&sketcher),
