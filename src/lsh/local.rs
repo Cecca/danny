@@ -155,12 +155,13 @@ where
             let bucket = buckets.entry(h).or_insert_with(|| (Vec::new(), Vec::new()));
             bucket.1.push(rk);
         }
-        let generator = PairGenerator::new(buckets);
-        for (lk, rk) in generator {
-            if !bloom.test_and_insert(&(*lk, *rk)) && sim_pred(&left[lk], &right[rk]) {
-                count += 1;
-            }
-        }
+        unimplemented!("Replace the pairgenerator with the new buckets");
+        // let generator = PairGenerator::new(buckets);
+        // for (lk, rk) in generator {
+        //     if !bloom.test_and_insert(&(*lk, *rk)) && sim_pred(&left[lk], &right[rk]) {
+        //         count += 1;
+        //     }
+        // }
     }
 
     count

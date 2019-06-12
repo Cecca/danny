@@ -156,10 +156,6 @@ where
         // worker.step_while(|| probe.less_than(&(repetitions as u32)));
         worker.step_while(|| probe.with_frontier(|f| !f.is_empty()));
 
-        // info!(
-        //     "Execution summary for worker {}: {:?}",
-        //     index, execution_summary
-        // );
         collect_execution_summaries(execution_summary, send_exec_summary.clone(), &mut worker);
     })
     .expect("Problems with the dataflow");
@@ -190,16 +186,6 @@ where
             .iter()
             .map(|pair| pair.1.clone().iter().sum::<u64>())
             .sum();
-
-        // let precision = count as f64 / global_summary.distinct_pairs as f64;
-        // let _potential_pairs =
-        //     D::num_elements(left_path.into()) * D::num_elements(right_path.into());
-        // let fraction_distinct = global_summary.distinct_pairs as f64 / potential_pairs as f64;
-        // info!(
-        //     "Evaluated fraction of the potential pairs: {} ({}/{})",
-        //     fraction_distinct, global_summary.distinct_pairs, potential_pairs
-        // );
-        // info!("Precision: {}", precision);
 
         count as usize
     } else {

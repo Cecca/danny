@@ -39,9 +39,6 @@ pub mod lsh;
 pub mod measure;
 pub mod operators;
 pub mod sketch;
-/// This module collects algorithms to compute on some datasets,
-/// which might be useful to understand their behaviour
-pub mod stats;
 pub mod types;
 pub mod version {
     include!(concat!(env!("OUT_DIR"), "/version.rs"));
