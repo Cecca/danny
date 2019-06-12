@@ -140,6 +140,81 @@ impl LSHFunction for Hyperplane {
 }
 
 #[derive(Clone)]
+pub struct OneBitMinHash {
+    k: usize,
+    alphas: Vec<u64>,
+    betas: Vec<u64>,
+}
+
+impl OneBitMinHash {
+    pub fn new<R>(k: usize, rng: &mut R) -> Self
+    where
+        R: Rng + ?Sized,
+    {
+        assert!(k <= 32);
+        let uniform = Uniform::new(0u64, std::u64::MAX);
+        let mut alphas = Vec::with_capacity(k);
+        let mut betas = Vec::with_capacity(k);
+        for _ in 0..k {
+            alphas.push(uniform.sample(rng));
+            betas.push(uniform.sample(rng));
+        }
+        OneBitMinHash { k, alphas, betas }
+    }
+
+    pub fn collection<R>(
+        k: usize,
+        repetitions: usize,
+        rng: &mut R,
+    ) -> LSHCollection<OneBitMinHash, u32>
+    where
+        R: Rng + ?Sized,
+    {
+        let mut functions = Vec::with_capacity(repetitions);
+        for _ in 0..repetitions {
+            functions.push(OneBitMinHash::new(k, rng));
+        }
+        LSHCollection { functions }
+    }
+
+    pub fn collection_builder<R>(
+        threshold: f64,
+    ) -> impl Fn(usize, &mut R) -> LSHCollection<OneBitMinHash, u32> + Clone
+    where
+        R: Rng + ?Sized,
+    {
+        let threshold = threshold;
+        move |k: usize, rng: &mut R| {
+            let repetitions = OneBitMinHash::repetitions_at_range(threshold, k);
+            Self::collection(k, repetitions, rng)
+        }
+    }
+}
+
+impl LSHFunction for OneBitMinHash {
+    type Input = BagOfWords;
+    type Output = u32;
+
+    fn hash(&self, v: &BagOfWords) -> u32 {
+        let mut hash_value = 0u32;
+        for (alpha, beta) in self.alphas.iter().zip(self.betas.iter()) {
+            let h = v
+                .words()
+                .iter()
+                .map(|w| (alpha.wrapping_mul(u64::from(*w))).wrapping_add(*beta) >> 32)
+                .min()
+                .unwrap();
+            hash_value = (hash_value << 1) | (1 & h) as u32;
+        }
+        hash_value
+    }
+
+    fn probability_at_range(range: f64) -> f64 {
+        (range + 1.0) / 2.0
+    }
+}
+
+#[derive(Clone)]
 pub struct MinHash {
     k: usize,
     alphas: Vec<u64>,
