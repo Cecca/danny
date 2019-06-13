@@ -32,15 +32,18 @@ where
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
-    fn bucket_pred<P, PD>(
+    fn bucket_pred<P, PD, R, O>(
         &self,
         right: &Stream<G, (H, K)>,
         pre: P,
         distinct_pre: PD,
-    ) -> Stream<G, (K, K)>
+        result: R
+    ) -> Stream<G, (O, O)>
     where
         P: FnMut(&K, &K) -> bool + 'static,
-        PD: FnMut(&K, &K) -> bool + 'static;
+        PD: FnMut(&K, &K) -> bool + 'static,
+        R: Fn(K) -> O + 'static,
+        O: ExchangeData;
 }
 
 impl<G, T, H, K> BucketStream<G, T, H, K> for Stream<G, (H, K)>
@@ -51,15 +54,18 @@ where
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     #[allow(clippy::explicit_counter_loop)]
-    fn bucket_pred<P, PD>(
+    fn bucket_pred<P, PD, R, O>(
         &self,
         right: &Stream<G, (H, K)>,
         mut pred: P,
         mut distinct_pred: PD,
-    ) -> Stream<G, (K, K)>
+        result: R
+    ) -> Stream<G, (O, O)>
     where
         P: FnMut(&K, &K) -> bool + 'static,
         PD: FnMut(&K, &K) -> bool + 'static,
+        R: Fn(K) -> O + 'static,
+        O: ExchangeData,
     {
         let mut buckets = HashMap::new();
         let mut pool = BucketPool::default();
@@ -133,7 +139,7 @@ where
                             buckets.for_all(|l, r| {
                                 if pred(l, r) {
                                     if distinct_pred(l, r) {
-                                        session.give((l.clone(), r.clone()));
+                                        session.give((result(l.clone()), result(r.clone())));
                                         cnt += 1;
                                     } else {
                                         bloom_cnt += 1;
