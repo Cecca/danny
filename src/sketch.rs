@@ -2,6 +2,7 @@ use crate::lsh::*;
 use crate::measure::*;
 use crate::types::*;
 use packed_simd::u32x4;
+use packed_simd::u64x2;
 
 use rand::distributions::{Distribution, Normal, Uniform};
 use rand::Rng;
@@ -22,9 +23,20 @@ impl BitBasedSketch for Sketch64 {
     }
 }
 
-// pub struct Sketch128 {
-//     data: [u64, 2],
-// }
+pub struct Sketch128 {
+    data: [u64; 2],
+}
+
+impl BitBasedSketch for Sketch128 {
+    // fn different_bits(&self, other: &Self) -> u32 {
+    //     (self.data[0] ^ other.data[0]).count_ones() + (self.data[1] ^ other.data[1]).count_ones()
+    // }
+    fn different_bits(&self, other: &Self) -> u32 {
+        (u64x2::from_slice_unaligned(&self.data) ^ u64x2::from_slice_unaligned(&other.data))
+            .count_ones()
+            .wrapping_sum() as u32
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct SketchPredicate<T>
