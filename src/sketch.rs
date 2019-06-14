@@ -9,11 +9,21 @@ use rand::Rng;
 use std::iter::Iterator;
 
 pub trait BitBasedSketch {
-    fn different_bits(&self, other: &Self) -> usize;
+    fn different_bits(&self, other: &Self) -> u32;
 }
 
-// pub struct Sketch64 {
-//     data: u64,
+pub struct Sketch64 {
+    data: u64,
+}
+
+impl BitBasedSketch for Sketch64 {
+    fn different_bits(&self, other: &Self) -> u32 {
+        (self.data ^ other.data).count_ones()
+    }
+}
+
+// pub struct Sketch128 {
+//     data: [u64, 2],
 // }
 
 #[derive(Clone, Debug)]
@@ -23,7 +33,7 @@ where
 {
     /// The number of bits that can be different between two sketches without having to reject the
     /// pair.
-    bit_threshold: usize,
+    bit_threshold: u32,
     _marker: std::marker::PhantomData<T>,
 }
 
@@ -34,7 +44,7 @@ where
     pub fn from_probability(k: usize, p: f64, epsilon: f64) -> Self {
         let k = k as f64;
         let delta = (3.0 / (p * k) * (1.0 / epsilon).ln()).sqrt();
-        let bit_threshold = ((1.0 + delta) * p * k).ceil() as usize;
+        let bit_threshold = ((1.0 + delta) * p * k).ceil() as u32;
         debug!(
             "Using bit thresold {} of different bits to reject (delta {} epsilon {})",
             bit_threshold, delta, epsilon
@@ -81,7 +91,7 @@ impl SketchEstimate for SimHashValue {
 }
 
 impl BitBasedSketch for LongOneBitMinHashValue {
-    fn different_bits(&self, other: &Self) -> usize {
+    fn different_bits(&self, other: &Self) -> u32 {
         let ca = self.bits.chunks_exact(4);
         let cb = other.bits.chunks_exact(4);
         let rem = ca
@@ -90,17 +100,17 @@ impl BitBasedSketch for LongOneBitMinHashValue {
             .zip(cb.remainder().iter())
             .map(|(x, y)| (x ^ y).count_ones())
             .sum::<u32>();
-        rem as usize
-            + ca.map(u32x4::from_slice_unaligned)
-                .zip(cb.map(u32x4::from_slice_unaligned))
-                .map(|(x, y)| (x ^ y).count_ones())
-                .sum::<u32x4>()
-                .wrapping_sum() as usize
+        rem + ca
+            .map(u32x4::from_slice_unaligned)
+            .zip(cb.map(u32x4::from_slice_unaligned))
+            .map(|(x, y)| (x ^ y).count_ones())
+            .sum::<u32x4>()
+            .wrapping_sum()
     }
 }
 
 impl BitBasedSketch for SimHashValue {
-    fn different_bits(&self, other: &Self) -> usize {
+    fn different_bits(&self, other: &Self) -> u32 {
         let ca = self.bits.chunks_exact(4);
         let cb = other.bits.chunks_exact(4);
         let rem = ca
@@ -109,12 +119,12 @@ impl BitBasedSketch for SimHashValue {
             .zip(cb.remainder().iter())
             .map(|(x, y)| (x ^ y).count_ones())
             .sum::<u32>();
-        rem as usize
-            + ca.map(u32x4::from_slice_unaligned)
-                .zip(cb.map(u32x4::from_slice_unaligned))
-                .map(|(x, y)| (x ^ y).count_ones())
-                .sum::<u32x4>()
-                .wrapping_sum() as usize
+        rem + ca
+            .map(u32x4::from_slice_unaligned)
+            .zip(cb.map(u32x4::from_slice_unaligned))
+            .map(|(x, y)| (x ^ y).count_ones())
+            .sum::<u32x4>()
+            .wrapping_sum()
     }
 }
 
