@@ -9,8 +9,12 @@ use rand::Rng;
 use std::iter::Iterator;
 
 pub trait BitBasedSketch {
-    fn bits(&self) -> &Vec<u32>;
+    fn different_bits(&self, other: &Self) -> usize;
 }
+
+// pub struct Sketch64 {
+//     data: u64,
+// }
 
 #[derive(Clone, Debug)]
 pub struct SketchPredicate<T>
@@ -51,26 +55,10 @@ where
         Self::from_probability(k, p, epsilon)
     }
 
-    /// Return true if the two sketches represent vectors associated with vectors
+    /// Return true if the two sketches are associated with vectors
     /// within the similarity threshold this predicate was built with
     pub fn eval(&self, a: &T, b: &T) -> bool {
-        let threshold = self.bit_threshold;
-        let ca = a.bits().chunks_exact(4);
-        let cb = b.bits().chunks_exact(4);
-        let rem = ca
-            .remainder()
-            .iter()
-            .zip(cb.remainder().iter())
-            .map(|(x, y)| (x ^ y).count_ones())
-            .sum::<u32>();
-        let different_bits = rem as usize
-            + ca.map(u32x4::from_slice_unaligned)
-                .zip(cb.map(u32x4::from_slice_unaligned))
-                .map(|(x, y)| (x ^ y).count_ones())
-                .sum::<u32x4>()
-                .wrapping_sum() as usize;
-
-        different_bits <= threshold
+        a.different_bits(b) <= self.bit_threshold
     }
 }
 
@@ -93,14 +81,40 @@ impl SketchEstimate for SimHashValue {
 }
 
 impl BitBasedSketch for LongOneBitMinHashValue {
-    fn bits(&self) -> &Vec<u32> {
-        &self.bits
+    fn different_bits(&self, other: &Self) -> usize {
+        let ca = self.bits.chunks_exact(4);
+        let cb = other.bits.chunks_exact(4);
+        let rem = ca
+            .remainder()
+            .iter()
+            .zip(cb.remainder().iter())
+            .map(|(x, y)| (x ^ y).count_ones())
+            .sum::<u32>();
+        rem as usize
+            + ca.map(u32x4::from_slice_unaligned)
+                .zip(cb.map(u32x4::from_slice_unaligned))
+                .map(|(x, y)| (x ^ y).count_ones())
+                .sum::<u32x4>()
+                .wrapping_sum() as usize
     }
 }
 
 impl BitBasedSketch for SimHashValue {
-    fn bits(&self) -> &Vec<u32> {
-        &self.bits
+    fn different_bits(&self, other: &Self) -> usize {
+        let ca = self.bits.chunks_exact(4);
+        let cb = other.bits.chunks_exact(4);
+        let rem = ca
+            .remainder()
+            .iter()
+            .zip(cb.remainder().iter())
+            .map(|(x, y)| (x ^ y).count_ones())
+            .sum::<u32>();
+        rem as usize
+            + ca.map(u32x4::from_slice_unaligned)
+                .zip(cb.map(u32x4::from_slice_unaligned))
+                .map(|(x, y)| (x ^ y).count_ones())
+                .sum::<u32x4>()
+                .wrapping_sum() as usize
     }
 }
 
