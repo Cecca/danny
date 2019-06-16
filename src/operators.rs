@@ -1,12 +1,12 @@
 use crate::bloom::*;
 use crate::logging::*;
-use abomonation::Abomonation;
 use crate::types::*;
+use abomonation::Abomonation;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::hash::Hasher;
 use std::ops::Add;
-
 use std::sync::Arc;
 use timely::dataflow::channels::pact::ParallelizationContract;
 use timely::dataflow::channels::pact::Pipeline as PipelinePact;
@@ -90,13 +90,12 @@ impl Route for i32 {
     }
 }
 
-const A_RAND: u64 = 24350182643958693;
-const B_RAND: u64 = 39659187924864187;
-
 impl Route for u32 {
     #[inline(always)]
     fn route(&self) -> u64 {
-        A_RAND.wrapping_mul(*self as u64).wrapping_add(B_RAND)
+        let mut h = std::hash::SipHasher::new();
+        self.hash(&mut h);
+        h.finish()
     }
 }
 
