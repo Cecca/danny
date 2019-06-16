@@ -136,11 +136,6 @@ where
                             let mut sketch_cnt = 0;
                             let mut bloom_cnt = 0;
                             let start = Instant::now();
-                            let mut check = std::collections::BTreeMap::new();
-                            for (h, _) in &buckets.left {
-                                *check.entry(h).or_insert(0) += 1;
-                            }
-                            info!("Buckets left: {:#?}", check);
                             buckets.for_all(|l, r| {
                                 if pred(l, r) {
                                     if distinct_pred(l, r) {
