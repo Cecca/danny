@@ -17,109 +17,87 @@ use danny::types::*;
 use serde_json::Value;
 use std::collections::HashMap;
 
-fn run<SV>(args: CmdlineConfig, config: Config)
+fn run_lsh<SV>(args: &CmdlineConfig, config: &Config, experiment: &mut Experiment) -> usize
 where
     SV: BitBasedSketch + FromCosine + FromJaccard,
 {
+    let mut rng = config.get_random_generator(0);
+    match args.measure.as_ref() {
+        "cosine" => {
+            let k = args.k.expect("K is needed on the command line");
+            let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
+            let threshold = args.threshold;
+            let hash_funs_builder = lsh::Hyperplane::collection_builder(threshold, dim);
+            let (sketcher, sketch_predicate) = args
+                .sketch_bits
+                .map(|bits| {
+                    (
+                        LongSimHash::new(bits, dim, &mut rng),
+                        SketchPredicate::cosine(bits, threshold, config.get_sketch_epsilon()),
+                    )
+                })
+                .expect("FIXME: Make the sketches mandatory");
+            lsh::fixed_param_lsh::<UnitNormVector, _, _, _, _, _, _, _>(
+                &args.left_path,
+                &args.right_path,
+                k,
+                hash_funs_builder,
+                sketcher,
+                sketch_predicate,
+                move |a, b| InnerProduct::cosine(a, b) >= threshold,
+                &mut rng,
+                &config,
+                experiment,
+            )
+        }
+        "jaccard" => {
+            let k = args.k.expect("K is needed on the command line");
+            let threshold = args.threshold;
+            let hash_funs_builder = lsh::OneBitMinHash::collection_builder(threshold);
+            let (sketcher, sketch_predicate) = args
+                .sketch_bits
+                .map(|bits| {
+                    (
+                        LongOneBitMinHash::new(bits, &mut rng),
+                        SketchPredicate::jaccard(bits, threshold, config.get_sketch_epsilon()),
+                    )
+                })
+                .expect("FIXME: Make the sketches mandatory");
+            lsh::fixed_param_lsh::<BagOfWords, _, _, _, _, _, _, _>(
+                &args.left_path,
+                &args.right_path,
+                k,
+                hash_funs_builder,
+                sketcher,
+                sketch_predicate,
+                move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
+                &mut rng,
+                &config,
+                experiment,
+            )
+        }
+        _ => unimplemented!("Unknown measure {}", args.measure),
+    }
+}
+
+fn main() {
+    let config = Config::get();
     init_logging(&config);
+    let args = CmdlineConfig::get();
     let mut experiment = Experiment::from_config(&config, &args);
 
     debug!("Starting...");
     debug!("Initial memory {}", proc_mem!());
-    let mut rng = config.get_random_generator(0);
 
     let threshold = args.threshold;
     let start = std::time::Instant::now();
+
     let count = match args.algorithm.as_ref() {
-        "lsh" => match args.measure.as_ref() {
-            "cosine" => {
-                let k = args.k.expect("K is needed on the command line");
-                let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
-                let threshold = args.threshold;
-                let hash_funs_builder = lsh::Hyperplane::collection_builder(threshold, dim);
-                let (sketcher, sketch_predicate) = args
-                    .sketch_bits
-                    .map(|bits| {
-                        (
-                            LongSimHash::new(bits, dim, &mut rng),
-                            SketchPredicate::cosine(bits, threshold, config.get_sketch_epsilon()),
-                        )
-                    })
-                    .expect("FIXME: Make the sketches mandatory");
-                lsh::fixed_param_lsh::<UnitNormVector, _, _, _, _, _, _, _>(
-                    &args.left_path,
-                    &args.right_path,
-                    k,
-                    hash_funs_builder,
-                    sketcher,
-                    sketch_predicate,
-                    move |a, b| InnerProduct::cosine(a, b) >= threshold,
-                    &mut rng,
-                    &config,
-                    &mut experiment,
-                )
-            }
-            "jaccard" => {
-                let k = args.k.expect("K is needed on the command line");
-                let threshold = args.threshold;
-                let hash_funs_builder = lsh::OneBitMinHash::collection_builder(threshold);
-                let (sketcher, sketch_predicate) = args
-                    .sketch_bits
-                    .map(|bits| {
-                        (
-                            LongOneBitMinHash::new(bits, &mut rng),
-                            SketchPredicate::jaccard(bits, threshold, config.get_sketch_epsilon()),
-                        )
-                    })
-                    .expect("FIXME: Make the sketches mandatory");
-                lsh::fixed_param_lsh::<BagOfWords, _, _, _, _, _, _, _>(
-                    &args.left_path,
-                    &args.right_path,
-                    k,
-                    hash_funs_builder,
-                    sketcher,
-                    sketch_predicate,
-                    move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
-                    &mut rng,
-                    &config,
-                    &mut experiment,
-                )
-            }
-            _ => unimplemented!("Unknown measure {}", args.measure),
-        },
-        "local-lsh" => match args.measure.as_ref() {
-            "cosine" => {
-                let k = args.k.expect("K is needed on the command line");
-                let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
-                let threshold = args.threshold;
-                let hash_funs_builder = lsh::Hyperplane::collection_builder(threshold, dim);
-                lsh::local_lsh::<UnitNormVector, _, _, _, _, _>(
-                    &args.left_path,
-                    &args.right_path,
-                    k,
-                    hash_funs_builder,
-                    move |a, b| InnerProduct::cosine(a, b) >= threshold,
-                    &config,
-                    &mut rng,
-                    &mut experiment,
-                )
-            }
-            "jaccard" => {
-                let k = args.k.expect("K is needed on the command line");
-                let threshold = args.threshold;
-                let hash_funs_builder = lsh::OneBitMinHash::collection_builder(threshold);
-                lsh::local_lsh::<BagOfWords, _, _, _, _, _>(
-                    &args.left_path,
-                    &args.right_path,
-                    k,
-                    hash_funs_builder,
-                    move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
-                    &config,
-                    &mut rng,
-                    &mut experiment,
-                )
-            }
-            _ => unimplemented!("Unknown measure {}", args.measure),
+        "lsh" => match args.sketch_bits {
+            Some(64) => run_lsh::<Sketch64>(&args, &config, &mut experiment),
+            Some(128) => run_lsh::<Sketch128>(&args, &config, &mut experiment),
+            Some(bits) => panic!("Unsupported number of sketch bits: {}", bits),
+            None => panic!("you should supply the number of sketch bits"),
         },
         "all-2-all" => match args.measure.as_ref() {
             "cosine" => baseline::all_pairs_parallel::<UnitNormVector, _>(
@@ -155,6 +133,7 @@ where
         },
         _ => unimplemented!("Unknown algorithm {}", args.algorithm),
     };
+
     let end = std::time::Instant::now();
     let total_time_d = end - start;
     let total_time = total_time_d.as_secs() * 1000 + u64::from(total_time_d.subsec_millis());
@@ -180,17 +159,5 @@ where
             row!("output_size" => count, "total_time_ms" => total_time, "recall" => recall, "speedup" => speedup),
         );
         experiment.save();
-    }
-}
-
-fn main() {
-    let config = Config::get();
-    init_logging(&config);
-    let args = CmdlineConfig::get();
-    match args.sketch_bits {
-        Some(64) => run::<Sketch64>(args, config),
-        Some(128) => run::<Sketch128>(args, config),
-        Some(bits) => panic!("Unsupported number of sketch bits: {}", bits),
-        None => panic!("you should supply the number of sketch bits"),
     }
 }
