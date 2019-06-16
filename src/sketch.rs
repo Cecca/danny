@@ -13,6 +13,14 @@ pub trait BitBasedSketch {
     fn different_bits(&self, other: &Self) -> u32;
 }
 
+pub trait FromJaccard {
+    fn from_jaccard<R: Rng>(rng: &mut R) -> Self;
+}
+
+pub trait FromCosine {
+    fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self;
+}
+
 pub struct Sketch64 {
     data: u64,
 }
@@ -23,18 +31,104 @@ impl BitBasedSketch for Sketch64 {
     }
 }
 
+pub struct Sketcher64<T, F>
+where
+    F: LSHFunction<Input = T, Output = u32>,
+{
+    lsh_functions: [F; 2],
+}
+
+impl FromCosine for Sketcher64<UnitNormVector, Hyperplane> {
+    fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self {
+        Self {
+            lsh_functions: [Hyperplane::new(32, dim, rng), Hyperplane::new(32, dim, rng)],
+        }
+    }
+}
+
+impl FromJaccard for Sketcher64<BagOfWords, OneBitMinHash> {
+    fn from_jaccard<R: Rng>(rng: &mut R) -> Self {
+        Self {
+            lsh_functions: [OneBitMinHash::new(32, rng), OneBitMinHash::new(32, rng)],
+        }
+    }
+}
+
+impl<T, F> Sketcher for Sketcher64<T, F>
+where
+    F: LSHFunction<Input = T, Output = u32>,
+{
+    type Input = T;
+    type Output = Sketch64;
+    fn sketch(&self, v: &Self::Input) -> Self::Output {
+        let a = self.lsh_functions[0].hash(v) as u64;
+        let b = self.lsh_functions[1].hash(v) as u64;
+        Sketch64 {
+            data: (a << 32) | b,
+        }
+    }
+}
+
 pub struct Sketch128 {
     data: [u64; 2],
 }
 
 impl BitBasedSketch for Sketch128 {
-    // fn different_bits(&self, other: &Self) -> u32 {
-    //     (self.data[0] ^ other.data[0]).count_ones() + (self.data[1] ^ other.data[1]).count_ones()
-    // }
     fn different_bits(&self, other: &Self) -> u32 {
         (u64x2::from_slice_unaligned(&self.data) ^ u64x2::from_slice_unaligned(&other.data))
             .count_ones()
             .wrapping_sum() as u32
+    }
+}
+
+pub struct Sketcher128<T, F>
+where
+    F: LSHFunction<Input = T, Output = u32>,
+{
+    lsh_functions: [F; 4],
+}
+
+impl FromCosine for Sketcher128<UnitNormVector, Hyperplane> {
+    fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self {
+        Self {
+            lsh_functions: [
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+            ],
+        }
+    }
+}
+
+impl FromJaccard for Sketcher128<BagOfWords, OneBitMinHash> {
+    fn from_jaccard<R: Rng>(rng: &mut R) -> Self {
+        Self {
+            lsh_functions: [
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+            ],
+        }
+    }
+}
+
+impl<T, F> Sketcher for Sketcher128<T, F>
+where
+    F: LSHFunction<Input = T, Output = u32>,
+{
+    type Input = T;
+    type Output = Sketch128;
+    fn sketch(&self, v: &Self::Input) -> Self::Output {
+        Sketch128 {
+            data: [
+                ((self.lsh_functions[0].hash(v) as u64) << 32)
+                    | (self.lsh_functions[1].hash(v) as u64),
+                ((self.lsh_functions[2].hash(v) as u64) << 32)
+                    | (self.lsh_functions[3].hash(v) as u64),
+            ],
+        }
     }
 }
 
