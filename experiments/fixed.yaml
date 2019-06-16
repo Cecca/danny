@@ -16,11 +16,16 @@ experiments:
     environment:
       DANNY_SEED:
         - 13124534
+        - 1235
+        - 49176895
+        - 12087
+        - 879865
+        - 71958
     parameters:
       --algorithm: lsh
       --range: [0.5,0.7,0.9]
       --measure: cosine
-      --sketch-bits: 1024
+      --sketch-bits: [64,128,256,512]
       -k: [13,14,15,16,17]
     arguments:
       - ["{{ dataset('Glove-27-200') }}", "{{ dataset('Glove-27-200') }}"]
@@ -32,12 +37,17 @@ experiments:
     environment:
       DANNY_SEED:
         - 13124534
+        - 1235
+        - 49176895
+        - 12087
+        - 879865
+        - 71958
     parameters:
       --algorithm: lsh
       --range: [0.5,0.7,0.9]
       --measure: jaccard
-      --sketch-bits: 1024
-      -k: [2,3,4,5,6]
+      --sketch-bits: [64,128,256,512]
+      -k: [11,12,13,14,15]
     arguments:
       - ["{{ dataset('AOL') }}", "{{ dataset('AOL') }}"]
       - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
