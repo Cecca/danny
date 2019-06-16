@@ -10,16 +10,16 @@ use danny::experiment::Experiment;
 use danny::io::*;
 use danny::logging::*;
 use danny::lsh;
-
 use danny::measure::*;
 use danny::sketch::*;
 use danny::types::*;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::fmt::Debug;
 
 fn run_lsh<SV>(args: &CmdlineConfig, config: &Config, experiment: &mut Experiment) -> usize
 where
-    SV: BitBasedSketch + FromCosine + FromJaccard,
+    SV: BitBasedSketch + FromCosine + FromJaccard + SketchData + Debug,
 {
     let mut rng = config.get_random_generator(0);
     match args.measure.as_ref() {
@@ -32,7 +32,8 @@ where
                 .sketch_bits
                 .map(|bits| {
                     (
-                        LongSimHash::new(bits, dim, &mut rng),
+                        // LongSimHash::new(bits, dim, &mut rng),
+                        SV::from_cosine(dim, &mut rng),
                         SketchPredicate::cosine(bits, threshold, config.get_sketch_epsilon()),
                     )
                 })
@@ -58,7 +59,8 @@ where
                 .sketch_bits
                 .map(|bits| {
                     (
-                        LongOneBitMinHash::new(bits, &mut rng),
+                        // LongOneBitMinHash::new(bits, &mut rng),
+                        SV::from_jaccard(&mut rng),
                         SketchPredicate::jaccard(bits, threshold, config.get_sketch_epsilon()),
                     )
                 })

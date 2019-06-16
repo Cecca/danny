@@ -86,11 +86,11 @@ fn compute_best_level<G, K, D, H, F, V>(
 ) -> Stream<G, (K, usize)>
 where
     G: Scope,
-    D: ExchangeData + Debug,
+    D: ExchangeData + Debug + SketchEstimate,
     K: ExchangeData + Debug + Route + Hash + Ord,
     H: ExchangeData + Route + Debug + Hash + Ord + PrefixHash,
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
-    V: ExchangeData + Debug + SketchEstimate,
+    V: ExchangeData + Debug + BitBasedSketch,
 {
     let worker = sample.scope().index() as u64;
     let min_level = hasher.min_level();
@@ -126,7 +126,7 @@ where
                         let probabilities: Vec<f64> = sampled_sketches
                             .iter()
                             .map(|s| {
-                                let estimated_distance = SketchEstimate::estimate(sketch_v, s);
+                                let estimated_distance = D::sketch_estimate(sketch_v, s);
                                 F::probability_at_range(estimated_distance)
                             })
                             .collect();
@@ -169,11 +169,11 @@ pub fn find_best_level<G, T, K, D, H, F, V, R>(
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId + Debug,
-    D: ExchangeData + Debug,
+    D: ExchangeData + Debug + SketchEstimate,
     K: ExchangeData + Debug + Route + Hash + Ord,
     H: ExchangeData + Route + Debug + Hash + Ord + PrefixHash,
     F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
-    V: ExchangeData + Debug + SketchEstimate,
+    V: ExchangeData + Debug + BitBasedSketch,
     R: Rng + Clone + 'static,
 {
     let prob_left = 4.0 / (left.global_n as f64).sqrt();

@@ -9,20 +9,27 @@ use rand::Rng;
 
 use std::iter::Iterator;
 
-pub trait BitBasedSketch {
+pub trait BitBasedSketch: Clone + Copy {
     fn different_bits(&self, other: &Self) -> u32;
+    fn same_bits(&self, other: &Self) -> u32;
+    fn num_bits(&self) -> usize;
 }
 
 pub trait FromJaccard: Sized {
-    type SketcherType: Sketcher<Input = BagOfWords, Output = Self>;
+    type SketcherType: Sketcher<Input = BagOfWords, Output = Self> + Send + Sync + Clone + 'static;
     fn from_jaccard<R: Rng>(rng: &mut R) -> Self::SketcherType;
 }
 
 pub trait FromCosine: Sized {
-    type SketcherType: Sketcher<Input = UnitNormVector, Output = Self>;
+    type SketcherType: Sketcher<Input = UnitNormVector, Output = Self>
+        + Send
+        + Sync
+        + Clone
+        + 'static;
     fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self::SketcherType;
 }
 
+#[derive(Debug, Clone, Copy, Abomonation, Hash, Eq, PartialEq)]
 pub struct Sketch64 {
     data: u64,
 }
@@ -31,8 +38,15 @@ impl BitBasedSketch for Sketch64 {
     fn different_bits(&self, other: &Self) -> u32 {
         (self.data ^ other.data).count_ones()
     }
+    fn same_bits(&self, other: &Self) -> u32 {
+        (self.data ^ other.data).count_zeros()
+    }
+    fn num_bits(&self) -> usize {
+        64
+    }
 }
 
+#[derive(Clone)]
 pub struct Sketcher64<T, F>
 where
     F: LSHFunction<Input = T, Output = u32>,
@@ -73,6 +87,7 @@ where
     }
 }
 
+#[derive(Debug, Clone, Copy, Abomonation, Hash, Eq, PartialEq)]
 pub struct Sketch128 {
     data: [u64; 2],
 }
@@ -83,8 +98,18 @@ impl BitBasedSketch for Sketch128 {
             .count_ones()
             .wrapping_sum() as u32
     }
+
+    fn same_bits(&self, other: &Self) -> u32 {
+        (u64x2::from_slice_unaligned(&self.data) ^ u64x2::from_slice_unaligned(&other.data))
+            .count_zeros()
+            .wrapping_sum() as u32
+    }
+    fn num_bits(&self) -> usize {
+        128
+    }
 }
 
+#[derive(Clone)]
 pub struct Sketcher128<T, F>
 where
     F: LSHFunction<Input = T, Output = u32>,
@@ -185,74 +210,88 @@ where
 }
 
 pub trait SketchEstimate {
-    fn estimate(a: &Self, b: &Self) -> f64;
+    fn sketch_estimate<S: BitBasedSketch>(a: &S, b: &S) -> f64;
 }
 
-impl SketchEstimate for SimHashValue {
-    #[allow(clippy::cast_lossless)]
-    fn estimate(a: &SimHashValue, b: &SimHashValue) -> f64 {
-        let p = a
-            .bits
-            .iter()
-            .zip(b.bits.iter())
-            .map(|(x, y)| (x ^ y).count_zeros())
-            .sum::<u32>() as f64
-            / (32.0 * a.bits.len() as f64);
+impl SketchEstimate for UnitNormVector {
+    fn sketch_estimate<S: BitBasedSketch>(a: &S, b: &S) -> f64 {
+        let p = f64::from(a.same_bits(b)) / (a.num_bits() as f64);
         (std::f64::consts::PI * (1.0 - p)).cos()
     }
 }
 
-impl BitBasedSketch for LongOneBitMinHashValue {
-    fn different_bits(&self, other: &Self) -> u32 {
-        let ca = self.bits.chunks_exact(4);
-        let cb = other.bits.chunks_exact(4);
-        let rem = ca
-            .remainder()
-            .iter()
-            .zip(cb.remainder().iter())
-            .map(|(x, y)| (x ^ y).count_ones())
-            .sum::<u32>();
-        rem + ca
-            .map(u32x4::from_slice_unaligned)
-            .zip(cb.map(u32x4::from_slice_unaligned))
-            .map(|(x, y)| (x ^ y).count_ones())
-            .sum::<u32x4>()
-            .wrapping_sum()
-    }
-}
-
-impl BitBasedSketch for SimHashValue {
-    fn different_bits(&self, other: &Self) -> u32 {
-        let ca = self.bits.chunks_exact(4);
-        let cb = other.bits.chunks_exact(4);
-        let rem = ca
-            .remainder()
-            .iter()
-            .zip(cb.remainder().iter())
-            .map(|(x, y)| (x ^ y).count_ones())
-            .sum::<u32>();
-        rem + ca
-            .map(u32x4::from_slice_unaligned)
-            .zip(cb.map(u32x4::from_slice_unaligned))
-            .map(|(x, y)| (x ^ y).count_ones())
-            .sum::<u32x4>()
-            .wrapping_sum()
-    }
-}
-
-impl SketchEstimate for LongOneBitMinHashValue {
-    #[allow(clippy::cast_lossless)]
-    fn estimate(a: &LongOneBitMinHashValue, b: &LongOneBitMinHashValue) -> f64 {
-        let p = a
-            .bits
-            .iter()
-            .zip(b.bits.iter())
-            .map(|(x, y)| (x ^ y).count_zeros())
-            .sum::<u32>() as f64
-            / (32.0 * a.bits.len() as f64);
+impl SketchEstimate for BagOfWords {
+    fn sketch_estimate<S: BitBasedSketch>(a: &S, b: &S) -> f64 {
+        let p = f64::from(a.same_bits(b)) / (a.num_bits() as f64);
         2.0 * p - 1.0
     }
 }
+
+// impl SketchEstimate for SimHashValue {
+//     #[allow(clippy::cast_lossless)]
+//     fn estimate(a: &SimHashValue, b: &SimHashValue) -> f64 {
+//         let p = a
+//             .bits
+//             .iter()
+//             .zip(b.bits.iter())
+//             .map(|(x, y)| (x ^ y).count_zeros())
+//             .sum::<u32>() as f64
+//             / (32.0 * a.bits.len() as f64);
+//         (std::f64::consts::PI * (1.0 - p)).cos()
+//     }
+// }
+
+// impl BitBasedSketch for LongOneBitMinHashValue {
+//     fn different_bits(&self, other: &Self) -> u32 {
+//         let ca = self.bits.chunks_exact(4);
+//         let cb = other.bits.chunks_exact(4);
+//         let rem = ca
+//             .remainder()
+//             .iter()
+//             .zip(cb.remainder().iter())
+//             .map(|(x, y)| (x ^ y).count_ones())
+//             .sum::<u32>();
+//         rem + ca
+//             .map(u32x4::from_slice_unaligned)
+//             .zip(cb.map(u32x4::from_slice_unaligned))
+//             .map(|(x, y)| (x ^ y).count_ones())
+//             .sum::<u32x4>()
+//             .wrapping_sum()
+//     }
+// }
+
+// impl BitBasedSketch for SimHashValue {
+//     fn different_bits(&self, other: &Self) -> u32 {
+//         let ca = self.bits.chunks_exact(4);
+//         let cb = other.bits.chunks_exact(4);
+//         let rem = ca
+//             .remainder()
+//             .iter()
+//             .zip(cb.remainder().iter())
+//             .map(|(x, y)| (x ^ y).count_ones())
+//             .sum::<u32>();
+//         rem + ca
+//             .map(u32x4::from_slice_unaligned)
+//             .zip(cb.map(u32x4::from_slice_unaligned))
+//             .map(|(x, y)| (x ^ y).count_ones())
+//             .sum::<u32x4>()
+//             .wrapping_sum()
+//     }
+// }
+
+// impl SketchEstimate for LongOneBitMinHashValue {
+//     #[allow(clippy::cast_lossless)]
+//     fn estimate(a: &LongOneBitMinHashValue, b: &LongOneBitMinHashValue) -> f64 {
+//         let p = a
+//             .bits
+//             .iter()
+//             .zip(b.bits.iter())
+//             .map(|(x, y)| (x ^ y).count_zeros())
+//             .sum::<u32>() as f64
+//             / (32.0 * a.bits.len() as f64);
+//         2.0 * p - 1.0
+//     }
+// }
 
 pub trait Sketcher {
     type Input;

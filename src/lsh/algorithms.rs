@@ -43,7 +43,7 @@ pub fn fixed_param_lsh<D, F, H, O, S, V, B, R>(
     experiment: &mut Experiment,
 ) -> usize
 where
-    for<'de> D: ReadBinaryFile + Deserialize<'de> + ExchangeData + Debug,
+    for<'de> D: ReadBinaryFile + Deserialize<'de> + ExchangeData + Debug + SketchEstimate,
     F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
     H: LSHFunction<Input = D, Output = O> + Sync + Send + Clone + 'static,
     O: HashData + PrefixHash + Debug,
@@ -71,9 +71,14 @@ where
     );
     let (global_left, global_right) = load_vectors(left_path, right_path, &config);
 
-    let bloom_filter = Arc::new(AtomicBloomFilter::<ElementId>::from_config(&config, rng.clone()));
-    let bloom_filter_pre_communication =
-        Arc::new(AtomicBloomFilter::<ElementId>::from_config(&config, rng.clone()));
+    let bloom_filter = Arc::new(AtomicBloomFilter::<ElementId>::from_config(
+        &config,
+        rng.clone(),
+    ));
+    let bloom_filter_pre_communication = Arc::new(AtomicBloomFilter::<ElementId>::from_config(
+        &config,
+        rng.clone(),
+    ));
 
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
         let global_left = Arc::clone(&global_left);
@@ -246,13 +251,12 @@ where
         MatrixDirection::Columns,
         probe.clone(),
     );
-    left_hashes
-        .bucket_pred(
-            &right_hashes,
-            move |a, b| sketch_predicate.eval(&a.0, &b.0),
-            move |a, b| !filter.test_and_insert(&(a.1, b.1)),
-            |x| x.1
-        )
+    left_hashes.bucket_pred(
+        &right_hashes,
+        move |a, b| sketch_predicate.eval(&a.0, &b.0),
+        move |a, b| !filter.test_and_insert(&(a.1, b.1)),
+        |x| x.1,
+    )
 }
 
 fn build_sketches<D, K, S, SV>(
@@ -297,7 +301,7 @@ fn generate_candidates_adaptive<K, D, G, T, F, H, S, SV, R, B>(
 ) -> Stream<G, (K, K)>
 where
     K: KeyData + Debug + Into<u64>,
-    D: ExchangeData + Debug,
+    D: ExchangeData + Debug + SketchEstimate,
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
