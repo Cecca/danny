@@ -261,10 +261,10 @@ mod tests {
         let mut sum_preds = 0.0;
 
         for _ in 0..samples {
-            let sketcher = LongOneBitMinHash::new(k, &mut rng);
+            let sketcher = Sketch64::from_jaccard(&mut rng);
             let h1 = sketcher.sketch(&s1);
             let h2 = sketcher.sketch(&s2);
-            let predicted = SketchEstimate::estimate(&h1, &h2);
+            let predicted = BagOfWords::sketch_estimate(&h1, &h2);
             let error = predicted - similarity;
             sum_squared_error += error * error;
             sum_preds += predicted
@@ -284,15 +284,14 @@ mod tests {
         let s1 = UnitNormVector::new(vec![1.0, 0.2, 0.3, 0.7]);
         let s2 = UnitNormVector::new(vec![4.0, 0.2, 2.3, 0.7]);
         let similarity = InnerProduct::cosine(&s1, &s2);
-        let k = 512;
         let mut sum_squared_error = 0.0;
         let mut sum_preds = 0.0;
 
         for _ in 0..samples {
-            let sketcher = LongSimHash::new(k, s1.dim(), &mut rng);
+            let sketcher = Sketch64::from_cosine(s1.dim(), &mut rng);
             let h1 = sketcher.sketch(&s1);
             let h2 = sketcher.sketch(&s2);
-            let predicted = SketchEstimate::estimate(&h1, &h2);
+            let predicted = UnitNormVector::sketch_estimate(&h1, &h2);
             let error = predicted - similarity;
             sum_squared_error += error * error;
             sum_preds += predicted

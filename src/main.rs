@@ -32,7 +32,6 @@ where
                 .sketch_bits
                 .map(|bits| {
                     (
-                        // LongSimHash::new(bits, dim, &mut rng),
                         SV::from_cosine(dim, &mut rng),
                         SketchPredicate::cosine(bits, threshold, config.get_sketch_epsilon()),
                     )
@@ -59,7 +58,6 @@ where
                 .sketch_bits
                 .map(|bits| {
                     (
-                        // LongOneBitMinHash::new(bits, &mut rng),
                         SV::from_jaccard(&mut rng),
                         SketchPredicate::jaccard(bits, threshold, config.get_sketch_epsilon()),
                     )

@@ -70,8 +70,8 @@ impl Hyperplane {
         R: Rng + ?Sized,
     {
         assert!(
-            k < 32,
-            "Only k<32 is supported so to be able to pack hases in words"
+            k <= 32,
+            "Only k<=32 is supported so to be able to pack hashes in words"
         );
         let mut planes = Vec::with_capacity(k);
         let gaussian = Normal::new(0.0, 1.0);
@@ -276,9 +276,9 @@ where
 mod tests {
     use super::*;
     use crate::measure::*;
+    use crate::operators::Route;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
-    use crate::operators::Route;
 
     #[test]
     fn test_hyperplane() {
