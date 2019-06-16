@@ -2,6 +2,7 @@ use crate::lsh::*;
 use crate::types::*;
 use packed_simd::u64x2;
 use packed_simd::u64x4;
+use packed_simd::u64x8;
 use rand::Rng;
 
 pub trait Sketcher {
@@ -293,6 +294,117 @@ where
                     | (self.lsh_functions[5].hash(v) as u64),
                 ((self.lsh_functions[6].hash(v) as u64) << 32)
                     | (self.lsh_functions[7].hash(v) as u64),
+            ],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Abomonation, Hash, Eq, PartialEq)]
+pub struct Sketch512 {
+    data: [u64; 8],
+}
+
+impl BitBasedSketch for Sketch512 {
+    fn different_bits(&self, other: &Self) -> u32 {
+        (u64x8::from_slice_unaligned(&self.data) ^ u64x8::from_slice_unaligned(&other.data))
+            .count_ones()
+            .wrapping_sum() as u32
+    }
+    fn same_bits(&self, other: &Self) -> u32 {
+        (u64x8::from_slice_unaligned(&self.data) ^ u64x8::from_slice_unaligned(&other.data))
+            .count_zeros()
+            .wrapping_sum() as u32
+    }
+    fn num_bits(&self) -> usize {
+        512
+    }
+}
+
+#[derive(Clone)]
+pub struct Sketcher512<T, F>
+where
+    F: LSHFunction<Input = T, Output = u32>,
+{
+    lsh_functions: [F; 16],
+}
+
+impl FromCosine for Sketch512 {
+    type SketcherType = Sketcher512<UnitNormVector, Hyperplane>;
+    fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self::SketcherType {
+        Sketcher512 {
+            lsh_functions: [
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+            ],
+        }
+    }
+}
+
+impl FromJaccard for Sketch512 {
+    type SketcherType = Sketcher512<BagOfWords, OneBitMinHash>;
+    fn from_jaccard<R: Rng>(rng: &mut R) -> Self::SketcherType {
+        Sketcher512 {
+            lsh_functions: [
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+            ],
+        }
+    }
+}
+
+impl<T, F> Sketcher for Sketcher512<T, F>
+where
+    F: LSHFunction<Input = T, Output = u32>,
+{
+    type Input = T;
+    type Output = Sketch512;
+    fn sketch(&self, v: &Self::Input) -> Self::Output {
+        Sketch512 {
+            data: [
+                ((self.lsh_functions[0].hash(v) as u64) << 32)
+                    | (self.lsh_functions[1].hash(v) as u64),
+                ((self.lsh_functions[2].hash(v) as u64) << 32)
+                    | (self.lsh_functions[3].hash(v) as u64),
+                ((self.lsh_functions[4].hash(v) as u64) << 32)
+                    | (self.lsh_functions[5].hash(v) as u64),
+                ((self.lsh_functions[6].hash(v) as u64) << 32)
+                    | (self.lsh_functions[7].hash(v) as u64),
+                ((self.lsh_functions[8].hash(v) as u64) << 32)
+                    | (self.lsh_functions[9].hash(v) as u64),
+                ((self.lsh_functions[10].hash(v) as u64) << 32)
+                    | (self.lsh_functions[11].hash(v) as u64),
+                ((self.lsh_functions[12].hash(v) as u64) << 32)
+                    | (self.lsh_functions[13].hash(v) as u64),
+                ((self.lsh_functions[14].hash(v) as u64) << 32)
+                    | (self.lsh_functions[15].hash(v) as u64),
             ],
         }
     }

@@ -28,15 +28,10 @@ where
             let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
             let threshold = args.threshold;
             let hash_funs_builder = lsh::Hyperplane::collection_builder(threshold, dim);
-            let (sketcher, sketch_predicate) = args
-                .sketch_bits
-                .map(|bits| {
-                    (
-                        SV::from_cosine(dim, &mut rng),
-                        SketchPredicate::cosine(bits, threshold, config.get_sketch_epsilon()),
-                    )
-                })
-                .expect("FIXME: Make the sketches mandatory");
+            let sketch_bits = args.sketch_bits.expect("Sketches are mandatory");
+            let sketcher = SV::from_cosine(dim, &mut rng);
+            let sketch_predicate =
+                SketchPredicate::cosine(sketch_bits, threshold, config.get_sketch_epsilon());
             lsh::fixed_param_lsh::<UnitNormVector, _, _, _, _, _, _, _>(
                 &args.left_path,
                 &args.right_path,
@@ -54,15 +49,10 @@ where
             let k = args.k.expect("K is needed on the command line");
             let threshold = args.threshold;
             let hash_funs_builder = lsh::OneBitMinHash::collection_builder(threshold);
-            let (sketcher, sketch_predicate) = args
-                .sketch_bits
-                .map(|bits| {
-                    (
-                        SV::from_jaccard(&mut rng),
-                        SketchPredicate::jaccard(bits, threshold, config.get_sketch_epsilon()),
-                    )
-                })
-                .expect("FIXME: Make the sketches mandatory");
+            let sketch_bits = args.sketch_bits.expect("Sketch bits are mandatory");
+            let sketcher = SV::from_jaccard(&mut rng);
+            let sketch_predicate =
+                SketchPredicate::jaccard(sketch_bits, threshold, config.get_sketch_epsilon());
             lsh::fixed_param_lsh::<BagOfWords, _, _, _, _, _, _, _>(
                 &args.left_path,
                 &args.right_path,
@@ -97,6 +87,7 @@ fn main() {
             Some(64) => run_lsh::<Sketch64>(&args, &config, &mut experiment),
             Some(128) => run_lsh::<Sketch128>(&args, &config, &mut experiment),
             Some(256) => run_lsh::<Sketch256>(&args, &config, &mut experiment),
+            Some(512) => run_lsh::<Sketch512>(&args, &config, &mut experiment),
             Some(bits) => panic!("Unsupported number of sketch bits: {}", bits),
             None => panic!("you should supply the number of sketch bits"),
         },
