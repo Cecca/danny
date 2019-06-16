@@ -1,4 +1,3 @@
-use crate::types::*;
 use crate::dataset::*;
 use crate::logging::*;
 use crate::lsh::bucket::*;
@@ -6,6 +5,7 @@ use crate::lsh::functions::*;
 use crate::lsh::prefix_hash::*;
 use crate::operators::Route;
 use crate::operators::*;
+use crate::types::*;
 use abomonation::Abomonation;
 use std::clone::Clone;
 use std::collections::HashMap;
@@ -37,7 +37,7 @@ where
         right: &Stream<G, (H, K)>,
         pre: P,
         distinct_pre: PD,
-        result: R
+        result: R,
     ) -> Stream<G, (O, O)>
     where
         P: FnMut(&K, &K) -> bool + 'static,
@@ -59,7 +59,7 @@ where
         right: &Stream<G, (H, K)>,
         mut pred: P,
         mut distinct_pred: PD,
-        result: R
+        result: R,
     ) -> Stream<G, (O, O)>
     where
         P: FnMut(&K, &K) -> bool + 'static,
@@ -136,6 +136,11 @@ where
                             let mut sketch_cnt = 0;
                             let mut bloom_cnt = 0;
                             let start = Instant::now();
+                            let mut check = std::collections::BTreeMap::new();
+                            for (h, _) in &buckets.left {
+                                *check.entry(h).or_insert(0) += 1;
+                            }
+                            info!("Buckets left: {:#?}", check);
                             buckets.for_all(|l, r| {
                                 if pred(l, r) {
                                     if distinct_pred(l, r) {
@@ -218,8 +223,8 @@ impl<G, T, H, K> BucketPrefixesStream<G, T, H, K> for Stream<G, (H, (K, u8))>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + ToStepId,
-    H: HashData + Debug  + PrefixHash,
-    K: ExchangeData + Debug ,
+    H: HashData + Debug + PrefixHash,
+    K: ExchangeData + Debug,
 {
     #[allow(clippy::explicit_counter_loop)]
     fn bucket_prefixes<P, PD>(
@@ -377,7 +382,7 @@ struct RepetitionStopWatch {
     counter: usize,
     name: String,
     logger: Option<Logger<LogEvent>>,
-    verbose: bool
+    verbose: bool,
 }
 
 impl RepetitionStopWatch {
@@ -387,7 +392,7 @@ impl RepetitionStopWatch {
             counter: 0usize,
             name: name.to_owned(),
             logger: logger,
-            verbose
+            verbose,
         }
     }
 
@@ -425,8 +430,8 @@ where
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
     H: HashData + Debug,
-    K: KeyData + Debug ,
-    V: SketchData + Debug ,
+    K: KeyData + Debug,
+    V: SketchData + Debug,
 {
     let worker: u64 = scope.index() as u64;
     let logger = scope.danny_logger();
@@ -482,8 +487,8 @@ where
     T: Timestamp + Succ + ToStepId,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
-    H: HashData + Debug ,
-    K: KeyData + Debug ,
+    H: HashData + Debug,
+    K: KeyData + Debug,
     SV: SketchData + Debug,
 {
     let worker = scope.index() as u64;

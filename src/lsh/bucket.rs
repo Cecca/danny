@@ -40,7 +40,7 @@ where
     H: Ord + Debug,
     K: Debug,
 {
-    left: Vec<(H, K)>,
+    pub left: Vec<(H, K)>,
     right: Vec<(H, K)>,
 }
 
