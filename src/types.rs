@@ -1,6 +1,6 @@
 use crate::measure::{InnerProduct, Jaccard};
 use crate::operators::Route;
-use crate::sketch::{BitBasedSketch, SketchEstimate};
+use crate::sketch::BitBasedSketch;
 use abomonation::Abomonation;
 use rand::distributions::{Distribution, Exp, Normal, Uniform};
 use rand::Rng;

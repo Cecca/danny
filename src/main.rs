@@ -96,6 +96,7 @@ fn main() {
         "lsh" => match args.sketch_bits {
             Some(64) => run_lsh::<Sketch64>(&args, &config, &mut experiment),
             Some(128) => run_lsh::<Sketch128>(&args, &config, &mut experiment),
+            Some(256) => run_lsh::<Sketch256>(&args, &config, &mut experiment),
             Some(bits) => panic!("Unsupported number of sketch bits: {}", bits),
             None => panic!("you should supply the number of sketch bits"),
         },

@@ -1,13 +1,15 @@
 use crate::lsh::*;
-use crate::measure::*;
 use crate::types::*;
-use packed_simd::u32x4;
 use packed_simd::u64x2;
-
-use rand::distributions::{Distribution, Normal, Uniform};
+use packed_simd::u64x4;
 use rand::Rng;
 
-use std::iter::Iterator;
+pub trait Sketcher {
+    type Input;
+    type Output;
+
+    fn sketch(&self, v: &Self::Input) -> Self::Output;
+}
 
 pub trait BitBasedSketch: Clone + Copy {
     fn different_bits(&self, other: &Self) -> u32;
@@ -209,6 +211,93 @@ where
     }
 }
 
+#[derive(Debug, Clone, Copy, Abomonation, Hash, Eq, PartialEq)]
+pub struct Sketch256 {
+    data: [u64; 4],
+}
+
+impl BitBasedSketch for Sketch256 {
+    fn different_bits(&self, other: &Self) -> u32 {
+        (u64x4::from_slice_unaligned(&self.data) ^ u64x4::from_slice_unaligned(&other.data))
+            .count_ones()
+            .wrapping_sum() as u32
+    }
+    fn same_bits(&self, other: &Self) -> u32 {
+        (u64x4::from_slice_unaligned(&self.data) ^ u64x4::from_slice_unaligned(&other.data))
+            .count_zeros()
+            .wrapping_sum() as u32
+    }
+    fn num_bits(&self) -> usize {
+        256
+    }
+}
+
+#[derive(Clone)]
+pub struct Sketcher256<T, F>
+where
+    F: LSHFunction<Input = T, Output = u32>,
+{
+    lsh_functions: [F; 8],
+}
+
+impl FromCosine for Sketch256 {
+    type SketcherType = Sketcher256<UnitNormVector, Hyperplane>;
+    fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self::SketcherType {
+        Sketcher256 {
+            lsh_functions: [
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+            ],
+        }
+    }
+}
+
+impl FromJaccard for Sketch256 {
+    type SketcherType = Sketcher256<BagOfWords, OneBitMinHash>;
+    fn from_jaccard<R: Rng>(rng: &mut R) -> Self::SketcherType {
+        Sketcher256 {
+            lsh_functions: [
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+            ],
+        }
+    }
+}
+
+impl<T, F> Sketcher for Sketcher256<T, F>
+where
+    F: LSHFunction<Input = T, Output = u32>,
+{
+    type Input = T;
+    type Output = Sketch256;
+    fn sketch(&self, v: &Self::Input) -> Self::Output {
+        Sketch256 {
+            data: [
+                ((self.lsh_functions[0].hash(v) as u64) << 32)
+                    | (self.lsh_functions[1].hash(v) as u64),
+                ((self.lsh_functions[2].hash(v) as u64) << 32)
+                    | (self.lsh_functions[3].hash(v) as u64),
+                ((self.lsh_functions[4].hash(v) as u64) << 32)
+                    | (self.lsh_functions[5].hash(v) as u64),
+                ((self.lsh_functions[6].hash(v) as u64) << 32)
+                    | (self.lsh_functions[7].hash(v) as u64),
+            ],
+        }
+    }
+}
+
 pub trait SketchEstimate {
     fn sketch_estimate<S: BitBasedSketch>(a: &S, b: &S) -> f64;
 }
@@ -224,22 +313,6 @@ impl SketchEstimate for BagOfWords {
     fn sketch_estimate<S: BitBasedSketch>(a: &S, b: &S) -> f64 {
         let p = f64::from(a.same_bits(b)) / (a.num_bits() as f64);
         2.0 * p - 1.0
-    }
-}
-
-pub trait Sketcher {
-    type Input;
-    type Output;
-
-    fn sketch(&self, v: &Self::Input) -> Self::Output;
-}
-
-impl Sketcher for Hyperplane {
-    type Input = UnitNormVector;
-    type Output = u32;
-
-    fn sketch(&self, v: &UnitNormVector) -> u32 {
-        self.hash(v)
     }
 }
 
