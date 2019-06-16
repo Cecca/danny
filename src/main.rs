@@ -17,10 +17,11 @@ use danny::types::*;
 use serde_json::Value;
 use std::collections::HashMap;
 
-fn main() {
-    let config = Config::get();
+fn run<SV>(args: CmdlineConfig, config: Config)
+where
+    SV: BitBasedSketch + FromCosine + FromJaccard,
+{
     init_logging(&config);
-    let args = CmdlineConfig::get();
     let mut experiment = Experiment::from_config(&config, &args);
 
     debug!("Starting...");
@@ -179,5 +180,17 @@ fn main() {
             row!("output_size" => count, "total_time_ms" => total_time, "recall" => recall, "speedup" => speedup),
         );
         experiment.save();
+    }
+}
+
+fn main() {
+    let config = Config::get();
+    init_logging(&config);
+    let args = CmdlineConfig::get();
+    match args.sketch_bits {
+        Some(64) => run::<Sketch64>(args, config),
+        Some(128) => run::<Sketch128>(args, config),
+        Some(bits) => panic!("Unsupported number of sketch bits: {}", bits),
+        None => panic!("you should supply the number of sketch bits"),
     }
 }

@@ -13,12 +13,14 @@ pub trait BitBasedSketch {
     fn different_bits(&self, other: &Self) -> u32;
 }
 
-pub trait FromJaccard {
-    fn from_jaccard<R: Rng>(rng: &mut R) -> Self;
+pub trait FromJaccard: Sized {
+    type SketcherType: Sketcher<Input = BagOfWords, Output = Self>;
+    fn from_jaccard<R: Rng>(rng: &mut R) -> Self::SketcherType;
 }
 
-pub trait FromCosine {
-    fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self;
+pub trait FromCosine: Sized {
+    type SketcherType: Sketcher<Input = UnitNormVector, Output = Self>;
+    fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self::SketcherType;
 }
 
 pub struct Sketch64 {
@@ -38,17 +40,19 @@ where
     lsh_functions: [F; 2],
 }
 
-impl FromCosine for Sketcher64<UnitNormVector, Hyperplane> {
-    fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self {
-        Self {
+impl FromCosine for Sketch64 {
+    type SketcherType = Sketcher64<UnitNormVector, Hyperplane>;
+    fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self::SketcherType {
+        Sketcher64 {
             lsh_functions: [Hyperplane::new(32, dim, rng), Hyperplane::new(32, dim, rng)],
         }
     }
 }
 
-impl FromJaccard for Sketcher64<BagOfWords, OneBitMinHash> {
-    fn from_jaccard<R: Rng>(rng: &mut R) -> Self {
-        Self {
+impl FromJaccard for Sketch64 {
+    type SketcherType = Sketcher64<BagOfWords, OneBitMinHash>;
+    fn from_jaccard<R: Rng>(rng: &mut R) -> Self::SketcherType {
+        Sketcher64 {
             lsh_functions: [OneBitMinHash::new(32, rng), OneBitMinHash::new(32, rng)],
         }
     }
@@ -88,9 +92,10 @@ where
     lsh_functions: [F; 4],
 }
 
-impl FromCosine for Sketcher128<UnitNormVector, Hyperplane> {
-    fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self {
-        Self {
+impl FromCosine for Sketch128 {
+    type SketcherType = Sketcher128<UnitNormVector, Hyperplane>;
+    fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self::SketcherType {
+        Sketcher128 {
             lsh_functions: [
                 Hyperplane::new(32, dim, rng),
                 Hyperplane::new(32, dim, rng),
@@ -101,9 +106,10 @@ impl FromCosine for Sketcher128<UnitNormVector, Hyperplane> {
     }
 }
 
-impl FromJaccard for Sketcher128<BagOfWords, OneBitMinHash> {
-    fn from_jaccard<R: Rng>(rng: &mut R) -> Self {
-        Self {
+impl FromJaccard for Sketch128 {
+    type SketcherType = Sketcher128<BagOfWords, OneBitMinHash>;
+    fn from_jaccard<R: Rng>(rng: &mut R) -> Self::SketcherType {
+        Sketcher128 {
             lsh_functions: [
                 OneBitMinHash::new(32, rng),
                 OneBitMinHash::new(32, rng),
