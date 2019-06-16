@@ -19,8 +19,8 @@ pub trait HashData: ExchangeData + Hash + Eq + Copy + Ord + Route {}
 impl<T: ExchangeData + Hash + Eq + Copy + Ord + Route> HashData for T {}
 
 /// Composite trait for sketch data.
-pub trait SketchData: ExchangeData + Hash + Eq + BitBasedSketch {}
-impl<T: ExchangeData + Hash + Eq + BitBasedSketch> SketchData for T {}
+pub trait SketchData: ExchangeData + Copy + Hash + Eq + BitBasedSketch {}
+impl<T: ExchangeData + Copy + Hash + Eq + BitBasedSketch> SketchData for T {}
 
 #[derive(Clone, Default)]
 pub struct VectorWithNorm {
