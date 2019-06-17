@@ -80,6 +80,8 @@ where
         rng.clone(),
     ));
 
+    let cost_balance = config.get_cost_balance();
+
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
         let global_left = Arc::clone(&global_left);
         let global_right = Arc::clone(&global_right);
@@ -105,6 +107,7 @@ where
                     Arc::clone(&global_right),
                     min_k,
                     max_k,
+                    cost_balance,
                     scope.clone(),
                     hash_collection_builder,
                     sketcher,
@@ -291,6 +294,7 @@ fn generate_candidates_adaptive<K, D, G, T, F, H, S, SV, R, B>(
     right: Arc<ChunkedDataset<K, D>>,
     min_k: usize,
     max_k: usize,
+    balance: f64,
     scope: G,
     hash_collection_builder: B,
     sketcher: S,
@@ -343,6 +347,7 @@ where
         scope.clone(),
         Arc::clone(&left),
         Arc::clone(&right),
+        balance,
         Arc::clone(&multihash),
         Arc::clone(&sketches_left),
         Arc::clone(&sketches_right),

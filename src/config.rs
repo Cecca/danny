@@ -58,8 +58,10 @@ impl Config {
             DANNY_BASELINES_PATH  The path to the baselines file
             DANNY_ESTIMATOR_SAMPLES  The number of vectors to sample _in each worker_ to
                                      estimate the best k value
-            DANNY_COST_BALANCE In the adaptive algorithm, a number less than 1 gives more weight
-                               to the collisions, a number larger than 1 penalizes the repetitions
+            DANNY_COST_BALANCE In the adaptive algorithm, a number between 0 and 1 (default 0.5)
+                               Values toward 0 penalize collisions (thus making more points have a higher level), 
+                               whereas values toward 1 penalize repetitions (thus making basically all the points 
+                               consider just collisions for the cost estimation)
             DANNY_BLOOM_BITS  Number of bits for the bloom filter (default 4G, use a string in the form \\d{K,M,G}B?)
             DANNY_BLOOM_K     Number of hash functions of the bloom filter (default 5)
         "

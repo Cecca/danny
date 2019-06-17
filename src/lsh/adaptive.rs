@@ -81,6 +81,7 @@ fn compute_best_level<G, K, D, H, F, V>(
     hasher: Arc<MultilevelHasher<D, H, F>>,
     sketches: Arc<HashMap<K, V>>,
     weight: f64,
+    balance: f64,
     matrix: MatrixDescription,
     direction: MatrixDirection,
 ) -> Stream<G, (K, usize)>
@@ -138,7 +139,8 @@ where
                             let repetitions = hasher.repetitions_at_level(level) as f64;
                             let prob_sum: f64 =
                                 probabilities.iter().map(|&p| p.powi(level as i32)).sum();
-                            let cost = repetitions * (1.0 + weight * prob_sum);
+                            let cost =
+                                repetitions * (1.0 * balance + (1.0 - balance) * weight * prob_sum);
                             if cost < min_cost {
                                 min_cost = cost;
                                 best_level = level;
@@ -155,11 +157,13 @@ where
         })
 }
 
+/// A balance towards 0 penalizes collisions, a balance towards 1 penalizes repetitions
 #[allow(clippy::too_many_arguments)]
 pub fn find_best_level<G, T, K, D, H, F, V, R>(
     scope: G,
     left: Arc<ChunkedDataset<K, D>>,
     right: Arc<ChunkedDataset<K, D>>,
+    balance: f64,
     hasher: Arc<MultilevelHasher<D, H, F>>,
     sketches_left: Arc<HashMap<K, V>>,
     sketches_right: Arc<HashMap<K, V>>,
@@ -176,6 +180,10 @@ where
     V: ExchangeData + Debug + BitBasedSketch,
     R: Rng + Clone + 'static,
 {
+    assert!(
+        balance >= 0.0 && balance <= 1.0,
+        "Balance should be between 0 and 1"
+    );
     let prob_left = 4.0 / (left.global_n as f64).sqrt();
     let weight_left = 1.0 / prob_left;
     let prob_right = 4.0 / (right.global_n as f64).sqrt();
@@ -206,6 +214,7 @@ where
         Arc::clone(&hasher),
         Arc::clone(&sketches_left),
         weight_right,
+        balance,
         matrix,
         MatrixDirection::Rows,
     );
@@ -215,6 +224,7 @@ where
         Arc::clone(&hasher),
         Arc::clone(&sketches_right),
         weight_left,
+        balance,
         matrix,
         MatrixDirection::Columns,
     );
