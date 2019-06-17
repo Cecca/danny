@@ -33,8 +33,6 @@ pub struct Config {
     baselines_path: PathBuf,
     #[serde(default = "Config::default_sketch_epsilon")]
     sketch_epsilon: f64,
-    #[serde(default = "Config::default_estimator_samples")]
-    estimator_samples: usize,
     #[serde(default = "Config::default_cost_balance")]
     cost_balance: f64,
     #[serde(default = "Config::default_bloom_bits")]
@@ -56,8 +54,6 @@ impl Config {
             DANNY_SEED        The seed for the random number generator
             DANNY_SKETCH_EPSILON  The value of epsilon for the sketcher (if used)
             DANNY_BASELINES_PATH  The path to the baselines file
-            DANNY_ESTIMATOR_SAMPLES  The number of vectors to sample _in each worker_ to
-                                     estimate the best k value
             DANNY_COST_BALANCE In the adaptive algorithm, a number between 0 and 1 (default 0.5)
                                Values toward 0 penalize collisions (thus making more points have a higher level), 
                                whereas values toward 1 penalize repetitions (thus making basically all the points 
@@ -72,10 +68,6 @@ impl Config {
             Ok(config) => config,
             Err(error) => panic!("{:#?}", error),
         }
-    }
-
-    fn default_estimator_samples() -> usize {
-        100
     }
 
     fn default_bloom_bits() -> String {
@@ -169,10 +161,6 @@ impl Config {
 
     pub fn get_baselines_path(&self) -> PathBuf {
         self.baselines_path.clone()
-    }
-
-    pub fn get_estimator_samples(&self) -> usize {
-        self.estimator_samples
     }
 
     pub fn get_cost_balance(&self) -> f64 {
