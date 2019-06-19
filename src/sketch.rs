@@ -4,6 +4,8 @@ use packed_simd::u64x2;
 use packed_simd::u64x4;
 use packed_simd::u64x8;
 use rand::Rng;
+use statrs::distribution::Binomial;
+use statrs::distribution::Discrete;
 
 pub trait Sketcher {
     type Input;
@@ -182,15 +184,21 @@ where
     T: BitBasedSketch,
 {
     pub fn from_probability(k: usize, p: f64, epsilon: f64) -> Self {
-        let k = k as f64;
-        let delta = (3.0 / (p * k) * (1.0 / epsilon).ln()).sqrt();
-        let bit_threshold = ((1.0 + delta) * p * k).ceil() as u32;
+        let distr = Binomial::new(p, k as u64).expect("Error creating the distribution");
+        let mut prob_different_bits = 0.0;
+        let mut bit_threshold = 0;
+        while prob_different_bits < 1.0 - epsilon {
+            prob_different_bits += distr.pmf(bit_threshold);
+            bit_threshold += 1;
+        }
         debug!(
-            "Using bit thresold {} of different bits to reject (delta {} epsilon {})",
-            bit_threshold, delta, epsilon
+            "Using bit thresold {} of different bits to reject (epsilon {}, mean {}",
+            bit_threshold,
+            epsilon,
+            k as f64 * p,
         );
         SketchPredicate {
-            bit_threshold,
+            bit_threshold: bit_threshold as u32,
             _marker: std::marker::PhantomData,
         }
     }

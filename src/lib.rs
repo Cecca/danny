@@ -24,6 +24,7 @@ extern crate rand_xorshift;
 extern crate serde_json;
 extern crate siphasher;
 extern crate smallbitvec;
+extern crate statrs;
 extern crate timely;
 
 #[macro_use]
