@@ -257,7 +257,8 @@ where
     left_hashes.bucket_pred(
         &right_hashes,
         move |a, b| sketch_predicate.eval(&a.0, &b.0),
-        move |a, b| !filter.test_and_insert(&(a.1, b.1)),
+        // move |a, b| !filter.test_and_insert(&(a.1, b.1)),
+        |_, _| true,
         |x| x.1,
     )
 }
@@ -386,7 +387,8 @@ where
             &right_hashes,
             min_level,
             move |l, r| sketch_predicate.eval(&l.1, &r.1),
-            move |l: &(K, SV), r: &(K, SV)| !filter.test_and_insert(&(l.0, r.0)),
+            // move |l: &(K, SV), r: &(K, SV)| !filter.test_and_insert(&(l.0, r.0)),
+            |_, _| true,
         )
         .map(|(l, r)| (l.0, r.0))
 }
