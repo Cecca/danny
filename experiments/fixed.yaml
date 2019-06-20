@@ -5,7 +5,7 @@ environment:
   DANNY_BASELINES_PATH: "/mnt/fast_storage/users/mcec/baselines.csv"
   DANNY_COST_BALANCE: 0.5
   DANNY_DATA_DIR: /mnt/fast_storage/users/mcec
-  DANNY_SKETCH_EPSILON: 0.9
+  DANNY_SKETCH_EPSILON: 0.01
 experiments:
 
   - name: Glove fixed
@@ -18,15 +18,12 @@ experiments:
         - 13124534
         - 1235
         - 49176895
-        - 12087
-        - 879865
-        - 71958
     parameters:
       --algorithm: lsh
       --range: [0.5,0.7,0.9]
       --measure: cosine
-      --sketch-bits: [64,128,256,512]
-      -k: [13,14,15,16,17]
+      --sketch-bits: 128
+      -k: [13,15,17]
     arguments:
       - ["{{ dataset('Glove-27-200') }}", "{{ dataset('Glove-27-200') }}"]
 
@@ -39,15 +36,12 @@ experiments:
         - 13124534
         - 1235
         - 49176895
-        - 12087
-        - 879865
-        - 71958
     parameters:
       --algorithm: lsh
       --range: [0.5,0.7,0.9]
       --measure: jaccard
-      --sketch-bits: [64,128,256,512]
-      -k: [11,12,13,14,15]
+      --sketch-bits: 128
+      -k: [11,13,15]
     arguments:
       - ["{{ dataset('AOL') }}", "{{ dataset('AOL') }}"]
       - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
