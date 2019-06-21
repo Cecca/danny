@@ -120,6 +120,7 @@ where
                         .expect("There should be the entry for this time!");
                     // Find the best level for each point
                     let mut session = output.session(&t);
+                    let mut cnt = 0;
                     for (k, _v) in vecs.iter_stripe(matrix, direction, worker) {
                         let sketch_v = sketches
                             .get(k)
@@ -148,7 +149,12 @@ where
                         }
                         *histogram.entry(best_level).or_insert(0) += 1;
                         session.give((k.clone(), best_level));
+                        cnt += 1;
                     }
+                    info!(
+                        "Estimated best level for {} points out of {}",
+                        cnt, vecs.global_n
+                    );
                     for (level, count) in histogram {
                         log_event!(logger, LogEvent::AdaptiveLevelHistogram(level, count));
                     }
