@@ -120,6 +120,7 @@ where
                         .expect("There should be the entry for this time!");
                     // Find the best level for each point
                     let mut session = output.session(&t);
+                    let mut cnt = 0;
                     for (k, _v) in vecs.iter_stripe(matrix, direction, worker) {
                         let sketch_v = sketches
                             .get(k)
@@ -135,20 +136,51 @@ where
                         // Try the different levels
                         let mut best_level = min_level;
                         let mut min_cost = std::f64::INFINITY;
+                        let mut best_estimated_collisions = 0.0;
+                        let mut best_repetitions = 0.0;
                         for level in min_level..=max_level {
                             let repetitions = hasher.repetitions_at_level(level) as f64;
                             let prob_sum: f64 =
                                 probabilities.iter().map(|&p| p.powi(level as i32)).sum();
+                            let estimated_collisions: f64 = weight * prob_sum;
                             let cost =
-                                repetitions * (1.0 * balance + (1.0 - balance) * weight * prob_sum);
+                                repetitions * (1.0 * balance + (1.0 - balance) * estimated_collisions);
+                            info!(
+                                "Estimating cost for point {:?} at level {} ({:.2}): {:.2} [{:.2} + {:.2} ({:.2} + {:.2})]",
+                                k,
+                                level,
+                                weight,
+                                cost,
+                                repetitions,
+                                estimated_collisions,
+                                balance * repetitions,
+                                (1.0 - balance) * estimated_collisions,
+                            );
                             if cost < min_cost {
                                 min_cost = cost;
                                 best_level = level;
+                                best_estimated_collisions = estimated_collisions;
+                                best_repetitions = repetitions;
                             }
                         }
+                        info!(
+                            "Cost for point {:?}: {} [{} + {} ({} + {})], assigned level {}",
+                            k,
+                            min_cost,
+                            best_repetitions,
+                            best_estimated_collisions,
+                            balance * best_repetitions,
+                            (1.0 - balance) * best_estimated_collisions,
+                            best_level
+                        );
                         *histogram.entry(best_level).or_insert(0) += 1;
                         session.give((k.clone(), best_level));
+                        cnt += 1;
                     }
+                    info!(
+                        "Estimated best level for {} points out of {}",
+                        cnt, vecs.global_n
+                    );
                     for (level, count) in histogram {
                         log_event!(logger, LogEvent::AdaptiveLevelHistogram(level, count));
                     }
@@ -164,6 +196,7 @@ pub fn find_best_level<G, T, K, D, H, F, V, R>(
     left: Arc<ChunkedDataset<K, D>>,
     right: Arc<ChunkedDataset<K, D>>,
     balance: f64,
+    sampling_factor: f64,
     hasher: Arc<MultilevelHasher<D, H, F>>,
     sketches_left: Arc<HashMap<K, V>>,
     sketches_right: Arc<HashMap<K, V>>,
@@ -184,9 +217,9 @@ where
         balance >= 0.0 && balance <= 1.0,
         "Balance should be between 0 and 1"
     );
-    let prob_left = 4.0 / (left.global_n as f64).sqrt();
+    let prob_left = sampling_factor / (left.global_n as f64).sqrt();
     let weight_left = 1.0 / prob_left;
-    let prob_right = 4.0 / (right.global_n as f64).sqrt();
+    let prob_right = sampling_factor / (right.global_n as f64).sqrt();
     let weight_right = 1.0 / prob_right;
 
     let sample_left = sample_sketches(

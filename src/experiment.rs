@@ -36,6 +36,7 @@ impl Experiment {
             .tag("seed", config.get_seed())
             .tag("sketch_epsilon", config.get_sketch_epsilon())
             .tag("cost_balance", config.get_cost_balance())
+            .tag("sampling_factor", config.get_sampling_factor())
             .tag("measure", cmdline.measure.clone())
             .tag("threshold", cmdline.threshold)
             .tag("left_path", cmdline.left_path.clone())

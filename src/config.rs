@@ -35,6 +35,8 @@ pub struct Config {
     sketch_epsilon: f64,
     #[serde(default = "Config::default_cost_balance")]
     cost_balance: f64,
+    #[serde(default = "Config::default_sampling_factor")]
+    sampling_factor: f64,
     #[serde(default = "Config::default_bloom_bits")]
     bloom_bits: String,
     #[serde(default = "Config::default_bloom_k")]
@@ -54,6 +56,7 @@ impl Config {
             DANNY_SEED        The seed for the random number generator
             DANNY_SKETCH_EPSILON  The value of epsilon for the sketcher (if used)
             DANNY_BASELINES_PATH  The path to the baselines file
+            DANNY_SAMPLING_FACTOR  We take this number times sqrt(n) samples in the cost estimation (default 10)
             DANNY_COST_BALANCE In the adaptive algorithm, a number between 0 and 1 (default 0.5)
                                Values toward 0 penalize collisions (thus making more points have a higher level), 
                                whereas values toward 1 penalize repetitions (thus making basically all the points 
@@ -131,6 +134,10 @@ impl Config {
         0.5
     }
 
+    fn default_sampling_factor() -> f64 {
+        10.0
+    }
+
     fn default_threads() -> usize {
         1
     }
@@ -169,6 +176,14 @@ impl Config {
             "Cost balance should be between 0 and 1"
         );
         self.cost_balance
+    }
+
+    pub fn get_sampling_factor(&self) -> f64 {
+        assert!(
+            self.sampling_factor >= 0.0,
+            "Sampling factor should be larger than 1"
+        );
+        self.sampling_factor
     }
 
     pub fn get_timely_builder(&self) -> (Vec<GenericBuilder>, Box<dyn Any + 'static>) {
