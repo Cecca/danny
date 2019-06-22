@@ -145,14 +145,15 @@ where
                             let cost =
                                 repetitions * (1.0 * balance + (1.0 - balance) * weight * prob_sum);
                             info!(
-                                "Estimating cost for point {:?}: {} [{} + {} ({} + {})], assigned level {}",
+                                "Estimating cost for point {:?} at level {}: {:.2} [{:.2} + {:.2}*{:.2} ({:.2} + {:.2})]",
                                 k,
+                                level,
                                 cost,
                                 repetitions,
+                                weight,
                                 prob_sum,
                                 balance * repetitions,
-                                (1.0 - balance) * prob_sum,
-                                best_level
+                                (1.0 - balance) * weight * prob_sum,
                             );
                             if cost < min_cost {
                                 min_cost = cost;
