@@ -216,6 +216,7 @@ where
         balance >= 0.0 && balance <= 1.0,
         "Balance should be between 0 and 1"
     );
+    info!("Using sampling factor {}", sampling_factor);
     let prob_left = sampling_factor / (left.global_n as f64).sqrt();
     let weight_left = 1.0 / prob_left;
     let prob_right = sampling_factor / (right.global_n as f64).sqrt();
