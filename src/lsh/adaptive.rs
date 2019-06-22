@@ -159,7 +159,7 @@ where
                             if cost < min_cost {
                                 min_cost = cost;
                                 best_level = level;
-                                best_estimated_collisions;
+                                best_estimated_collisions = estimated_collisions;
                                 best_repetitions = repetitions;
                             }
                         }
