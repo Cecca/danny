@@ -183,7 +183,6 @@ impl Config {
             self.sampling_factor >= 0.0,
             "Sampling factor should be larger than 1"
         );
-        info!("Returning sampling factor {}", self.sampling_factor);
         self.sampling_factor
     }
 

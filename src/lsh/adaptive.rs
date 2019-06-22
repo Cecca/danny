@@ -136,29 +136,30 @@ where
                         // Try the different levels
                         let mut best_level = min_level;
                         let mut min_cost = std::f64::INFINITY;
-                        let mut best_sum_probabilities = 0.0;
+                        let mut best_estimated_collisions = 0.0;
                         let mut best_repetitions = 0.0;
                         for level in min_level..=max_level {
                             let repetitions = hasher.repetitions_at_level(level) as f64;
                             let prob_sum: f64 =
                                 probabilities.iter().map(|&p| p.powi(level as i32)).sum();
+                            let estimated_collisions: f64 = weight * prob_sum;
                             let cost =
-                                repetitions * (1.0 * balance + (1.0 - balance) * weight * prob_sum);
+                                repetitions * (1.0 * balance + (1.0 - balance) * estimated_collisions);
                             info!(
-                                "Estimating cost for point {:?} at level {}: {:.2} [{:.2} + {:.2}*{:.2} ({:.2} + {:.2})]",
+                                "Estimating cost for point {:?} at level {} ({:.2}): {:.2} [{:.2} + {:.2} ({:.2} + {:.2})]",
                                 k,
                                 level,
+                                weight,
                                 cost,
                                 repetitions,
-                                weight,
-                                prob_sum,
+                                estimated_collisions,
                                 balance * repetitions,
-                                (1.0 - balance) * weight * prob_sum,
+                                (1.0 - balance) * estimated_collisions,
                             );
                             if cost < min_cost {
                                 min_cost = cost;
                                 best_level = level;
-                                best_sum_probabilities = prob_sum;
+                                best_estimated_collisions;
                                 best_repetitions = repetitions;
                             }
                         }
@@ -167,9 +168,9 @@ where
                             k,
                             min_cost,
                             best_repetitions,
-                            best_sum_probabilities,
+                            best_estimated_collisions,
                             balance * best_repetitions,
-                            (1.0 - balance) * best_sum_probabilities,
+                            (1.0 - balance) * best_estimated_collisions,
                             best_level
                         );
                         *histogram.entry(best_level).or_insert(0) += 1;
@@ -216,7 +217,6 @@ where
         balance >= 0.0 && balance <= 1.0,
         "Balance should be between 0 and 1"
     );
-    info!("Using sampling factor {}", sampling_factor);
     let prob_left = sampling_factor / (left.global_n as f64).sqrt();
     let weight_left = 1.0 / prob_left;
     let prob_right = sampling_factor / (right.global_n as f64).sqrt();
