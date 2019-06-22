@@ -140,6 +140,7 @@ where
                         let mut best_repetitions = 0.0;
                         for level in min_level..=max_level {
                             let repetitions = hasher.repetitions_at_level(level) as f64;
+                            info!("Repetitions at level {}: {}", level, repetitions);
                             let prob_sum: f64 =
                                 probabilities.iter().map(|&p| p.powi(level as i32)).sum();
                             let cost =
@@ -152,7 +153,8 @@ where
                             }
                         }
                         info!(
-                            "Cost for point: {} [{} + {} ({} + {})], assigned level {}",
+                            "Cost for point {:?}: {} [{} + {} ({} + {})], assigned level {}",
+                            k,
                             min_cost,
                             best_repetitions,
                             best_sum_probabilities,
