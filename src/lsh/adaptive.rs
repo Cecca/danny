@@ -136,6 +136,8 @@ where
                         // Try the different levels
                         let mut best_level = min_level;
                         let mut min_cost = std::f64::INFINITY;
+                        let mut best_sum_probabilities = 0.0;
+                        let mut best_repetitions = 0.0;
                         for level in min_level..=max_level {
                             let repetitions = hasher.repetitions_at_level(level) as f64;
                             let prob_sum: f64 =
@@ -145,8 +147,14 @@ where
                             if cost < min_cost {
                                 min_cost = cost;
                                 best_level = level;
+                                best_sum_probabilities = prob_sum;
+                                best_repetitions = repetitions;
                             }
                         }
+                        info!(
+                            "Cost for point: {} [{} + {}], assigned level {}",
+                            best_repetitions, best_sum_probabilities, min_cost, best_level
+                        );
                         *histogram.entry(best_level).or_insert(0) += 1;
                         session.give((k.clone(), best_level));
                         cnt += 1;
