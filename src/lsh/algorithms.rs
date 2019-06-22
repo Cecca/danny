@@ -81,6 +81,7 @@ where
     ));
 
     let cost_balance = config.get_cost_balance();
+    let sampling_factor = config.get_sampling_factor();
 
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
         let global_left = Arc::clone(&global_left);
@@ -108,6 +109,7 @@ where
                     min_k,
                     max_k,
                     cost_balance,
+                    sampling_factor,
                     scope.clone(),
                     hash_collection_builder,
                     sketcher,
@@ -296,6 +298,7 @@ fn generate_candidates_adaptive<K, D, G, T, F, H, S, SV, R, B>(
     min_k: usize,
     max_k: usize,
     balance: f64,
+    sampling_factor: f64,
     scope: G,
     hash_collection_builder: B,
     sketcher: S,
@@ -349,6 +352,7 @@ where
         Arc::clone(&left),
         Arc::clone(&right),
         balance,
+        sampling_factor,
         Arc::clone(&multihash),
         Arc::clone(&sketches_left),
         Arc::clone(&sketches_right),

@@ -195,6 +195,7 @@ pub fn find_best_level<G, T, K, D, H, F, V, R>(
     left: Arc<ChunkedDataset<K, D>>,
     right: Arc<ChunkedDataset<K, D>>,
     balance: f64,
+    sampling_factor: f64,
     hasher: Arc<MultilevelHasher<D, H, F>>,
     sketches_left: Arc<HashMap<K, V>>,
     sketches_right: Arc<HashMap<K, V>>,
@@ -215,9 +216,9 @@ where
         balance >= 0.0 && balance <= 1.0,
         "Balance should be between 0 and 1"
     );
-    let prob_left = 4.0 / (left.global_n as f64).sqrt();
+    let prob_left = sampling_factor / (left.global_n as f64).sqrt();
     let weight_left = 1.0 / prob_left;
-    let prob_right = 4.0 / (right.global_n as f64).sqrt();
+    let prob_right = sampling_factor / (right.global_n as f64).sqrt();
     let weight_right = 1.0 / prob_right;
 
     let sample_left = sample_sketches(
