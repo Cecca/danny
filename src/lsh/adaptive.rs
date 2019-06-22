@@ -136,50 +136,25 @@ where
                         // Try the different levels
                         let mut best_level = min_level;
                         let mut min_cost = std::f64::INFINITY;
-                        let mut best_estimated_collisions = 0.0;
-                        let mut best_repetitions = 0.0;
                         for level in min_level..=max_level {
                             let repetitions = hasher.repetitions_at_level(level) as f64;
                             let prob_sum: f64 =
                                 probabilities.iter().map(|&p| p.powi(level as i32)).sum();
                             let estimated_collisions: f64 = weight * prob_sum;
-                            let cost =
-                                repetitions * (1.0 * balance + (1.0 - balance) * estimated_collisions);
-                            info!(
-                                "Estimating cost for point {:?} at level {} ({:.2}): {:.2} [{:.2} + {:.2} ({:.2} + {:.2})]",
-                                k,
-                                level,
-                                weight,
-                                cost,
-                                repetitions,
-                                estimated_collisions,
-                                balance * repetitions,
-                                (1.0 - balance) * estimated_collisions,
-                            );
+                            let cost = repetitions
+                                * (1.0 * balance + (1.0 - balance) * estimated_collisions);
                             if cost < min_cost {
                                 min_cost = cost;
                                 best_level = level;
-                                best_estimated_collisions = estimated_collisions;
-                                best_repetitions = repetitions;
                             }
                         }
-                        info!(
-                            "Cost for point {:?}: {} [{} + {} ({} + {})], assigned level {}",
-                            k,
-                            min_cost,
-                            best_repetitions,
-                            best_estimated_collisions,
-                            balance * best_repetitions,
-                            (1.0 - balance) * best_estimated_collisions,
-                            best_level
-                        );
                         *histogram.entry(best_level).or_insert(0) += 1;
                         session.give((k.clone(), best_level));
                         cnt += 1;
                     }
                     info!(
-                        "Estimated best level for {} points out of {}",
-                        cnt, vecs.global_n
+                        "Estimated best level for {} points out of {}\n{:?}",
+                        cnt, vecs.global_n, histogram
                     );
                     for (level, count) in histogram {
                         log_event!(logger, LogEvent::AdaptiveLevelHistogram(level, count));
