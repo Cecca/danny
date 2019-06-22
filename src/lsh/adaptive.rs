@@ -152,8 +152,13 @@ where
                             }
                         }
                         info!(
-                            "Cost for point: {} [{} + {}], assigned level {}",
-                            best_repetitions, best_sum_probabilities, min_cost, best_level
+                            "Cost for point: {} [{} + {} ({} + {})], assigned level {}",
+                            min_cost,
+                            best_repetitions,
+                            best_sum_probabilities,
+                            balance * best_repetitions,
+                            (1.0 - balance) * best_sum_probabilities,
+                            best_level
                         );
                         *histogram.entry(best_level).or_insert(0) += 1;
                         session.give((k.clone(), best_level));
