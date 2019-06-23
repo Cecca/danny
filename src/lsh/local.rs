@@ -5,8 +5,8 @@ use crate::experiment::*;
 use crate::io::*;
 use crate::logging::*;
 use crate::lsh::functions::*;
-use crate::types::*;
 use crate::operators::*;
+use crate::types::*;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
 

@@ -321,7 +321,10 @@ pub fn load_vectors<D>(
     left_path_main: &str,
     right_path_main: &str,
     config: &Config,
-) -> (Arc<ChunkedDataset<ElementId, D>>, Arc<ChunkedDataset<ElementId, D>>)
+) -> (
+    Arc<ChunkedDataset<ElementId, D>>,
+    Arc<ChunkedDataset<ElementId, D>>,
+)
 where
     for<'de> D: Deserialize<'de> + ReadBinaryFile + Sync + Send + Clone + 'static,
 {

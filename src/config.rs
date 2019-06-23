@@ -41,6 +41,8 @@ pub struct Config {
     bloom_bits: String,
     #[serde(default = "Config::default_bloom_k")]
     bloom_k: usize,
+    #[serde(default = "Config::default_desired_bucket_size")]
+    bucket_size: u32,
 }
 
 #[allow(dead_code)]
@@ -63,6 +65,7 @@ impl Config {
                                consider just collisions for the cost estimation)
             DANNY_BLOOM_BITS  Number of bits for the bloom filter (default 4G, use a string in the form \\d{K,M,G}B?)
             DANNY_BLOOM_K     Number of hash functions of the bloom filter (default 5)
+            DANNY_BUCKET_SIZE  The desired number of items in each bucket
         "
     }
 
@@ -184,6 +187,14 @@ impl Config {
             "Sampling factor should be larger than 1"
         );
         self.sampling_factor
+    }
+
+    pub fn get_desired_bucket_size(&self) -> u32 {
+        self.bucket_size
+    }
+
+    pub fn default_desired_bucket_size() -> u32 {
+        256
     }
 
     pub fn get_timely_builder(&self) -> (Vec<GenericBuilder>, Box<dyn Any + 'static>) {

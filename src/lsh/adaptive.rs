@@ -1,27 +1,55 @@
+use crate::config::*;
 use crate::dataset::*;
 use crate::logging::*;
 use crate::lsh::*;
 use crate::operators::*;
 use crate::sketch::*;
-
 use rand::Rng;
-
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
-
 use timely::dataflow::channels::pact::Pipeline;
-
 use timely::dataflow::operators::generic::source;
-
 use timely::dataflow::operators::*;
-
 use timely::dataflow::*;
-
 use timely::progress::Timestamp;
-
 use timely::ExchangeData;
+
+#[derive(Debug, Clone, Copy)]
+pub struct AdaptiveParams {
+    pub sampling_factor: f64,
+    pub balance: f64,
+    pub weight: f64,
+    pub bucket_size: u32,
+}
+
+impl AdaptiveParams {
+    pub fn from_config(config: &Config) -> Self {
+        let cost_balance = config.get_cost_balance();
+        let sampling_factor = config.get_sampling_factor();
+        let bucket_size = config.get_desired_bucket_size();
+        assert!(
+            cost_balance >= 0.0 && cost_balance <= 1.0,
+            "Balance should be between 0 and 1"
+        );
+        Self {
+            sampling_factor,
+            balance: cost_balance,
+            bucket_size,
+            weight: 1.0,
+        }
+    }
+
+    pub fn with_weight(&self, weight: f64) -> Self {
+        Self {
+            weight,
+            sampling_factor: self.sampling_factor,
+            balance: self.balance,
+            bucket_size: self.bucket_size,
+        }
+    }
+}
 
 #[allow(dead_code, clippy::too_many_arguments)]
 fn sample_sketches<G, K, D, V, R>(
@@ -80,8 +108,7 @@ fn compute_best_level<G, K, D, H, F, V>(
     vecs: Arc<ChunkedDataset<K, D>>,
     hasher: Arc<MultilevelHasher<D, H, F>>,
     sketches: Arc<HashMap<K, V>>,
-    weight: f64,
-    balance: f64,
+    params: AdaptiveParams,
     matrix: MatrixDescription,
     direction: MatrixDirection,
 ) -> Stream<G, (K, usize)>
@@ -140,9 +167,16 @@ where
                             let repetitions = hasher.repetitions_at_level(level) as f64;
                             let prob_sum: f64 =
                                 probabilities.iter().map(|&p| p.powi(level as i32)).sum();
-                            let estimated_collisions: f64 = weight * prob_sum;
+                            let estimated_collisions: f64 = params.weight * prob_sum;
                             let cost = repetitions
-                                * (1.0 * balance + (1.0 - balance) * estimated_collisions);
+                                * (1.0 * params.balance
+                                    + (1.0 - params.balance) * estimated_collisions);
+                            if estimated_collisions <= params.bucket_size as f64 {
+                                // Early break if we are happy with this number of collisions
+                                min_cost = cost;
+                                best_level = level;
+                                break;
+                            }
                             if cost < min_cost {
                                 min_cost = cost;
                                 best_level = level;
@@ -170,8 +204,7 @@ pub fn find_best_level<G, T, K, D, H, F, V, R>(
     scope: G,
     left: Arc<ChunkedDataset<K, D>>,
     right: Arc<ChunkedDataset<K, D>>,
-    balance: f64,
-    sampling_factor: f64,
+    params: AdaptiveParams,
     hasher: Arc<MultilevelHasher<D, H, F>>,
     sketches_left: Arc<HashMap<K, V>>,
     sketches_right: Arc<HashMap<K, V>>,
@@ -188,13 +221,9 @@ where
     V: ExchangeData + Debug + BitBasedSketch,
     R: Rng + Clone + 'static,
 {
-    assert!(
-        balance >= 0.0 && balance <= 1.0,
-        "Balance should be between 0 and 1"
-    );
-    let prob_left = sampling_factor / (left.global_n as f64).sqrt();
+    let prob_left = params.sampling_factor / (left.global_n as f64).sqrt();
     let weight_left = 1.0 / prob_left;
-    let prob_right = sampling_factor / (right.global_n as f64).sqrt();
+    let prob_right = params.sampling_factor / (right.global_n as f64).sqrt();
     let weight_right = 1.0 / prob_right;
 
     let sample_left = sample_sketches(
@@ -221,8 +250,7 @@ where
         Arc::clone(&left),
         Arc::clone(&hasher),
         Arc::clone(&sketches_left),
-        weight_right,
-        balance,
+        params.with_weight(weight_right),
         matrix,
         MatrixDirection::Rows,
     );
@@ -231,8 +259,7 @@ where
         Arc::clone(&right),
         Arc::clone(&hasher),
         Arc::clone(&sketches_right),
-        weight_left,
-        balance,
+        params.with_weight(weight_left),
         matrix,
         MatrixDirection::Columns,
     );
