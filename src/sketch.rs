@@ -439,6 +439,7 @@ impl SketchEstimate for BagOfWords {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::measure::*;
     use rand::SeedableRng;
     use rand_xorshift::XorShiftRng;
 

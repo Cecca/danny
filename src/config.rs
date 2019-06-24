@@ -35,6 +35,8 @@ pub struct Config {
     sketch_epsilon: f64,
     #[serde(default = "Config::default_cost_balance")]
     cost_balance: f64,
+    #[serde(default = "Config::default_repetition_cost")]
+    repetition_cost: f64,
     #[serde(default = "Config::default_sampling_factor")]
     sampling_factor: f64,
     #[serde(default = "Config::default_bloom_bits")]
@@ -66,6 +68,7 @@ impl Config {
             DANNY_BLOOM_BITS  Number of bits for the bloom filter (default 4G, use a string in the form \\d{K,M,G}B?)
             DANNY_BLOOM_K     Number of hash functions of the bloom filter (default 5)
             DANNY_BUCKET_SIZE  The desired number of items in each bucket
+            DANNY_REPETITION_COST   The cost of performing a single repetition in the estimation process
         "
     }
 
@@ -137,6 +140,10 @@ impl Config {
         0.5
     }
 
+    fn default_repetition_cost() -> f64 {
+        1000.0
+    }
+
     fn default_sampling_factor() -> f64 {
         10.0
     }
@@ -181,6 +188,11 @@ impl Config {
         self.cost_balance
     }
 
+    pub fn get_repetition_cost(&self) -> f64 {
+        assert!(self.repetition_cost > 0.0, "Repetition cost should be > 0");
+        self.repetition_cost
+    }
+
     pub fn get_sampling_factor(&self) -> f64 {
         assert!(
             self.sampling_factor >= 0.0,
@@ -194,7 +206,7 @@ impl Config {
     }
 
     pub fn default_desired_bucket_size() -> u32 {
-        256
+        0
     }
 
     pub fn get_timely_builder(&self) -> (Vec<GenericBuilder>, Box<dyn Any + 'static>) {

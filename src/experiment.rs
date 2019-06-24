@@ -38,6 +38,7 @@ impl Experiment {
             .tag("cost_balance", config.get_cost_balance())
             .tag("sampling_factor", config.get_sampling_factor())
             .tag("desired_bucket_size", config.get_desired_bucket_size())
+            .tag("repetition_cost", config.get_repetition_cost())
             .tag("measure", cmdline.measure.clone())
             .tag("threshold", cmdline.threshold)
             .tag("left_path", cmdline.left_path.clone())

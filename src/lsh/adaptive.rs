@@ -22,6 +22,7 @@ pub struct AdaptiveParams {
     pub balance: f64,
     pub weight: f64,
     pub bucket_size: u32,
+    pub repetition_cost: f64,
 }
 
 impl AdaptiveParams {
@@ -29,6 +30,7 @@ impl AdaptiveParams {
         let cost_balance = config.get_cost_balance();
         let sampling_factor = config.get_sampling_factor();
         let bucket_size = config.get_desired_bucket_size();
+        let repetition_cost = config.get_repetition_cost();
         assert!(
             cost_balance >= 0.0 && cost_balance <= 1.0,
             "Balance should be between 0 and 1"
@@ -38,6 +40,7 @@ impl AdaptiveParams {
             balance: cost_balance,
             bucket_size,
             weight: 1.0,
+            repetition_cost,
         }
     }
 
@@ -47,6 +50,7 @@ impl AdaptiveParams {
             sampling_factor: self.sampling_factor,
             balance: self.balance,
             bucket_size: self.bucket_size,
+            repetition_cost: self.repetition_cost,
         }
     }
 }
@@ -169,17 +173,16 @@ where
                                 probabilities.iter().map(|&p| p.powi(level as i32)).sum();
                             let estimated_collisions: f64 = params.weight * prob_sum;
                             let cost = repetitions
-                                * (1.0 * params.balance
+                                * (params.repetition_cost * params.balance
                                     + (1.0 - params.balance) * estimated_collisions);
-                            if estimated_collisions <= params.bucket_size as f64 {
-                                // Early break if we are happy with this number of collisions
-                                min_cost = cost;
-                                best_level = level;
-                                break;
-                            }
                             if cost < min_cost {
                                 min_cost = cost;
                                 best_level = level;
+                            }
+                            if estimated_collisions <= f64::from(params.bucket_size) {
+                                // Early break if we are happy with this number of collisions
+                                best_level = level;
+                                break;
                             }
                         }
                         *histogram.entry(best_level).or_insert(0) += 1;
@@ -187,8 +190,8 @@ where
                         cnt += 1;
                     }
                     info!(
-                        "Estimated best level for {} points out of {}\n{:?}",
-                        cnt, vecs.global_n, histogram
+                        "Estimated best level for {} points out of {} ({:?})\n{:?}",
+                        cnt, vecs.global_n, params, histogram
                     );
                     for (level, count) in histogram {
                         log_event!(logger, LogEvent::AdaptiveLevelHistogram(level, count));
