@@ -141,7 +141,7 @@ impl Config {
     }
 
     fn default_repetition_cost() -> f64 {
-        1000.0
+        100.0
     }
 
     fn default_sampling_factor() -> f64 {
