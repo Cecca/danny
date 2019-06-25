@@ -420,6 +420,7 @@ where
 
 pub trait SketchEstimate {
     fn sketch_estimate<S: BitBasedSketch>(a: &S, b: &S) -> f64;
+    fn collision_probability_estimate<S: BitBasedSketch>(a: &S, b: &S) -> f64;
 }
 
 impl SketchEstimate for UnitNormVector {
@@ -427,12 +428,18 @@ impl SketchEstimate for UnitNormVector {
         let p = f64::from(a.same_bits(b)) / (a.num_bits() as f64);
         (std::f64::consts::PI * (1.0 - p)).cos()
     }
+    fn collision_probability_estimate<S: BitBasedSketch>(a: &S, b: &S) -> f64 {
+        f64::from(a.same_bits(b)) / (a.num_bits() as f64)
+    }
 }
 
 impl SketchEstimate for BagOfWords {
     fn sketch_estimate<S: BitBasedSketch>(a: &S, b: &S) -> f64 {
         let p = f64::from(a.same_bits(b)) / (a.num_bits() as f64);
         2.0 * p - 1.0
+    }
+    fn collision_probability_estimate<S: BitBasedSketch>(a: &S, b: &S) -> f64 {
+        f64::from(a.same_bits(b)) / (a.num_bits() as f64)
     }
 }
 

@@ -158,10 +158,7 @@ where
                             .expect("Missing sketch for key (estimation)");
                         let probabilities: Vec<f64> = sampled_sketches
                             .iter()
-                            .map(|s| {
-                                let estimated_distance = D::sketch_estimate(sketch_v, s);
-                                F::probability_at_range(estimated_distance)
-                            })
+                            .map(|s| D::collision_probability_estimate(sketch_v, s))
                             .collect();
 
                         // Try the different levels
