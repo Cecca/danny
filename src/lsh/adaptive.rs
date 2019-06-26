@@ -222,8 +222,20 @@ where
     R: Rng + Clone + 'static,
 {
     let prob_left = params.sampling_factor / (left.global_n as f64).sqrt();
+    let prob_left = if prob_left > 1.0 {
+        warn!("Capping the sampling probability to 1");
+        1.0
+    } else {
+        prob_left
+    };
     let weight_left = 1.0 / prob_left;
     let prob_right = params.sampling_factor / (right.global_n as f64).sqrt();
+    let prob_right = if prob_right > 1.0 {
+        warn!("Capping the sampling probability to 1");
+        1.0
+    } else {
+        prob_right
+    };
     let weight_right = 1.0 / prob_right;
 
     let sample_left = sample_sketches(
