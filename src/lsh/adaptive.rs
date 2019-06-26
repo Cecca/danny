@@ -172,6 +172,17 @@ where
                             let cost = repetitions
                                 * (params.repetition_cost * params.balance
                                     + (1.0 - params.balance) * estimated_collisions);
+                            info!(
+                                "[{:?}] cost: {:.2} = {} * ({} * {} + {} * ({:.2} * {:.2}))",
+                                k,
+                                cost,
+                                repetitions,
+                                params.repetition_cost,
+                                params.balance,
+                                (1.0 - params.balance),
+                                params.weight,
+                                prob_sum
+                            );
                             if cost < min_cost {
                                 min_cost = cost;
                                 best_level = level;
