@@ -320,7 +320,7 @@ impl Drop for ProfileGuard {
     }
 }
 
-#[derive(Debug, Clone, Abomonation)]
+#[derive(Debug, Clone)]
 pub enum LogEvent {
     SketchDiscarded(usize, usize),
     DistinctPairs(usize, usize),
@@ -336,6 +336,8 @@ pub enum LogEvent {
     GeneratedHashes(usize, usize),
     /// Profiling event, with (step, depth, name, duration)
     Profile(usize, u8, String, Duration),
+    /// Tracing event, with (repetition, name, start, instant)
+    Trace(usize, &'static str, bool, Instant),
 }
 
 pub trait AsDannyLogger {
@@ -348,6 +350,26 @@ where
 {
     fn danny_logger(&self) -> Option<Logger<LogEvent>> {
         self.log_register().get("danny")
+    }
+}
+
+#[derive(Default, Debug, Clone)]
+struct DurationBuilder {
+    start: Option<Instant>,
+    end: Option<Instant>,
+}
+
+impl DurationBuilder {
+    pub fn set_start(&mut self, start: Instant) {
+        self.start.replace(start);
+    }
+
+    pub fn set_end(&mut self, end: Instant) {
+        self.end.replace(end);
+    }
+
+    pub fn as_duration(&self) -> Option<Duration> {
+        self.end.and_then(|end| self.start.map(|start| end - start))
     }
 }
 
@@ -364,6 +386,7 @@ pub struct ExecutionSummary {
     adaptive_sampled_points: usize,
     generated_hashes: HashMap<usize, usize>,
     profile: HashMap<(usize, u8, String), Duration>,
+    trace: HashMap<(usize, String), DurationBuilder>,
 }
 
 impl ExecutionSummary {
@@ -380,6 +403,7 @@ impl ExecutionSummary {
             adaptive_sampled_points: 0,
             generated_hashes: HashMap::new(),
             profile: HashMap::new(),
+            trace: HashMap::new(),
         }
     }
 
@@ -400,6 +424,16 @@ impl ExecutionSummary {
             adaptive_sampled_points: self.adaptive_sampled_points,
             generated_hashes: Self::map_to_vec(&self.generated_hashes),
             profile: Self::map_to_vec(&self.profile),
+            trace_profile: Self::map_to_vec(&self.trace)
+                .into_iter()
+                .map(|(k, v)| {
+                    (
+                        k.to_owned(),
+                        v.as_duration()
+                            .unwrap_or_else(|| panic!("This trace is incomplete!")),
+                    )
+                })
+                .collect::<Vec<((usize, String), Duration)>>(),
         }
     }
 
@@ -438,6 +472,19 @@ impl ExecutionSummary {
                     .entry((step, depth, name))
                     .or_insert_with(Duration::default) += duration;
             }
+            LogEvent::Trace(step, name, start, when) => {
+                if start {
+                    self.trace
+                        .entry((step, name.to_owned()))
+                        .or_default()
+                        .set_start(when);
+                } else {
+                    self.trace
+                        .entry((step, name.to_owned()))
+                        .or_default()
+                        .set_end(when);
+                }
+            }
         }
     }
 }
@@ -455,6 +502,7 @@ pub struct FrozenExecutionSummary {
     pub adaptive_sampled_points: usize,
     pub generated_hashes: Vec<(usize, usize)>,
     pub profile: Vec<((usize, u8, String), Duration)>,
+    pub trace_profile: Vec<((usize, String), Duration)>,
 }
 
 /// Abstracts boilerplate code in dumping tables to the experiment
@@ -506,6 +554,17 @@ impl FrozenExecutionSummary {
                 row!(
                     "step" => *step,
                     "depth" => *depth,
+                    "name" => name.clone(),
+                    "duration" => duration.as_millis() as u64,
+                    "worker" => self.worker_id
+                ),
+            );
+        }
+        for ((step, name), duration) in self.trace_profile.iter() {
+            experiment.append(
+                "trace_profile",
+                row!(
+                    "step" => *step,
                     "name" => name.clone(),
                     "duration" => duration.as_millis() as u64,
                     "worker" => self.worker_id

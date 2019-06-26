@@ -125,6 +125,7 @@ where
                     let frontiers = &[left_in.frontier(), right_in.frontier()];
                     for (time, buckets) in buckets.iter_mut() {
                         if frontiers.iter().all(|f| !f.less_equal(time)) {
+                            log_event!(logger, LogEvent::Trace(time.to_step_id(), "hash communication", false, Instant::now()));
                             let _pg = ProfileGuard::new(
                                 logger.clone(),
                                 time.time().to_step_id(),
@@ -425,7 +426,7 @@ pub fn source_hashed_sketched<G, T, K, D, F, H, V>(
 ) -> Stream<G, (H, (V, K))>
 where
     G: Scope<Timestamp = T>,
-    T: Timestamp + Succ,
+    T: Timestamp + Succ + ToStepId,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
     F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
     H: HashData + Debug,
@@ -437,7 +438,7 @@ where
     let repetitions = hash_fns.repetitions();
     let mut current_repetition = 0usize;
     let vecs = Arc::clone(&global_vecs);
-    let mut stopwatch = RepetitionStopWatch::new("repetition", worker == 0, logger);
+    let mut stopwatch = RepetitionStopWatch::new("repetition", worker == 0, logger.clone());
 
     source(scope, "hashed source", move |capability| {
         let mut cap = Some(capability);
@@ -456,6 +457,15 @@ where
                         let s = sketches.get(k).expect("Missing sketch");
                         session.give((h, (s.clone(), k.clone())));
                     }
+                    log_event!(
+                        logger,
+                        LogEvent::Trace(
+                            cap.time().to_step_id(),
+                            "hash communication",
+                            true,
+                            Instant::now()
+                        )
+                    );
                     current_repetition += 1;
                     cap.downgrade(&cap.time().succ());
                     done = current_repetition >= repetitions;
@@ -549,7 +559,7 @@ where
                     let active_levels = multilevel_hasher.levels_at_repetition(current_repetition);
                     let mut cnt = 0;
                     for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
-                        // Here we have that some vectors may not not have a best level. This is because
+                        // Here we have that some vectors may not have a best level. This is because
                         // those vectors didn't collide with anything in the estimatio of the cost.
                         // Since we use the same hasher for both the estimation and the actual computation
                         // we can simply avoid emitting the vectors for which we have no entry in the map.
