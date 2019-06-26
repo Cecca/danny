@@ -172,7 +172,7 @@ where
                             let cost = repetitions
                                 * (params.repetition_cost * params.balance
                                     + (1.0 - params.balance) * estimated_collisions);
-                            info!(
+                            debug!(
                                 "[{:?}] cost: {:.2} = {} * ({} * {} + {} * ({:.2} * {:.2}))",
                                 k,
                                 cost,
