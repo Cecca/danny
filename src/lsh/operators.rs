@@ -528,54 +528,53 @@ where
                 if !best_levels_input.frontier().less_equal(capability.time())
                     && !throttling_probe.less_than(capability.time())
                 {
-                    done = true;
-                    // stopwatch.maybe_stop();
-                    // stopwatch.start();
-                    // if worker == 0 {
-                    //     debug!(
-                    //         "Repetition {}/{} (current memory {})",
-                    //         current_repetition,
-                    //         num_repetitions,
-                    //         proc_mem!(),
-                    //     );
-                    // }
-                    // let _pg = ProfileGuard::new(
-                    //     logger.clone(),
-                    //     capability.time().to_step_id(),
-                    //     1,
-                    //     "hash_generation",
-                    // );
+                    stopwatch.maybe_stop();
+                    stopwatch.start();
+                    if worker == 0 {
+                        debug!(
+                            "Repetition {}/{} (current memory {})",
+                            current_repetition,
+                            num_repetitions,
+                            proc_mem!(),
+                        );
+                    }
+                    let _pg = ProfileGuard::new(
+                        logger.clone(),
+                        capability.time().to_step_id(),
+                        1,
+                        "hash_generation",
+                    );
 
-                    // let mut session = output.session(&capability);
-                    // let active_levels = multilevel_hasher.levels_at_repetition(current_repetition);
-                    // let mut cnt = 0;
-                    // for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
-                    //     // Here we have that some vectors may not not have a best level. This is because
-                    //     // those vectors didn't collide with anything in the estimatio of the cost.
-                    //     // Since we use the same hasher for both the estimation and the actual computation
-                    //     // we can simply avoid emitting the vectors for which we have no entry in the map.
-                    //     if let Some(&this_best_level) = best_levels.get(key) {
-                    //         if active_levels.contains(&this_best_level) {
-                    //             // We hash to the max level because the levelling will be taken care of in the buckets
-                    //             let h = multilevel_hasher.hash(v, max_level, current_repetition);
-                    //             let s = sketches
-                    //                 .get(key)
-                    //                 .expect("Missing sketch for key in repetition")
-                    //                 .clone();
-                    //             session.give((h, ((key.clone(), s), this_best_level as u8)));
-                    //             cnt += 1;
-                    //         }
-                    //     }
-                    // }
-                    // log_event!(
-                    //     logger,
-                    //     LogEvent::GeneratedHashes(capability.time().to_step_id(), cnt)
-                    // );
-                    // capability.downgrade(&capability.time().succ());
-                    // current_repetition += 1;
-                    // if current_repetition >= num_repetitions {
-                    //     done = true;
-                    // }
+                    let mut session = output.session(&capability);
+                    let active_levels = multilevel_hasher.levels_at_repetition(current_repetition);
+                    let mut cnt = 0;
+                    for (key, v) in vecs.iter_stripe(matrix, direction, worker) {
+                        // Here we have that some vectors may not not have a best level. This is because
+                        // those vectors didn't collide with anything in the estimatio of the cost.
+                        // Since we use the same hasher for both the estimation and the actual computation
+                        // we can simply avoid emitting the vectors for which we have no entry in the map.
+                        if let Some(&this_best_level) = best_levels.get(key) {
+                            if active_levels.contains(&this_best_level) {
+                                // We hash to the max level because the levelling will be taken care of in the buckets
+                                let h = multilevel_hasher.hash(v, max_level, current_repetition);
+                                let s = sketches
+                                    .get(key)
+                                    .expect("Missing sketch for key in repetition")
+                                    .clone();
+                                session.give((h, ((key.clone(), s), this_best_level as u8)));
+                                cnt += 1;
+                            }
+                        }
+                    }
+                    log_event!(
+                        logger,
+                        LogEvent::GeneratedHashes(capability.time().to_step_id(), cnt)
+                    );
+                    capability.downgrade(&capability.time().succ());
+                    current_repetition += 1;
+                    if current_repetition >= num_repetitions {
+                        done = true;
+                    }
                 }
             }
             if done {
