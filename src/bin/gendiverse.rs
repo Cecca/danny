@@ -17,6 +17,7 @@ use danny::types::*;
 use rand::distributions::Exp1;
 use rand::distributions::Normal;
 use rand::distributions::Uniform;
+use rand::distributions::WeightedIndex;
 use rand::Rng;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
@@ -99,6 +100,7 @@ fn add_lids<D>(path: &PathBuf, range: f64, vecs: &mut Vec<(f64, D)>) {
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run<D>(
     path: &PathBuf,
     outputpath: &PathBuf,
@@ -106,6 +108,7 @@ fn run<D>(
     range: f64,
     target: usize,
     buckets: usize,
+    bimodal: bool,
     seed: u64,
 ) where
     D: ReadBinaryFile + WriteBinaryFile + Send + Sync + Default + Clone + Perturb + 'static,
@@ -146,7 +149,17 @@ fn run<D>(
 
     let mut cnt = 0;
     let mut rng = XorShiftRng::seed_from_u64(seed);
-    let bucket_distr = Uniform::new(0usize, bucks.len());
+    let weights = if bimodal {
+        let mut ws = vec![0; bucks.len()];
+        ws[0] = 1;
+        ws[1] = 1;
+        ws[bucks.len() - 1] = 1;
+        ws
+    } else {
+        vec![1; bucks.len()]
+    };
+    // let bucket_distr = Uniform::new(0usize, bucks.len());
+    let bucket_distr = WeightedIndex::new(weights).expect("Problem creating the distribution");
     info!("Extremal LIDs: {} and {}", data[0].0, data[n - 1].0);
 
     info!("Start sampling");
@@ -180,6 +193,7 @@ fn main() {
         (@arg BUCKETS: -b +takes_value "Number of buckets required for the random sampling, default 100")
         (@arg TARGET: -s +takes_value +required "Target size")
         (@arg SEED: --seed +takes_value "Seed for the random number generator")
+        (@arg BIMODAL: --bimodal "Wether to use a bimodal distribution rather than a uniform one")
         (@arg INPUT: +required "The input path")
         (@arg LID: +required "The LID path")
         (@arg OUTPUT: +required "The output path")
@@ -214,14 +228,15 @@ fn main() {
         .unwrap()
         .parse::<f64>()
         .expect("Problem parsing the seed");
+    let bimodal: bool = matches.is_present("BIMODAL");
     let datatype: String = matches.value_of("TYPE").unwrap().to_owned();
     match datatype.as_ref() {
-        "bag-of-words" => {
-            run::<BagOfWords>(&input, &output, &lid_path, range, target, buckets, seed)
-        }
-        "unit-norm-vector" => {
-            run::<UnitNormVector>(&input, &output, &lid_path, range, target, buckets, seed)
-        }
+        "bag-of-words" => run::<BagOfWords>(
+            &input, &output, &lid_path, range, target, buckets, bimodal, seed,
+        ),
+        "unit-norm-vector" => run::<UnitNormVector>(
+            &input, &output, &lid_path, range, target, buckets, bimodal, seed,
+        ),
         e => panic!("Unsupported measure {}", e),
     };
     info!("Done!");
