@@ -363,7 +363,7 @@ where
 }
 
 lazy_static! {
-    static ref START: Instant = Instant::now();
+    pub static ref START: Instant = Instant::now();
 }
 
 #[derive(Default, Debug, Clone, Abomonation)]
@@ -375,10 +375,12 @@ pub struct DurationBuilder {
 
 impl DurationBuilder {
     pub fn set_start(&mut self, start: Instant) {
+        info!("Setting start: {:?} - {:?}", start, *START);
         self.start.replace(start - *START);
     }
 
     pub fn set_end(&mut self, end: Instant) {
+        info!("Setting end: {:?} - {:?}", end, *START);
         self.end.replace(end - *START);
     }
 
@@ -387,6 +389,7 @@ impl DurationBuilder {
     }
 
     pub fn merge(&self, other: &Self) -> Self {
+        info!("Merging {:?} and {:?}", self, other);
         let start = self
             .start
             .and_then(|sstart| other.start.map(|ostart| std::cmp::min(sstart, ostart)));
@@ -580,7 +583,7 @@ impl FrozenExecutionSummary {
             trace_profile
                 .entry((step, name))
                 .and_modify(|e: &mut DurationBuilder| *e = e.merge(duration))
-                .or_insert(duration.clone());
+                .or_insert_with(|| duration.clone());
         }
         for ((step, name), duration) in trace_profile {
             experiment.append(

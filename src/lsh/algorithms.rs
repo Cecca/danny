@@ -52,6 +52,10 @@ where
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
     B: Fn(usize, &mut R) -> LSHCollection<H> + Sized + Send + Sync + Clone + 'static,
 {
+    debug!(
+        "Evaluate the start time {:?}",
+        crate::logging::START.elapsed()
+    );
     let network = NetworkGauge::start();
     let timely_builder = config.get_timely_builder();
     // This channel is used to get the results
@@ -98,6 +102,10 @@ where
         let sketcher = sketcher.clone();
 
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
+            debug!(
+                "Evaluate the start time {:?}",
+                crate::logging::START.elapsed()
+            );
             let mut probe = ProbeHandle::new();
 
             let candidates = match k {
