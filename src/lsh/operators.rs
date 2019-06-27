@@ -125,7 +125,7 @@ where
                     let frontiers = &[left_in.frontier(), right_in.frontier()];
                     for (time, buckets) in buckets.iter_mut() {
                         if frontiers.iter().all(|f| !f.less_equal(time)) {
-                            log_event!(logger, LogEvent::Trace(time.to_step_id(), "hash communication", false, Instant::now()));
+                            log_event!(logger, LogEvent::trace_stop(time.to_step_id(), "hash communication"));
                             let _pg = ProfileGuard::new(
                                 logger.clone(),
                                 time.time().to_step_id(),
@@ -459,12 +459,7 @@ where
                     }
                     log_event!(
                         logger,
-                        LogEvent::Trace(
-                            cap.time().to_step_id(),
-                            "hash communication",
-                            true,
-                            Instant::now()
-                        )
+                        LogEvent::trace_start(cap.time().to_step_id(), "hash communication")
                     );
                     current_repetition += 1;
                     cap.downgrade(&cap.time().succ());

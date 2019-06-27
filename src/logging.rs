@@ -340,6 +340,15 @@ pub enum LogEvent {
     Trace(usize, &'static str, bool, Instant),
 }
 
+impl LogEvent {
+    pub fn trace_start(repetition: usize, name: &'static str) -> Self {
+        LogEvent::Trace(repetition, name, true, Instant::now())
+    }
+    pub fn trace_stop(repetition: usize, name: &'static str) -> Self {
+        LogEvent::Trace(repetition, name, false, Instant::now())
+    }
+}
+
 pub trait AsDannyLogger {
     fn danny_logger(&self) -> Option<Logger<LogEvent>>;
 }
@@ -353,23 +362,38 @@ where
     }
 }
 
-#[derive(Default, Debug, Clone)]
-struct DurationBuilder {
-    start: Option<Instant>,
-    end: Option<Instant>,
+lazy_static! {
+    static ref START: Instant = Instant::now();
+}
+
+#[derive(Default, Debug, Clone, Abomonation)]
+pub struct DurationBuilder {
+    // All durations are since Epoch
+    start: Option<Duration>,
+    end: Option<Duration>,
 }
 
 impl DurationBuilder {
     pub fn set_start(&mut self, start: Instant) {
-        self.start.replace(start);
+        self.start.replace(start - *START);
     }
 
     pub fn set_end(&mut self, end: Instant) {
-        self.end.replace(end);
+        self.end.replace(end - *START);
     }
 
     pub fn as_duration(&self) -> Option<Duration> {
         self.end.and_then(|end| self.start.map(|start| end - start))
+    }
+
+    pub fn merge(&self, other: &Self) -> Self {
+        let start = self
+            .start
+            .and_then(|sstart| other.start.map(|ostart| std::cmp::min(sstart, ostart)));
+        let end = self
+            .end
+            .and_then(|send| other.end.map(|oend| std::cmp::max(send, oend)));
+        Self { start, end }
     }
 }
 
@@ -424,16 +448,7 @@ impl ExecutionSummary {
             adaptive_sampled_points: self.adaptive_sampled_points,
             generated_hashes: Self::map_to_vec(&self.generated_hashes),
             profile: Self::map_to_vec(&self.profile),
-            trace_profile: Self::map_to_vec(&self.trace)
-                .into_iter()
-                .map(|(k, v)| {
-                    (
-                        k.to_owned(),
-                        v.as_duration()
-                            .unwrap_or_else(|| panic!("This trace is incomplete!")),
-                    )
-                })
-                .collect::<Vec<((usize, String), Duration)>>(),
+            trace_profile: Self::map_to_vec(&self.trace),
         }
     }
 
@@ -502,7 +517,7 @@ pub struct FrozenExecutionSummary {
     pub adaptive_sampled_points: usize,
     pub generated_hashes: Vec<(usize, usize)>,
     pub profile: Vec<((usize, u8, String), Duration)>,
-    pub trace_profile: Vec<((usize, String), Duration)>,
+    pub trace_profile: Vec<((usize, String), DurationBuilder)>,
 }
 
 /// Abstracts boilerplate code in dumping tables to the experiment
@@ -560,14 +575,20 @@ impl FrozenExecutionSummary {
                 ),
             );
         }
+        let mut trace_profile = HashMap::new();
         for ((step, name), duration) in self.trace_profile.iter() {
+            trace_profile
+                .entry((step, name))
+                .and_modify(|e: &mut DurationBuilder| *e = e.merge(duration))
+                .or_insert(duration.clone());
+        }
+        for ((step, name), duration) in trace_profile {
             experiment.append(
                 "trace_profile",
                 row!(
                     "step" => *step,
                     "name" => name.clone(),
-                    "duration" => duration.as_millis() as u64,
-                    "worker" => self.worker_id
+                    "duration" => duration.as_duration().expect("Incomplete trace!").as_millis() as u64
                 ),
             );
         }
