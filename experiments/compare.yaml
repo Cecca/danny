@@ -3,7 +3,7 @@ environment:
   DANNY_THREADS: 8
   DANNY_HOSTS: "sss00:2001,sss01:2001,sss02:2001,sss03:2001,sss04:2001"
   DANNY_BASELINES_PATH: "/mnt/fast_storage/users/mcec/baselines.csv"
-  DANNY_COST_BALANCE: 0.99
+  DANNY_COST_BALANCE: 0.999
   DANNY_REPETITION_COST: 1
   DANNY_DATA_DIR: /mnt/fast_storage/users/mcec
   DANNY_SKETCH_EPSILON: 0.01
