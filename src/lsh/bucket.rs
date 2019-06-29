@@ -149,10 +149,14 @@ where
         );
         let iter = BucketsPrefixIter::new(&self.left, &self.right, min_prefix_len as usize);
         for (l_vecs, r_vecs) in iter {
-            for (hl, (l, l_best)) in l_vecs {
-                for (hr, (r, r_best)) in r_vecs {
-                    if hl.common_prefix_at_least(hr, std::cmp::min(*l_best, *r_best)) {
-                        action(l, r);
+            for l_tile in l_vecs.chunks(8) {
+                for r_tile in r_vecs.chunks(8) {
+                    for (hl, (l, l_best)) in l_tile {
+                        for (hr, (r, r_best)) in r_tile {
+                            if hl.common_prefix_at_least(hr, std::cmp::min(*l_best, *r_best)) {
+                                action(l, r);
+                            }
+                        }
                     }
                 }
             }
