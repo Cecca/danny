@@ -10,7 +10,6 @@ pub trait PrefixHash {
     fn prefix_eq(&self, other: &Self, n: usize) -> bool {
         self.prefix(n) == other.prefix(n)
     }
-    fn longest_common_prefix(&self, other: &Self) -> u8;
     fn common_prefix_at_least(&self, other: &Self, l: u8) -> bool;
 }
 
@@ -34,16 +33,6 @@ lazy_static! {
 
 impl PrefixHash for u32 {
     type PrefixType = u32;
-
-    fn longest_common_prefix(&self, other: &Self) -> u8 {
-        let mut mask = 1u32;
-        let mut len = 0u8;
-        while ((self & mask) == (other & mask)) && len <= 32 {
-            len += 1;
-            mask = (mask << 1) | 1;
-        }
-        len
-    }
 
     fn common_prefix_at_least(&self, other: &Self, l: u8) -> bool {
         (self ^ other) & MASKS_32[l as usize] == 0
