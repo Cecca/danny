@@ -11,6 +11,25 @@ pub trait PrefixHash {
         self.prefix(n) == other.prefix(n)
     }
     fn longest_common_prefix(&self, other: &Self) -> u8;
+    fn common_prefix_at_least(&self, other: &Self, l: u8) -> bool;
+}
+
+fn build_mask(l: u8) -> u32 {
+    let mut mask = 0;
+    for _ in 0..l {
+        mask = (mask << 1) | 1;
+    }
+    mask
+}
+
+lazy_static! {
+    static ref MASKS_32: Vec<u32> = {
+        let mut masks = Vec::with_capacity(32);
+        for l in 0..32 {
+            masks.push(build_mask(l));
+        }
+        masks
+    };
 }
 
 impl PrefixHash for u32 {
@@ -26,13 +45,13 @@ impl PrefixHash for u32 {
         len
     }
 
+    fn common_prefix_at_least(&self, other: &Self, l: u8) -> bool {
+        (self ^ other) & MASKS_32[l as usize] == 0
+    }
+
     fn prefix(&self, n: usize) -> Self::PrefixType {
-        assert!(n <= 32);
-        let mut mask: u32 = 0;
-        for _ in 0..n {
-            mask = (mask << 1) | 1;
-        }
-        self & mask
+        assert!(n < 32);
+        self & MASKS_32[n]
     }
 
     fn lex_cmp(&self, other: &Self) -> Ordering {

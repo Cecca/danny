@@ -151,8 +151,7 @@ where
         for (l_vecs, r_vecs) in iter {
             for (hl, (l, l_best)) in l_vecs {
                 for (hr, (r, r_best)) in r_vecs {
-                    let common = hl.longest_common_prefix(hr);
-                    if common >= *l_best || common >= *r_best {
+                    if hl.common_prefix_at_least(hr, std::cmp::min(*l_best, *r_best)) {
                         action(l, r);
                     }
                 }

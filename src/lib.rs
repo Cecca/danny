@@ -16,6 +16,8 @@ extern crate clap;
 extern crate abomonation;
 #[macro_use]
 extern crate abomonation_derive;
+#[macro_use]
+extern crate lazy_static;
 extern crate chrono;
 extern crate core;
 extern crate probabilistic_collections;
