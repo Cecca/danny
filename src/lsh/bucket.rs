@@ -133,8 +133,6 @@ where
     where
         F: FnMut(&K, &K) -> (),
     {
-        self.left.sort_unstable_by(|p1, p2| p1.0.lex_cmp(&p2.0));
-        self.right.sort_unstable_by(|p1, p2| p1.0.lex_cmp(&p2.0));
         let min_prefix_len = std::cmp::min(
             self.left
                 .iter()
@@ -147,6 +145,10 @@ where
                 .min()
                 .expect("The right appers to be empty"),
         );
+        self.left
+            .sort_unstable_by_key(|p| p.0.prefix(min_prefix_len as usize));
+        self.right
+            .sort_unstable_by_key(|p| p.0.prefix(min_prefix_len as usize));
         let iter = BucketsPrefixIter::new(&self.left, &self.right, min_prefix_len as usize);
         for (l_vecs, r_vecs) in iter {
             for l_tile in l_vecs.chunks(8) {
