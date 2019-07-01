@@ -1,14 +1,10 @@
 use crate::measure::InnerProduct;
 use crate::types::*;
-use abomonation::Abomonation;
 use bitvec::prelude::*;
 use rand::distributions::{Distribution, Normal, Uniform};
-use rand::{Rng, SeedableRng};
+use rand::Rng;
 use std::clone::Clone;
 use std::collections::HashMap;
-use std::fmt::Debug;
-use std::hash::Hash;
-use timely::Data;
 
 pub trait LSHFunction {
     type Input;
@@ -147,41 +143,6 @@ where
 }
 
 #[derive(Clone)]
-pub struct LSHCollection<F>
-where
-    F: LSHFunction + Clone,
-    F::Output: Clone,
-{
-    functions: Vec<F>,
-}
-
-impl<F> LSHCollection<F>
-where
-    F: LSHFunction + Clone,
-    F::Output: Clone,
-{
-    pub fn for_each_hash<L>(&self, v: &F::Input, mut logic: L)
-    where
-        L: FnMut(usize, F::Output),
-    {
-        let mut repetition = 0;
-        self.functions.iter().for_each(|f| {
-            let h = f.hash(v);
-            logic(repetition, h);
-            repetition += 1;
-        });
-    }
-
-    pub fn hash(&self, v: &F::Input, repetition: usize) -> F::Output {
-        self.functions[repetition].hash(v)
-    }
-
-    pub fn repetitions(&self) -> usize {
-        self.functions.len()
-    }
-}
-
-#[derive(Clone)]
 pub struct Hyperplane {
     k: usize,
     planes: Vec<UnitNormVector>,
@@ -209,44 +170,12 @@ impl Hyperplane {
         Hyperplane { k, planes }
     }
 
-    pub fn collection<R>(
-        k: usize,
-        repetitions: usize,
-        dim: usize,
-        rng: &mut R,
-    ) -> LSHCollection<Hyperplane>
+    pub fn builder<R>(dim: usize) -> impl Fn(usize, &mut R) -> Hyperplane + Clone
     where
         R: Rng + ?Sized,
     {
-        let mut functions = Vec::with_capacity(repetitions);
-        for _ in 0..repetitions {
-            functions.push(Hyperplane::new(k, dim, rng));
-        }
-        LSHCollection { functions }
-    }
-
-    pub fn builder<R>(threshold: f64, dim: usize) -> impl Fn(usize, &mut R) -> Hyperplane + Clone
-    where
-        R: Rng + ?Sized,
-    {
-        let threshold = threshold;
         let dim = dim;
         move |k: usize, rng: &mut R| Hyperplane::new(k, dim, rng)
-    }
-
-    pub fn collection_builder<R>(
-        threshold: f64,
-        dim: usize,
-    ) -> impl Fn(usize, &mut R) -> LSHCollection<Hyperplane> + Clone
-    where
-        R: Rng + ?Sized,
-    {
-        let threshold = threshold;
-        let dim = dim;
-        move |k: usize, rng: &mut R| {
-            let repetitions = Hyperplane::repetitions_at_range(threshold, k);
-            Self::collection(k, repetitions, dim, rng)
-        }
     }
 }
 
@@ -294,36 +223,11 @@ impl OneBitMinHash {
         OneBitMinHash { k, alphas, betas }
     }
 
-    pub fn builder<R>(threshold: f64) -> impl Fn(usize, &mut R) -> OneBitMinHash + Clone
+    pub fn builder<R>() -> impl Fn(usize, &mut R) -> OneBitMinHash + Clone
     where
         R: Rng + ?Sized,
     {
-        let threshold = threshold;
         move |k: usize, rng: &mut R| OneBitMinHash::new(k, rng)
-    }
-
-    pub fn collection<R>(k: usize, repetitions: usize, rng: &mut R) -> LSHCollection<OneBitMinHash>
-    where
-        R: Rng + ?Sized,
-    {
-        let mut functions = Vec::with_capacity(repetitions);
-        for _ in 0..repetitions {
-            functions.push(OneBitMinHash::new(k, rng));
-        }
-        LSHCollection { functions }
-    }
-
-    pub fn collection_builder<R>(
-        threshold: f64,
-    ) -> impl Fn(usize, &mut R) -> LSHCollection<OneBitMinHash> + Clone
-    where
-        R: Rng + ?Sized,
-    {
-        let threshold = threshold;
-        move |k: usize, rng: &mut R| {
-            let repetitions = OneBitMinHash::repetitions_at_range(threshold, k);
-            Self::collection(k, repetitions, rng)
-        }
     }
 }
 
@@ -347,68 +251,6 @@ impl LSHFunction for OneBitMinHash {
 
     fn probability_at_range(range: f64) -> f64 {
         (range + 1.0) / 2.0
-    }
-}
-
-/// Structure that allows to hash a vector at the desired level k. In this respect,
-/// it is somehow the multi-level counterpart of LSHCollection
-pub struct MultilevelHasher<D, H, F>
-where
-    D: Clone + Data + Debug + Abomonation + Send + Sync,
-    H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,
-    F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
-{
-    hashers: HashMap<usize, LSHCollection<F>>,
-}
-
-impl<D, H, F> MultilevelHasher<D, H, F>
-where
-    D: Clone + Data + Debug + Abomonation + Send + Sync,
-    H: Clone + Hash + Eq + Debug + Send + Sync + Data + Abomonation,
-    F: LSHFunction<Input = D, Output = H> + Clone + Sync + Send + 'static,
-{
-    pub fn new<B, R>(min_level: usize, max_level: usize, builder: B, rng: &mut R) -> Self
-    where
-        B: Fn(usize, &mut R) -> LSHCollection<F>,
-        R: Rng + SeedableRng + Send + Clone + ?Sized + 'static,
-    {
-        debug!(
-            "Building MultiLevelHasher with minimum level {} and maximum level {}",
-            min_level, max_level
-        );
-        let mut hashers = HashMap::new();
-        for level in min_level..=max_level {
-            hashers.insert(level, builder(level, rng));
-        }
-        Self { hashers }
-    }
-
-    pub fn max_level(&self) -> usize {
-        *self.hashers.keys().max().unwrap()
-    }
-
-    pub fn min_level(&self) -> usize {
-        *self.hashers.keys().min().unwrap()
-    }
-
-    pub fn repetitions_at_level(&self, level: usize) -> usize {
-        self.hashers
-            .get(&level)
-            .expect("no entry for requested level")
-            .repetitions()
-    }
-
-    pub fn levels_at_repetition(&self, repetition: usize) -> std::ops::RangeInclusive<usize> {
-        let min_level = self.min_level();
-        let max_level = self.max_level();
-        let start = (min_level..=max_level)
-            .find(|&l| self.repetitions_at_level(l) >= repetition)
-            .unwrap();
-        start..=max_level
-    }
-
-    pub fn hash(&self, v: &D, level: usize, repetition: usize) -> H {
-        self.hashers[&level].hash(v, repetition)
     }
 }
 
