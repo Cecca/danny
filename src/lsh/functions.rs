@@ -101,6 +101,7 @@ where
         DKTPool { bits: all_bits }
     }
 
+    #[inline]
     fn get_bit_index(&self, k: usize, repetition: usize) -> usize {
         self.alphas[k]
             .wrapping_mul(repetition as u64)
