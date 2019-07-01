@@ -50,7 +50,8 @@ where
         B: FnMut(usize, &mut R) -> F,
     {
         let p = F::probability_at_range(range);
-        let num_bits = (5.0 * k as f64 / p).ceil() as usize;
+        // This is twice as many bits as required by the theory
+        let num_bits = (10.0 * k as f64 / p).ceil() as usize;
         let alphas: Vec<u64> = (0..k).map(|_| rng.next_u64()).collect();
         let betas: Vec<u64> = (0..k).map(|_| rng.next_u64()).collect();
         let mut hashers = Vec::new();
