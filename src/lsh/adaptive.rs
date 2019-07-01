@@ -107,10 +107,10 @@ where
 }
 
 #[allow(dead_code, clippy::too_many_arguments)]
-fn compute_best_level<G, K, D, H, F, V>(
+fn compute_best_level<G, K, D, F, V>(
     sample: &Stream<G, V>,
     vecs: Arc<ChunkedDataset<K, D>>,
-    hasher: Arc<MultilevelHasher<D, H, F>>,
+    hasher: Arc<DKTCollection<F>>,
     sketches: Arc<HashMap<K, V>>,
     params: AdaptiveParams,
     matrix: MatrixDescription,
@@ -120,8 +120,7 @@ where
     G: Scope,
     D: ExchangeData + Debug + SketchEstimate,
     K: ExchangeData + Debug + Route + Hash + Ord,
-    H: ExchangeData + Route + Debug + Hash + Ord + PrefixHash,
-    F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
+    F: LSHFunction<Input = D, Output = u32> + Send + Clone + Sync + 'static,
     V: ExchangeData + Debug + BitBasedSketch,
 {
     let worker = sample.scope().index() as u64;
@@ -172,7 +171,7 @@ where
                         let mut best_level = min_level;
                         let mut min_cost = std::f64::INFINITY;
                         for level in min_level..=max_level {
-                            let repetitions = hasher.repetitions_at_level(level) as f64;
+                            let repetitions = hasher.repetitions_at(level) as f64;
                             let mut prob_sum = 0.0;
                             for i in 0..powers.len() {
                                 powers[i] *= probabilities[i];
@@ -212,12 +211,12 @@ where
 
 /// A balance towards 0 penalizes collisions, a balance towards 1 penalizes repetitions
 #[allow(clippy::too_many_arguments)]
-pub fn find_best_level<G, T, K, D, H, F, V, R>(
+pub fn find_best_level<G, T, K, D, F, V, R>(
     scope: G,
     left: Arc<ChunkedDataset<K, D>>,
     right: Arc<ChunkedDataset<K, D>>,
     params: AdaptiveParams,
-    hasher: Arc<MultilevelHasher<D, H, F>>,
+    hasher: Arc<DKTCollection<F>>,
     sketches_left: Arc<HashMap<K, V>>,
     sketches_right: Arc<HashMap<K, V>>,
     matrix: MatrixDescription,
@@ -228,8 +227,7 @@ where
     T: Timestamp + Succ + ToStepId + Debug,
     D: ExchangeData + Debug + SketchEstimate,
     K: ExchangeData + Debug + Route + Hash + Ord,
-    H: ExchangeData + Route + Debug + Hash + Ord + PrefixHash,
-    F: LSHFunction<Input = D, Output = H> + Send + Clone + Sync + 'static,
+    F: LSHFunction<Input = D, Output = u32> + Send + Clone + Sync + 'static,
     V: ExchangeData + Debug + BitBasedSketch,
     R: Rng + Clone + 'static,
 {

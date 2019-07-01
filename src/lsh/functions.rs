@@ -25,7 +25,7 @@ pub trait LSHFunction {
 }
 
 pub struct DKTPool {
-    bits: BitVec<bitvec::cursor::LittleEndian, u32>,
+    bits: Vec<BitVec<bitvec::cursor::LittleEndian, u32>>,
 }
 
 #[derive(Clone)]
@@ -33,11 +33,12 @@ pub struct DKTCollection<F>
 where
     F: LSHFunction<Output = u32> + Clone,
 {
-    k: usize,
+    min_k: usize,
+    max_k: usize,
     num_bits: usize,
     alphas: Vec<u64>,
     betas: Vec<u64>,
-    hashers: Vec<F>,
+    hashers: Vec<Vec<F>>,
     repetitions_at_level: HashMap<usize, usize>,
 }
 
@@ -45,30 +46,39 @@ impl<F> DKTCollection<F>
 where
     F: LSHFunction<Output = u32> + Clone,
 {
-    pub fn new<B, R: Rng>(k: usize, range: f64, mut builder: B, rng: &mut R) -> Self
+    pub fn new<B, R: Rng>(
+        min_k: usize,
+        max_k: usize,
+        range: f64,
+        mut builder: B,
+        rng: &mut R,
+    ) -> Self
     where
         B: FnMut(usize, &mut R) -> F,
     {
         let p = F::probability_at_range(range);
-        // This is twice as many bits as required by the theory
-        let num_bits = (10.0 * k as f64 / p).ceil() as usize;
-        let alphas: Vec<u64> = (0..k).map(|_| rng.next_u64()).collect();
-        let betas: Vec<u64> = (0..k).map(|_| rng.next_u64()).collect();
+        let num_bits = (5.0 * max_k as f64 / p).ceil() as usize;
+        let alphas: Vec<u64> = (0..max_k).map(|_| rng.next_u64()).collect();
+        let betas: Vec<u64> = (0..max_k).map(|_| rng.next_u64()).collect();
         let mut hashers = Vec::new();
         let full_32 = num_bits / 32;
         let rem_32 = num_bits % 32;
-        for _ in 0..full_32 {
-            // here you should check that actually 32 bits are generated
-            hashers.push(builder(32, rng));
+        for _ in 0..max_k {
+            let mut hs = Vec::new();
+            for _ in 0..full_32 {
+                hs.push(builder(32, rng));
+            }
+            if rem_32 > 0 {
+                hs.push(builder(rem_32, rng));
+            }
+            hashers.push(hs);
         }
-        if rem_32 > 0 {
-            hashers.push(builder(rem_32, rng));
-        }
-        let repetitions_at_level: HashMap<usize, usize> = (1..=k)
+        let repetitions_at_level: HashMap<usize, usize> = (min_k..=max_k)
             .map(|l| (l, F::repetitions_at_range(range, l)))
             .collect();
         Self {
-            k,
+            min_k,
+            max_k,
             num_bits,
             alphas,
             betas,
@@ -78,13 +88,17 @@ where
     }
 
     pub fn pool(&self, v: &F::Input) -> DKTPool {
-        let mut bits = Vec::new();
-        for f in &self.hashers {
-            bits.push(f.hash(v));
+        let mut all_bits = Vec::new();
+        for hashers_row in &self.hashers {
+            let mut bits = Vec::new();
+            for f in hashers_row {
+                bits.push(f.hash(v));
+            }
+            let mut bits = BitVec::from_vec(bits);
+            bits.truncate(self.num_bits);
+            all_bits.push(bits);
         }
-        let mut bits = BitVec::from_vec(bits);
-        bits.truncate(self.num_bits);
-        DKTPool { bits }
+        DKTPool { bits: all_bits }
     }
 
     fn get_bit_index(&self, k: usize, repetition: usize) -> usize {
@@ -96,8 +110,8 @@ where
 
     pub fn hash(&self, pool: &DKTPool, repetition: usize) -> u32 {
         let mut h = 0u32;
-        for i in 0..self.k {
-            if pool.bits[self.get_bit_index(i, repetition)] {
+        for (i, bits) in pool.bits.iter().enumerate() {
+            if bits[self.get_bit_index(i, repetition)] {
                 h = (h << 1) | 1;
             } else {
                 h <<= 1;
@@ -115,7 +129,19 @@ where
     }
 
     pub fn repetitions(&self) -> usize {
-        self.repetitions_at_level[&self.k]
+        self.repetitions_at_level[&self.max_k]
+    }
+
+    pub fn repetitions_at(&self, level: usize) -> usize {
+        self.repetitions_at_level[&level]
+    }
+
+    pub fn min_level(&self) -> usize {
+        self.min_k
+    }
+
+    pub fn max_level(&self) -> usize {
+        self.max_k
     }
 }
 
