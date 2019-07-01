@@ -1,6 +1,7 @@
 use crate::measure::InnerProduct;
 use crate::types::*;
 use abomonation::Abomonation;
+use bitvec::prelude::*;
 use rand::distributions::{Distribution, Normal, Uniform};
 use rand::{Rng, SeedableRng};
 use std::clone::Clone;
@@ -20,6 +21,96 @@ pub trait LSHFunction {
         let reps = (2.0 * (1_f64 / p).powi(k as i32)).ceil() as usize;
         debug!("Probability at range {} is {} (reps: {})", range, p, reps);
         reps
+    }
+}
+
+pub struct DKTPool {
+    bits: BitVec<bitvec::cursor::LittleEndian, u32>,
+}
+
+#[derive(Clone)]
+pub struct DKTCollection<F>
+where
+    F: LSHFunction<Output = u32> + Clone,
+{
+    k: usize,
+    num_bits: usize,
+    alphas: Vec<u64>,
+    betas: Vec<u64>,
+    hashers: Vec<F>,
+    repetitions_at_level: HashMap<usize, usize>,
+}
+
+impl<F> DKTCollection<F>
+where
+    F: LSHFunction<Output = u32> + Clone,
+{
+    pub fn new<B, R: Rng>(k: usize, range: f64, mut builder: B, rng: &mut R) -> Self
+    where
+        B: FnMut(usize, &mut R) -> F,
+    {
+        let p = F::probability_at_range(range);
+        let num_bits = (5.0 * k as f64 / p).ceil() as usize;
+        let alphas: Vec<u64> = (0..k).map(|_| rng.next_u64()).collect();
+        let betas: Vec<u64> = (0..k).map(|_| rng.next_u64()).collect();
+        let mut hashers = Vec::new();
+        let full_32 = num_bits / 32;
+        let rem_32 = num_bits % 32;
+        for _ in 0..full_32 {
+            // here you should check that actually 32 bits are generated
+            hashers.push(builder(32, rng));
+        }
+        if rem_32 > 0 {
+            hashers.push(builder(rem_32, rng));
+        }
+        let repetitions_at_level: HashMap<usize, usize> = (1..=k)
+            .map(|l| (l, F::repetitions_at_range(range, l)))
+            .collect();
+        Self {
+            k,
+            num_bits,
+            alphas,
+            betas,
+            hashers,
+            repetitions_at_level,
+        }
+    }
+
+    pub fn pool(&self, v: &F::Input) -> DKTPool {
+        let mut bits = Vec::new();
+        for f in &self.hashers {
+            bits.push(f.hash(v));
+        }
+        let mut bits = BitVec::from_vec(bits);
+        bits.truncate(self.num_bits);
+        DKTPool { bits }
+    }
+
+    fn get_bit_index(&self, k: usize, repetition: usize) -> usize {
+        self.alphas[k]
+            .wrapping_mul(repetition as u64)
+            .wrapping_add(self.betas[k]) as usize
+            % self.num_bits
+    }
+
+    pub fn hash(&self, pool: &DKTPool, repetition: usize) -> u32 {
+        let mut h = 0u32;
+        for i in 0..self.k {
+            if pool.bits[self.get_bit_index(i, repetition)] {
+                h = (h << 1) | 1;
+            } else {
+                h <<= 1;
+            }
+        }
+        h
+    }
+
+    pub fn is_active(&self, repetition: usize, level: usize) -> bool {
+        repetition
+            < *self
+                .repetitions_at_level
+                .get(&level)
+                .expect("Missing level information in repetitions_at_level")
     }
 }
 
