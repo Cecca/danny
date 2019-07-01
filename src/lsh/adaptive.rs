@@ -160,14 +160,26 @@ where
                             .iter()
                             .map(|s| D::collision_probability_estimate(sketch_v, s))
                             .collect();
+                        let mut powers = vec![1.0; probabilities.len()];
+                        for _ in 1..min_level {
+                            // Start from 1 beause otherwise the we are elevating the power to on too much
+                            for i in 0..powers.len() {
+                                powers[i] *= probabilities[i];
+                            }
+                        }
 
                         // Try the different levels
                         let mut best_level = min_level;
                         let mut min_cost = std::f64::INFINITY;
                         for level in min_level..=max_level {
                             let repetitions = hasher.repetitions_at_level(level) as f64;
-                            let prob_sum: f64 =
-                                probabilities.iter().map(|&p| p.powi(level as i32)).sum();
+                            let mut prob_sum = 0.0;
+                            for i in 0..powers.len() {
+                                powers[i] *= probabilities[i];
+                                prob_sum += powers[i];
+                            }
+                            // let prob_sum: f64 =
+                            //     probabilities.iter().map(|&p| p.powi(level as i32)).sum();
                             let estimated_collisions: f64 = params.weight * prob_sum;
                             let cost = repetitions
                                 * (params.repetition_cost * params.balance
