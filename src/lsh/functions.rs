@@ -112,6 +112,10 @@ where
                 .get(&level)
                 .expect("Missing level information in repetitions_at_level")
     }
+
+    pub fn repetitions(&self) -> usize {
+        self.repetitions_at_level[&self.k]
+    }
 }
 
 #[derive(Clone)]
@@ -193,6 +197,15 @@ impl Hyperplane {
         LSHCollection { functions }
     }
 
+    pub fn builder<R>(threshold: f64, dim: usize) -> impl Fn(usize, &mut R) -> Hyperplane + Clone
+    where
+        R: Rng + ?Sized,
+    {
+        let threshold = threshold;
+        let dim = dim;
+        move |k: usize, rng: &mut R| Hyperplane::new(k, dim, rng)
+    }
+
     pub fn collection_builder<R>(
         threshold: f64,
         dim: usize,
@@ -251,6 +264,14 @@ impl OneBitMinHash {
             betas.push(uniform.sample(rng));
         }
         OneBitMinHash { k, alphas, betas }
+    }
+
+    pub fn builder<R>(threshold: f64) -> impl Fn(usize, &mut R) -> OneBitMinHash + Clone
+    where
+        R: Rng + ?Sized,
+    {
+        let threshold = threshold;
+        move |k: usize, rng: &mut R| OneBitMinHash::new(k, rng)
     }
 
     pub fn collection<R>(k: usize, repetitions: usize, rng: &mut R) -> LSHCollection<OneBitMinHash>

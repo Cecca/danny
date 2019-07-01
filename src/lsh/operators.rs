@@ -414,21 +414,20 @@ impl RepetitionStopWatch {
     }
 }
 
-pub fn source_hashed_sketched<G, T, K, D, F, H, V>(
+pub fn source_hashed_sketched<G, T, K, D, F, V>(
     scope: &G,
     global_vecs: Arc<ChunkedDataset<K, D>>,
-    hash_fns: LSHCollection<F>,
+    hash_fns: Arc<DKTCollection<F>>,
     sketches: Arc<HashMap<K, V>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
     throttling_probe: ProbeHandle<G::Timestamp>,
-) -> Stream<G, (H, (V, K))>
+) -> Stream<G, (u32, (V, K))>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ,
     D: Data + Sync + Send + Clone + Abomonation + Debug,
-    F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
-    H: HashData + Debug,
+    F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
     K: KeyData + Debug,
     V: SketchData + Debug,
 {
@@ -438,6 +437,18 @@ where
     let mut current_repetition = 0usize;
     let vecs = Arc::clone(&global_vecs);
     let mut stopwatch = RepetitionStopWatch::new("repetition", worker == 0, logger);
+    let mut bit_pools: HashMap<K, DKTPool> = HashMap::new();
+    info!("Computing the bit pools");
+    let start = Instant::now();
+    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
+        bit_pools.insert(*k, hash_fns.pool(v));
+    }
+    let end = Instant::now();
+    info!(
+        "Computed the bit pools ({:?}, {})",
+        end - start,
+        proc_mem!()
+    );
 
     source(scope, "hashed source", move |capability| {
         let mut cap = Some(capability);
@@ -452,7 +463,7 @@ where
                     }
                     let mut session = output.session(&cap);
                     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
-                        let h = hash_fns.hash(v, current_repetition as usize);
+                        let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
                         let s = sketches.get(k).expect("Missing sketch");
                         session.give((h, (s.clone(), k.clone())));
                     }

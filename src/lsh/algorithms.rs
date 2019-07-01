@@ -8,7 +8,6 @@ use crate::logging::*;
 use crate::lsh::adaptive::*;
 use crate::lsh::functions::*;
 use crate::lsh::operators::*;
-use crate::lsh::prefix_hash::*;
 use crate::operators::*;
 use crate::sketch::*;
 use crate::types::*;
@@ -30,11 +29,12 @@ use timely::progress::timestamp::Timestamp;
 use timely::ExchangeData;
 
 #[allow(clippy::too_many_arguments)]
-pub fn fixed_param_lsh<D, F, H, O, S, V, B, R>(
+pub fn fixed_param_lsh<D, F, H, S, V, B, R>(
     left_path: &str,
     right_path: &str,
+    range: f64,
     k: ParamK,
-    hash_collection_builder: B,
+    hash_function_builder: B,
     sketcher: S,
     sketch_predicate: SketchPredicate<V>,
     sim_pred: F,
@@ -45,12 +45,11 @@ pub fn fixed_param_lsh<D, F, H, O, S, V, B, R>(
 where
     for<'de> D: ReadBinaryFile + Deserialize<'de> + ExchangeData + Debug + SketchEstimate,
     F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
-    H: LSHFunction<Input = D, Output = O> + Sync + Send + Clone + 'static,
-    O: HashData + PrefixHash + Debug,
+    H: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
     S: Sketcher<Input = D, Output = V> + Send + Sync + Clone + 'static,
     V: SketchData + Debug,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
-    B: Fn(usize, &mut R) -> LSHCollection<H> + Sized + Send + Sync + Clone + 'static,
+    B: Fn(usize, &mut R) -> H + Sized + Send + Sync + Clone + 'static,
 {
     let network = NetworkGauge::start();
     let timely_builder = config.get_timely_builder();
@@ -61,7 +60,12 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let hash_collection_builder = hash_collection_builder.clone();
+    let hasher = match k {
+        ParamK::Fixed(k) => DKTCollection::new(k, range, hash_function_builder, rng),
+        ParamK::Adaptive(_, max_k) => DKTCollection::new(max_k, range, hash_function_builder, rng),
+    };
+    let hasher = Arc::new(hasher);
+
     let rng = rng.clone();
 
     debug!(
@@ -85,8 +89,8 @@ where
         let global_left = Arc::clone(&global_left);
         let global_right = Arc::clone(&global_right);
         let bloom_filter = Arc::clone(&bloom_filter);
+        let hasher = Arc::clone(&hasher);
         let bloom_filter_pre_communication = Arc::clone(&bloom_filter_pre_communication);
-        let hash_collection_builder = hash_collection_builder.clone();
         let mut rng = rng.clone();
         let execution_summary = init_event_logging(&worker);
         let output_send_ch = output_send_ch
@@ -101,26 +105,28 @@ where
             let mut probe = ProbeHandle::new();
 
             let candidates = match k {
-                ParamK::Adaptive(min_k, max_k) => generate_candidates_adaptive(
+                ParamK::Adaptive(min_k, max_k) => unimplemented!(),
+                // ParamK::Adaptive(min_k, max_k) => generate_candidates_adaptive(
+                //     Arc::clone(&global_left),
+                //     Arc::clone(&global_right),
+                //     min_k,
+                //     max_k,
+                //     adaptive_params,
+                //     scope.clone(),
+                //     hasher,
+                //     sketcher,
+                //     sketch_predicate,
+                //     Arc::clone(&bloom_filter_pre_communication),
+                //     probe.clone(),
+                //     &mut rng,
+                // ),
+                ParamK::Fixed(k) => generate_candidates_global_k(
                     Arc::clone(&global_left),
                     Arc::clone(&global_right),
-                    min_k,
-                    max_k,
-                    adaptive_params,
-                    scope.clone(),
-                    hash_collection_builder,
-                    sketcher,
-                    sketch_predicate,
-                    Arc::clone(&bloom_filter_pre_communication),
-                    probe.clone(),
-                    &mut rng,
-                ),
-                k => generate_candidates_global_k(
-                    Arc::clone(&global_left),
-                    Arc::clone(&global_right),
+                    range,
                     k,
                     scope.clone(),
-                    hash_collection_builder,
+                    hasher,
                     sketcher,
                     sketch_predicate,
                     Arc::clone(&bloom_filter_pre_communication),
@@ -186,12 +192,13 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-fn generate_candidates_global_k<K, D, G, T, F, H, S, SV, R, B>(
+fn generate_candidates_global_k<K, D, G, T, F, S, SV, R>(
     left: Arc<ChunkedDataset<K, D>>,
     right: Arc<ChunkedDataset<K, D>>,
-    k: ParamK,
+    range: f64,
+    k: usize,
     scope: G,
-    hash_collection_builder: B,
+    hasher: Arc<DKTCollection<F>>,
     sketcher: S,
     sketch_predicate: SketchPredicate<SV>,
     filter: Arc<AtomicBloomFilter<K>>,
@@ -203,12 +210,10 @@ where
     D: ExchangeData + Debug,
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId,
-    F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
-    H: HashData + Debug,
+    F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
     S: Sketcher<Input = D, Output = SV> + Send + Sync + Clone + 'static,
     SV: SketchData + Debug,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
-    B: Fn(usize, &mut R) -> LSHCollection<F> + Sized + Send + Sync + Clone + 'static,
 {
     let worker = scope.index() as u64;
     let peers = scope.peers();
@@ -230,15 +235,10 @@ where
         MatrixDirection::Columns,
     );
 
-    let hash_fn = match k {
-        ParamK::Fixed(k) => hash_collection_builder(k, rng),
-        ParamK::Adaptive(_, _) => panic!("You should not be here!!"),
-    };
-
     let left_hashes = source_hashed_sketched(
         &scope,
         Arc::clone(&left),
-        hash_fn.clone(),
+        Arc::clone(&hasher),
         sketches_left,
         matrix,
         MatrixDirection::Rows,
@@ -247,7 +247,7 @@ where
     let right_hashes = source_hashed_sketched(
         &scope,
         Arc::clone(&right),
-        hash_fn.clone(),
+        Arc::clone(&hasher),
         sketches_right,
         matrix,
         MatrixDirection::Columns,
@@ -288,109 +288,109 @@ where
     Arc::new(sketches)
 }
 
-#[allow(clippy::too_many_arguments)]
-fn generate_candidates_adaptive<K, D, G, T, F, H, S, SV, R, B>(
-    left: Arc<ChunkedDataset<K, D>>,
-    right: Arc<ChunkedDataset<K, D>>,
-    min_k: usize,
-    max_k: usize,
-    params: AdaptiveParams,
-    scope: G,
-    hash_collection_builder: B,
-    sketcher: S,
-    sketch_predicate: SketchPredicate<SV>,
-    filter: Arc<AtomicBloomFilter<K>>,
-    probe: ProbeHandle<T>,
-    rng: &mut R,
-) -> Stream<G, (K, K)>
-where
-    K: KeyData + Debug + Into<u64>,
-    D: ExchangeData + Debug + SketchEstimate,
-    G: Scope<Timestamp = T>,
-    T: Timestamp + Succ + ToStepId,
-    F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
-    H: HashData + Debug + PrefixHash,
-    S: Sketcher<Input = D, Output = SV> + Send + Sync + Clone + 'static,
-    SV: SketchData + Debug,
-    R: Rng + SeedableRng + Send + Sync + Clone + 'static,
-    B: Fn(usize, &mut R) -> LSHCollection<F> + Sized + Send + Sync + Clone + 'static,
-{
-    let peers = scope.peers();
-    let matrix = MatrixDescription::for_workers(peers as usize);
-    let _logger = scope.danny_logger();
-    let worker: u64 = scope.index() as u64;
-    let sketcher = Arc::new(sketcher);
-    let sketches_left = build_sketches(
-        Arc::clone(&left),
-        Arc::clone(&sketcher),
-        worker,
-        matrix,
-        MatrixDirection::Rows,
-    );
-    let sketches_right = build_sketches(
-        Arc::clone(&right),
-        Arc::clone(&sketcher),
-        worker,
-        matrix,
-        MatrixDirection::Columns,
-    );
+// #[allow(clippy::too_many_arguments)]
+// fn generate_candidates_adaptive<K, D, G, T, F, H, S, SV, R, B>(
+//     left: Arc<ChunkedDataset<K, D>>,
+//     right: Arc<ChunkedDataset<K, D>>,
+//     min_k: usize,
+//     max_k: usize,
+//     params: AdaptiveParams,
+//     scope: G,
+//     hasher: Arc<DKTCollection<F>>,
+//     sketcher: S,
+//     sketch_predicate: SketchPredicate<SV>,
+//     filter: Arc<AtomicBloomFilter<K>>,
+//     probe: ProbeHandle<T>,
+//     rng: &mut R,
+// ) -> Stream<G, (K, K)>
+// where
+//     K: KeyData + Debug + Into<u64>,
+//     D: ExchangeData + Debug + SketchEstimate,
+//     G: Scope<Timestamp = T>,
+//     T: Timestamp + Succ + ToStepId,
+//     F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
+//     H: HashData + Debug + PrefixHash,
+//     S: Sketcher<Input = D, Output = SV> + Send + Sync + Clone + 'static,
+//     SV: SketchData + Debug,
+//     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
+//     B: Fn(usize, &mut R) -> LSHCollection<F> + Sized + Send + Sync + Clone + 'static,
+// {
+//     let peers = scope.peers();
+//     let matrix = MatrixDescription::for_workers(peers as usize);
+//     let _logger = scope.danny_logger();
+//     let worker: u64 = scope.index() as u64;
+//     let sketcher = Arc::new(sketcher);
+//     let sketches_left = build_sketches(
+//         Arc::clone(&left),
+//         Arc::clone(&sketcher),
+//         worker,
+//         matrix,
+//         MatrixDirection::Rows,
+//     );
+//     let sketches_right = build_sketches(
+//         Arc::clone(&right),
+//         Arc::clone(&sketcher),
+//         worker,
+//         matrix,
+//         MatrixDirection::Columns,
+//     );
 
-    let multihash = Arc::new(MultilevelHasher::new(
-        min_k,
-        max_k,
-        hash_collection_builder,
-        rng,
-    ));
-    let min_level = multihash.min_level();
+//     let multihash = Arc::new(MultilevelHasher::new(
+//         min_k,
+//         max_k,
+//         hash_collection_builder,
+//         rng,
+//     ));
+//     let min_level = multihash.min_level();
 
-    let (levels_left, levels_right) = find_best_level(
-        scope.clone(),
-        Arc::clone(&left),
-        Arc::clone(&right),
-        params,
-        Arc::clone(&multihash),
-        Arc::clone(&sketches_left),
-        Arc::clone(&sketches_right),
-        matrix,
-        rng.clone(),
-    );
-    let levels_left = levels_left
-        .matrix_distribute(MatrixDirection::Rows, matrix)
-        .map(|triplet| (triplet.1, triplet.2));
-    let levels_right = levels_right
-        .matrix_distribute(MatrixDirection::Columns, matrix)
-        .map(|triplet| (triplet.1, triplet.2));
+//     let (levels_left, levels_right) = find_best_level(
+//         scope.clone(),
+//         Arc::clone(&left),
+//         Arc::clone(&right),
+//         params,
+//         Arc::clone(&multihash),
+//         Arc::clone(&sketches_left),
+//         Arc::clone(&sketches_right),
+//         matrix,
+//         rng.clone(),
+//     );
+//     let levels_left = levels_left
+//         .matrix_distribute(MatrixDirection::Rows, matrix)
+//         .map(|triplet| (triplet.1, triplet.2));
+//     let levels_right = levels_right
+//         .matrix_distribute(MatrixDirection::Columns, matrix)
+//         .map(|triplet| (triplet.1, triplet.2));
 
-    let left_hashes = source_hashed_adaptive_sketched(
-        &scope,
-        &levels_left,
-        Arc::clone(&left),
-        Arc::clone(&multihash),
-        Arc::clone(&sketches_left),
-        matrix,
-        MatrixDirection::Rows,
-        probe.clone(),
-    );
-    let right_hashes = source_hashed_adaptive_sketched(
-        &scope,
-        &levels_right,
-        Arc::clone(&right),
-        Arc::clone(&multihash),
-        Arc::clone(&sketches_right),
-        matrix,
-        MatrixDirection::Columns,
-        probe.clone(),
-    );
-    left_hashes
-        .bucket_prefixes(
-            &right_hashes,
-            min_level,
-            move |l, r| sketch_predicate.eval(&l.1, &r.1),
-            // move |l: &(K, SV), r: &(K, SV)| !filter.test_and_insert(&(l.0, r.0)),
-            |_, _| true,
-        )
-        .map(|(l, r)| (l.0, r.0))
-}
+//     let left_hashes = source_hashed_adaptive_sketched(
+//         &scope,
+//         &levels_left,
+//         Arc::clone(&left),
+//         Arc::clone(&multihash),
+//         Arc::clone(&sketches_left),
+//         matrix,
+//         MatrixDirection::Rows,
+//         probe.clone(),
+//     );
+//     let right_hashes = source_hashed_adaptive_sketched(
+//         &scope,
+//         &levels_right,
+//         Arc::clone(&right),
+//         Arc::clone(&multihash),
+//         Arc::clone(&sketches_right),
+//         matrix,
+//         MatrixDirection::Columns,
+//         probe.clone(),
+//     );
+//     left_hashes
+//         .bucket_prefixes(
+//             &right_hashes,
+//             min_level,
+//             move |l, r| sketch_predicate.eval(&l.1, &r.1),
+//             // move |l: &(K, SV), r: &(K, SV)| !filter.test_and_insert(&(l.0, r.0)),
+//             |_, _| true,
+//         )
+//         .map(|(l, r)| (l.0, r.0))
+// }
 
 fn candidates_filter_count<G, T, K, D, F>(
     candidates: Stream<G, (K, K)>,
