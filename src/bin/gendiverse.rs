@@ -13,7 +13,6 @@ extern crate rayon;
 extern crate serde;
 
 use danny::io::*;
-
 use danny::types::*;
 use rand::distributions::Exp1;
 use rand::distributions::Normal;
@@ -22,6 +21,7 @@ use rand::distributions::WeightedIndex;
 use rand::Rng;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
+use std::ffi::OsStr;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
@@ -68,7 +68,28 @@ impl Perturb for BagOfWords {
     }
 }
 
+#[derive(Clone, Copy)]
+enum DifficultyMeasure {
+    Expansion,
+    LID,
+}
+
+impl DifficultyMeasure {
+    fn from_path(path: &PathBuf) -> Self {
+        match path
+            .extension()
+            .expect("Path should have extension")
+            .to_str()
+        {
+            Some("exp") => DifficultyMeasure::Expansion,
+            Some("lid") => DifficultyMeasure::LID,
+            _ => panic!("Unsupported extension"),
+        }
+    }
+}
+
 fn add_difficulties<D>(path: &PathBuf, range: f64, vecs: &mut Vec<(f64, D)>) {
+    let measure = DifficultyMeasure::from_path(path);
     let f = File::open(path).expect("Problem opening difficulty file");
     let input = BufReader::new(f);
     let mut cnt = 0;
@@ -92,7 +113,16 @@ fn add_difficulties<D>(path: &PathBuf, range: f64, vecs: &mut Vec<(f64, D)>) {
             .expect("Problem parsing difficulty");
         if r == range {
             cnt += 1;
-            vecs[idx].0 = difficulty;
+            vecs[idx].0 = match measure {
+                DifficultyMeasure::LID => difficulty,
+                DifficultyMeasure::Expansion => {
+                    if difficulty.is_infinite() {
+                        0.0
+                    } else {
+                        1.0 / difficulty
+                    }
+                }
+            };
         }
     }
     assert!(
