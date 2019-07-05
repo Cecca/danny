@@ -1,5 +1,6 @@
 /// Generate a diverse dataset starting from the given one
-/// and the distribution of its LIDs
+/// and the distribution of its difficulties, measured either
+/// as LID or expansion
 
 #[macro_use]
 extern crate clap;
@@ -67,8 +68,8 @@ impl Perturb for BagOfWords {
     }
 }
 
-fn add_lids<D>(path: &PathBuf, range: f64, vecs: &mut Vec<(f64, D)>) {
-    let f = File::open(path).expect("Problem opening LID file");
+fn add_difficulties<D>(path: &PathBuf, range: f64, vecs: &mut Vec<(f64, D)>) {
+    let f = File::open(path).expect("Problem opening difficulty file");
     let input = BufReader::new(f);
     let mut cnt = 0;
     for line in input.lines() {
@@ -84,19 +85,19 @@ fn add_lids<D>(path: &PathBuf, range: f64, vecs: &mut Vec<(f64, D)>) {
             .expect("Missing token")
             .parse::<f64>()
             .expect("Problem parsing range");
-        let lid = tokens
+        let difficulty = tokens
             .next()
             .expect("Missing token")
             .parse::<f64>()
-            .expect("Problem parsing lid");
+            .expect("Problem parsing difficulty");
         if r == range {
             cnt += 1;
-            vecs[idx].0 = lid;
+            vecs[idx].0 = difficulty;
         }
     }
     assert!(
         cnt > 0,
-        "The requested range was not present in the LID file"
+        "The requested range was not present in the 'difficulty' file"
     );
 }
 
@@ -104,7 +105,7 @@ fn add_lids<D>(path: &PathBuf, range: f64, vecs: &mut Vec<(f64, D)>) {
 fn run<D>(
     path: &PathBuf,
     outputpath: &PathBuf,
-    lid_path: &PathBuf,
+    difficulty_path: &PathBuf,
     range: f64,
     target: usize,
     buckets: usize,
@@ -123,10 +124,10 @@ fn run<D>(
         },
     );
     info!("Loaded dataset with {} elements", data.len());
-    add_lids(lid_path, range, &mut data);
+    add_difficulties(difficulty_path, range, &mut data);
     data.sort_by(|t1, t2| t1.0.partial_cmp(&t2.0).expect("Problem doing comparison"));
     info!("Sorted by local intrinsic dimensionality");
-    // Find the first index where the LID is non zero. We will bucket all these
+    // Find the first index where the difficulty score is non zero. We will bucket all these
     // vectors on their own. Otherwise we get with many vectors with LID 0 in
     // the output.
     let gt_0_index = data.iter().take_while(|p| p.0 == 0.0).count();
@@ -160,7 +161,7 @@ fn run<D>(
     };
     // let bucket_distr = Uniform::new(0usize, bucks.len());
     let bucket_distr = WeightedIndex::new(weights).expect("Problem creating the distribution");
-    info!("Extremal LIDs: {} and {}", data[0].0, data[n - 1].0);
+    info!("Extremal difficulties: {} and {}", data[0].0, data[n - 1].0);
 
     info!("Start sampling");
     let output_iter = std::iter::from_fn(move || {
@@ -184,18 +185,18 @@ fn run<D>(
 }
 
 fn main() {
-    let matches = clap_app!(lid =>
+    let matches = clap_app!(gendiverse =>
         (version: "0.1")
         (author: "Matteo Ceccarello <mcec@itu.dk>")
         (about: "Build a dataset with a diverse distribution of local intrinsic dimensionalities")
         (@arg TYPE: -t +takes_value +required "The type of data, either bag-of-words or unit-norm-vector")
-        (@arg RANGE: -r +takes_value +required "The range for the LID")
+        (@arg RANGE: -r +takes_value +required "The range for the difficulty selection")
         (@arg BUCKETS: -b +takes_value "Number of buckets required for the random sampling, default 100")
         (@arg TARGET: -s +takes_value +required "Target size")
         (@arg SEED: --seed +takes_value "Seed for the random number generator")
         (@arg BIMODAL: --bimodal "Wether to use a bimodal distribution rather than a uniform one")
         (@arg INPUT: +required "The input path")
-        (@arg LID: +required "The LID path")
+        (@arg DIFFICULTY: +required "The 'difficulty file' path. Can be either a LID or an expansion file")
         (@arg OUTPUT: +required "The output path")
     )
     .get_matches();
@@ -206,7 +207,7 @@ fn main() {
         .init();
 
     let input: PathBuf = matches.value_of("INPUT").unwrap().into();
-    let lid_path: PathBuf = matches.value_of("LID").unwrap().into();
+    let difficulty_path: PathBuf = matches.value_of("DIFFICULTY").unwrap().into();
     let output: PathBuf = matches.value_of("OUTPUT").unwrap().into();
     let buckets: usize = matches
         .value_of("BUCKETS")
@@ -232,10 +233,24 @@ fn main() {
     let datatype: String = matches.value_of("TYPE").unwrap().to_owned();
     match datatype.as_ref() {
         "bag-of-words" => run::<BagOfWords>(
-            &input, &output, &lid_path, range, target, buckets, bimodal, seed,
+            &input,
+            &output,
+            &difficulty_path,
+            range,
+            target,
+            buckets,
+            bimodal,
+            seed,
         ),
         "unit-norm-vector" => run::<UnitNormVector>(
-            &input, &output, &lid_path, range, target, buckets, bimodal, seed,
+            &input,
+            &output,
+            &difficulty_path,
+            range,
+            target,
+            buckets,
+            bimodal,
+            seed,
         ),
         e => panic!("Unsupported measure {}", e),
     };
