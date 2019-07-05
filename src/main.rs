@@ -27,16 +27,16 @@ where
             let k = args.k.expect("K is needed on the command line");
             let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
             let threshold = args.threshold;
-            let hash_funs_builder = lsh::Hyperplane::collection_builder(threshold, dim);
             let sketch_bits = args.sketch_bits.expect("Sketches are mandatory");
             let sketcher = SV::from_cosine(dim, &mut rng);
             let sketch_predicate =
                 SketchPredicate::cosine(sketch_bits, threshold, config.get_sketch_epsilon());
-            lsh::fixed_param_lsh::<UnitNormVector, _, _, _, _, _, _, _>(
+            lsh::fixed_param_lsh::<UnitNormVector, _, _, _, _, _, _>(
                 &args.left_path,
                 &args.right_path,
+                threshold,
                 k,
-                hash_funs_builder,
+                lsh::Hyperplane::builder(dim),
                 sketcher,
                 sketch_predicate,
                 move |a, b| InnerProduct::cosine(a, b) >= threshold,
@@ -48,16 +48,16 @@ where
         "jaccard" => {
             let k = args.k.expect("K is needed on the command line");
             let threshold = args.threshold;
-            let hash_funs_builder = lsh::OneBitMinHash::collection_builder(threshold);
             let sketch_bits = args.sketch_bits.expect("Sketch bits are mandatory");
             let sketcher = SV::from_jaccard(&mut rng);
             let sketch_predicate =
                 SketchPredicate::jaccard(sketch_bits, threshold, config.get_sketch_epsilon());
-            lsh::fixed_param_lsh::<BagOfWords, _, _, _, _, _, _, _>(
+            lsh::fixed_param_lsh::<BagOfWords, _, _, _, _, _, _>(
                 &args.left_path,
                 &args.right_path,
+                threshold,
                 k,
-                hash_funs_builder,
+                lsh::OneBitMinHash::builder(),
                 sketcher,
                 sketch_predicate,
                 move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
