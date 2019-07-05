@@ -353,6 +353,33 @@ def preprocess_diverse(base_path, filepath):
         ]
     )
 
+def preprocess_diverse_expansion(base_path, filepath):
+    datatype = "unit-norm-vector" if "glove" in base_path else "bag-of-words"
+    pre, ext = os.path.splitext(filepath)
+    tokens = pre.split("-")
+    similarity_range = tokens[-2]
+    size = tokens[-1]
+    pre, ext = os.path.splitext(base_path)
+    exp_path = pre + ".exp"
+    if not os.path.exists(exp_path):
+        print("Missing expansion file for dataset", base_path)
+        print("Aborting!")
+        sys.exit(1)
+    subprocess.run(
+        [
+            "gendiverse",
+            "-t",
+            datatype,
+            "-s",
+            str(size),
+            "-r",
+            str(similarity_range),
+            base_path,
+            exp_path,
+            filepath,
+        ]
+    )
+
 
 DATASETS = {
     "Glove-6B-100": Dataset(
@@ -435,6 +462,14 @@ for r in [0.5,0.7,0.9]:
         preprocess_diverse
     )
     derived_datasets.append(d)
+
+d = DerivedDataset(
+    'Livejournal-diverse-exp-{}-3M'.format(0.5),
+    'Livejournal-diverse-exp-{}-3000000.bin'.format(0.5),
+    DATASETS['Livejournal'],
+    preprocess_diverse_expansion
+)
+derived_datasets.append(d)
 
 for d in derived_datasets:
     DATASETS[d.name] = d
