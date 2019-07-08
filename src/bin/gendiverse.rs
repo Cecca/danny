@@ -117,9 +117,9 @@ fn add_difficulties<D>(path: &PathBuf, range: f64, vecs: &mut Vec<(f64, D)>) {
                 DifficultyMeasure::LID => difficulty,
                 DifficultyMeasure::Expansion => {
                     if difficulty.is_infinite() {
-                        0.0
+                        std::f64::MAX
                     } else {
-                        1.0 / difficulty
+                        difficulty
                     }
                 }
             };
@@ -138,11 +138,17 @@ fn run<D>(
     difficulty_path: &PathBuf,
     range: f64,
     target: usize,
-    buckets: usize,
-    bimodal: bool,
     seed: u64,
 ) where
-    D: ReadBinaryFile + WriteBinaryFile + Send + Sync + Default + Clone + Perturb + 'static,
+    D: ReadBinaryFile
+        + WriteBinaryFile
+        + serde::Serialize
+        + Send
+        + Sync
+        + Default
+        + Clone
+        + Perturb
+        + 'static,
 {
     let n = D::num_elements(path.to_path_buf());
     let mut data: Vec<(f64, D)> = vec![(0.0f64, D::default()); n];
@@ -156,67 +162,34 @@ fn run<D>(
     info!("Loaded dataset with {} elements", data.len());
     add_difficulties(difficulty_path, range, &mut data);
     data.sort_by(|t1, t2| t1.0.partial_cmp(&t2.0).expect("Problem doing comparison"));
-    info!("Sorted by local intrinsic dimensionality");
-    // Find the first index where the difficulty score is non zero. We will bucket all these
-    // vectors on their own. Otherwise we get with many vectors with LID 0 in
-    // the output.
-    let gt_0_index = data.iter().take_while(|p| p.0 == 0.0).count();
-    let mut bucks: Vec<&[(f64, D)]> = Vec::new();
-    bucks.push(&data[0..gt_0_index]);
-    let mut cur_idx = gt_0_index;
-    let mut bucket_width = (data.len() - gt_0_index) / (buckets - 1);
-    if bucket_width == 0 {
-        warn!("Too many buckets requested! Using buckets of width 1");
-        bucket_width = 1;
+    info!("Sorted by difficulty");
+    let mut weights = Vec::new();
+    let mut last_difficulty = 0.0;
+    for (difficulty, _) in data.iter() {
+        let diff = if *difficulty == last_difficulty {
+            0.000000001 // Assign a very small probability to elements with the exact same difficulty
+        } else {
+            difficulty - last_difficulty
+        };
+        assert!(diff > 0.0);
+        weights.push(diff * diff);
+        last_difficulty = *difficulty;
     }
-    assert!(bucket_width > 0);
-    while cur_idx < n {
-        info!("Current index is {}", cur_idx);
-        let buck_end = std::cmp::min(cur_idx + bucket_width, n);
-        bucks.push(&data[cur_idx..buck_end]);
-        cur_idx += bucket_width;
-    }
-    info!("Built buckets");
-
-    let mut cnt = 0;
     let mut rng = XorShiftRng::seed_from_u64(seed);
-    let weights = if bimodal {
-        let mut ws = vec![0; bucks.len()];
-        ws[0] = 1;
-        ws[1] = 1;
-        ws[bucks.len() - 1] = 1;
-        ws
-    } else {
-        vec![1; bucks.len()]
-    };
-    // let bucket_distr = Uniform::new(0usize, bucks.len());
-    let bucket_distr = WeightedIndex::new(weights).expect("Problem creating the distribution");
-    info!("Extremal difficulties: {} and {}", data[0].0, data[n - 1].0);
-
-    info!("Start sampling");
+    let index_distribution =
+        WeightedIndex::new(weights).expect("Problem setting up the distribution");
+    info!("Start sampling {} elements", target);
+    let mut cnt = 0;
     let output_iter = std::iter::from_fn(move || {
         if cnt >= target {
+            info!("Written {} elements", cnt);
             return None;
         }
         cnt += 1;
-        let mut tentatives = 0;
-        loop {
-            let idx = rng.sample(&bucket_distr);
-            let b = bucks[idx];
-            if !b.is_empty() {
-                let d = Uniform::new(0, b.len());
-                let i = rng.sample(&d);
-                let res = b[i].1.perturb(&mut rng);
-                return Some(res);
-            } else {
-                tentatives += 1;
-                if tentatives > 1024 {
-                    panic!("Tried to sample 1024 without getting a non-empty bucket");
-                }
-            }
-        }
+        let idx = rng.sample(&index_distribution);
+        // Some(data[idx].1.clone())
+        Some(data[idx].1.perturb(&mut rng))
     });
-
     WriteBinaryFile::write_binary(
         outputpath.to_path_buf(),
         D::num_chunks(path.to_path_buf()),
@@ -231,10 +204,8 @@ fn main() {
         (about: "Build a dataset with a diverse distribution of local intrinsic dimensionalities")
         (@arg TYPE: -t +takes_value +required "The type of data, either bag-of-words or unit-norm-vector")
         (@arg RANGE: -r +takes_value +required "The range for the difficulty selection")
-        (@arg BUCKETS: -b +takes_value "Number of buckets required for the random sampling, default 100")
         (@arg TARGET: -s +takes_value +required "Target size")
         (@arg SEED: --seed +takes_value "Seed for the random number generator")
-        (@arg BIMODAL: --bimodal "Wether to use a bimodal distribution rather than a uniform one")
         (@arg INPUT: +required "The input path")
         (@arg DIFFICULTY: +required "The 'difficulty file' path. Can be either a LID or an expansion file")
         (@arg OUTPUT: +required "The output path")
@@ -249,11 +220,6 @@ fn main() {
     let input: PathBuf = matches.value_of("INPUT").unwrap().into();
     let difficulty_path: PathBuf = matches.value_of("DIFFICULTY").unwrap().into();
     let output: PathBuf = matches.value_of("OUTPUT").unwrap().into();
-    let buckets: usize = matches
-        .value_of("BUCKETS")
-        .unwrap_or("100")
-        .parse::<usize>()
-        .expect("Problem parsing the number of buckets");
     let target: usize = matches
         .value_of("TARGET")
         .unwrap()
@@ -269,29 +235,12 @@ fn main() {
         .unwrap()
         .parse::<f64>()
         .expect("Problem parsing the seed");
-    let bimodal: bool = matches.is_present("BIMODAL");
     let datatype: String = matches.value_of("TYPE").unwrap().to_owned();
     match datatype.as_ref() {
-        "bag-of-words" => run::<BagOfWords>(
-            &input,
-            &output,
-            &difficulty_path,
-            range,
-            target,
-            buckets,
-            bimodal,
-            seed,
-        ),
-        "unit-norm-vector" => run::<UnitNormVector>(
-            &input,
-            &output,
-            &difficulty_path,
-            range,
-            target,
-            buckets,
-            bimodal,
-            seed,
-        ),
+        "bag-of-words" => run::<BagOfWords>(&input, &output, &difficulty_path, range, target, seed),
+        "unit-norm-vector" => {
+            run::<UnitNormVector>(&input, &output, &difficulty_path, range, target, seed)
+        }
         e => panic!("Unsupported measure {}", e),
     };
     info!("Done!");

@@ -140,11 +140,14 @@ where
             files.push(writer);
         }
 
+        let mut cnt = 0;
         for (i, element) in elements.enumerate() {
             let writer = files.get_mut(i % num_chunks).expect("Out of bounds index");
             let pair = (i as u32, element);
             bincode::serialize_into(writer, &pair).expect("Error while serializing");
+            cnt += 1;
         }
+        info!("Actually written {} elements", cnt);
     }
 }
 
