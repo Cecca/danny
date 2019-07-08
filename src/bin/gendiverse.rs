@@ -113,16 +113,7 @@ fn add_difficulties<D>(path: &PathBuf, range: f64, vecs: &mut Vec<(f64, D)>) {
             .expect("Problem parsing difficulty");
         if r == range {
             cnt += 1;
-            vecs[idx].0 = match measure {
-                DifficultyMeasure::LID => difficulty,
-                DifficultyMeasure::Expansion => {
-                    if difficulty.is_infinite() {
-                        std::f64::MAX
-                    } else {
-                        difficulty
-                    }
-                }
-            };
+            vecs[idx].0 = difficulty;
         }
     }
     assert!(
@@ -162,16 +153,17 @@ fn run<D>(
     info!("Loaded dataset with {} elements", data.len());
     add_difficulties(difficulty_path, range, &mut data);
     data.sort_by(|t1, t2| t1.0.partial_cmp(&t2.0).expect("Problem doing comparison"));
+    let mut last_index = data.len() - 1;
+    while data[last_index].0.is_infinite() {
+        last_index -= 1;
+    }
+    let data = &data[..last_index];
     info!("Sorted by difficulty");
     let mut weights = Vec::new();
     let mut last_difficulty = 0.0;
     for (difficulty, _) in data.iter() {
-        let diff = if *difficulty == last_difficulty {
-            0.000000001 // Assign a very small probability to elements with the exact same difficulty
-        } else {
-            difficulty - last_difficulty
-        };
-        assert!(diff > 0.0);
+        let diff = difficulty - last_difficulty;
+        assert!(diff >= 0.0);
         weights.push(diff * diff);
         last_difficulty = *difficulty;
     }
