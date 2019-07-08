@@ -199,12 +199,22 @@ fn run<D>(
             return None;
         }
         cnt += 1;
-        let idx = rng.sample(&bucket_distr);
-        let b = bucks[idx];
-        let d = Uniform::new(0, b.len());
-        let i = rng.sample(&d);
-        let res = b[i].1.perturb(&mut rng);
-        Some(res)
+        let mut tentatives = 0;
+        loop {
+            let idx = rng.sample(&bucket_distr);
+            let b = bucks[idx];
+            if !b.is_empty() {
+                let d = Uniform::new(0, b.len());
+                let i = rng.sample(&d);
+                let res = b[i].1.perturb(&mut rng);
+                return Some(res);
+            } else {
+                tentatives += 1;
+                if tentatives > 1024 {
+                    panic!("Tried to sample 1024 without getting a non-empty bucket");
+                }
+            }
+        }
     });
 
     WriteBinaryFile::write_binary(

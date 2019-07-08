@@ -23,12 +23,11 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-fn run<D, F>(path: &PathBuf, ranges: Vec<f64>, similarity: F)
+fn load<D>(path: &PathBuf) -> Vec<(u64, D)>
 where
     D: ReadBinaryFile + ReadDataFile + Send + Sync + 'static,
-    F: Fn(&D, &D) -> f64 + Send + Sync + 'static,
 {
-    let ranges = Arc::new(ranges.clone());
+    info!("Loading data from {:?}", path);
     let mut data = Vec::new();
     if path.ends_with(".txt") {
         D::from_file_with_count(path, |c, v| {
@@ -44,6 +43,17 @@ where
         );
     }
     info!("Loaded dataset with {} elements", data.len());
+    data
+}
+
+fn run<D, F>(path: &PathBuf, base: &PathBuf, ranges: Vec<f64>, similarity: F)
+where
+    D: ReadBinaryFile + ReadDataFile + Send + Sync + 'static,
+    F: Fn(&D, &D) -> f64 + Send + Sync + 'static,
+{
+    let ranges = Arc::new(ranges.clone());
+    let data = load(path);
+    let base = load::<D>(base);
 
     let (send, recv) = unbounded();
 
@@ -70,7 +80,7 @@ where
         let mut count_in = vec![0; ranges.len()];
         let mut count_out = vec![0; ranges.len()];
         let mut similarities: Vec<f64> = Vec::new();
-        for (_, u) in data.iter() {
+        for (_, u) in base.iter() {
             let s = similarity(u, v);
             similarities.push(s);
         }
@@ -103,6 +113,7 @@ fn main() {
         (@arg MEASURE: -m +takes_value +required "The measure")
         (@arg RANGE: -r +takes_value +required "Query ranges")
         (@arg INPUT: +required "The input path")
+        (@arg BASE: "The path to compare with")
     )
     .get_matches();
 
@@ -112,6 +123,13 @@ fn main() {
         .init();
 
     let input: PathBuf = matches.value_of("INPUT").unwrap().into();
+    let base: PathBuf = matches
+        .value_of("BASE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            info!("Using the input as the base");
+            input.clone()
+        });
     let measure: String = matches.value_of("MEASURE").unwrap().to_owned();
     let ranges: Vec<f64> = matches
         .value_of("RANGE")
@@ -121,8 +139,8 @@ fn main() {
         .collect();
     info!("Query ranges {:?}", ranges);
     match measure.as_ref() {
-        "jaccard" => run::<BagOfWords, _>(&input, ranges, Jaccard::jaccard),
-        "cosine" => run::<UnitNormVector, _>(&input, ranges, InnerProduct::cosine),
+        "jaccard" => run::<BagOfWords, _>(&input, &base, ranges, Jaccard::jaccard),
+        "cosine" => run::<UnitNormVector, _>(&input, &base, ranges, InnerProduct::cosine),
         e => panic!("Unsupported measure {}", e),
     };
 }
