@@ -262,7 +262,7 @@ where
                             logger,
                             LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
                         );
-                        let rep_entry = buckets.entry(t.retain()).or_insert_with(|| AdaptiveBucket::default());
+                        let rep_entry = buckets.entry(t.retain()).or_insert_with(AdaptiveBucket::default);
                         for (h, (k, level)) in data.drain(..) {
                             rep_entry.push_left(level, h, k);
                         }
@@ -284,7 +284,7 @@ where
                             logger,
                             LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
                         );
-                        let rep_entry = buckets.entry(t.retain()).or_insert_with(|| AdaptiveBucket::default());
+                        let rep_entry = buckets.entry(t.retain()).or_insert_with(AdaptiveBucket::default);
                         for (h, (k, level)) in data.drain(..) {
                             rep_entry.push_right(level, h, k);
                         }
@@ -324,6 +324,7 @@ where
                                     }
                                 });
                             }
+                            buckets.clear();
                             let end = Instant::now();
                             log_event!(
                                 logger,

@@ -228,6 +228,11 @@ where
         self.right.iter().map(|vs| vs.1.len()).sum()
     }
 
+    pub fn clear(&mut self) {
+        self.left.clear();
+        self.right.clear();
+    }
+
     fn sort_hashes(hashes: &mut HashMap<u8, Vec<(H, K)>>) {
         for (_level, hashes) in hashes.iter_mut() {
             hashes.sort_unstable_by(|h1, h2| h1.0.lex_cmp(&h2.0));
