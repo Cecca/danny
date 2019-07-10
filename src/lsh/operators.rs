@@ -236,7 +236,6 @@ where
         PD: FnMut(&K, &K) -> bool + 'static,
     {
         let mut buckets = HashMap::new();
-        let mut pool = BucketPool::default();
         let logger = self.scope().danny_logger();
 
         self.binary_frontier(
@@ -263,9 +262,9 @@ where
                             logger,
                             LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
                         );
-                        let rep_entry = buckets.entry(t.retain()).or_insert_with(|| pool.get());
-                        for (h, k) in data.drain(..) {
-                            rep_entry.push_left(h, k);
+                        let rep_entry = buckets.entry(t.retain()).or_insert_with(|| AdaptiveBucket::default());
+                        for (h, (k, level)) in data.drain(..) {
+                            rep_entry.push_left(level, h, k);
                         }
                     });
                     right_in.for_each(|t, d| {
@@ -285,9 +284,9 @@ where
                             logger,
                             LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
                         );
-                        let rep_entry = buckets.entry(t.retain()).or_insert_with(|| pool.get());
-                        for (h, k) in data.drain(..) {
-                            rep_entry.push_right(h, k);
+                        let rep_entry = buckets.entry(t.retain()).or_insert_with(|| AdaptiveBucket::default());
+                        for (h, (k, level)) in data.drain(..) {
+                            rep_entry.push_right(level, h, k);
                         }
                     });
                     let frontiers = &[left_in.frontier(), right_in.frontier()];
@@ -325,7 +324,6 @@ where
                                     }
                                 });
                             }
-                            buckets.clear();
                             let end = Instant::now();
                             log_event!(
                                 logger,
@@ -367,8 +365,6 @@ where
                         .collect();
                     for t in cleanup_times.iter() {
                         let bucket = buckets.remove(t).unwrap();
-                        // put it back into the pool
-                        pool.give_back(bucket);
                     }
                 }
             },

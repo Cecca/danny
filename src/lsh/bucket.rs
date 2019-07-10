@@ -1,4 +1,5 @@
 use crate::lsh::*;
+use std::collections::HashMap;
 use std::fmt::Debug;
 
 /// Maintains a pool of buckets, to which used and cleared
@@ -173,6 +174,90 @@ where
 {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+pub struct AdaptiveBucket<H, K>
+where
+    H: PrefixHash + Ord + Debug,
+    K: Debug,
+{
+    left: HashMap<u8, Vec<(H, K)>>,
+    right: HashMap<u8, Vec<(H, K)>>,
+}
+
+impl<H, K> Default for AdaptiveBucket<H, K>
+where
+    H: PrefixHash + Ord + Debug,
+    K: Debug,
+{
+    fn default() -> Self {
+        Self {
+            left: HashMap::new(),
+            right: HashMap::new(),
+        }
+    }
+}
+
+impl<H, K> AdaptiveBucket<H, K>
+where
+    H: PrefixHash + Ord + Debug,
+    K: Debug,
+{
+    pub fn is_empty(&self) -> bool {
+        self.left.is_empty() && self.right.is_empty()
+    }
+
+    pub fn is_one_side_empty(&self) -> bool {
+        self.left.is_empty() || self.right.is_empty()
+    }
+
+    pub fn push_left(&mut self, level: u8, h: H, k: K) {
+        self.left.entry(level).or_default().push((h, k));
+    }
+
+    pub fn push_right(&mut self, level: u8, h: H, k: K) {
+        self.right.entry(level).or_default().push((h, k));
+    }
+
+    pub fn len_left(&self) -> usize {
+        self.left.iter().map(|vs| vs.1.len()).sum()
+    }
+
+    pub fn len_right(&self) -> usize {
+        self.right.iter().map(|vs| vs.1.len()).sum()
+    }
+
+    fn sort_hashes(hashes: &mut HashMap<u8, Vec<(H, K)>>) {
+        for (_level, hashes) in hashes.iter_mut() {
+            hashes.sort_unstable_by(|h1, h2| h1.0.lex_cmp(&h2.0));
+        }
+    }
+
+    pub fn for_prefixes<F>(&mut self, mut action: F)
+    where
+        F: FnMut(&K, &K) -> (),
+    {
+        Self::sort_hashes(&mut self.left);
+        Self::sort_hashes(&mut self.right);
+
+        for (level_left, hashes_left) in self.left.iter() {
+            for (level_right, hashes_right) in self.right.iter() {
+                let prefix_len = std::cmp::min(level_left, level_right);
+                let iter = BucketsPrefixIter::new(hashes_left, hashes_right, *prefix_len as usize);
+                for (l_vecs, r_vecs) in iter {
+                    for l_tile in l_vecs.chunks(8) {
+                        for r_tile in r_vecs.chunks(8) {
+                            for (_hl, l) in l_tile {
+                                for (_hr, r) in r_tile {
+                                    action(l, r);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
