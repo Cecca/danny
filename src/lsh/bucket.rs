@@ -1,4 +1,5 @@
 use crate::lsh::*;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::Debug;
 
@@ -6,7 +7,7 @@ use std::fmt::Debug;
 /// ones can be returned, in order to reuse the memory
 pub struct BucketPool<H, K>
 where
-    H: Ord + Debug,
+    H: Ord + Debug + std::fmt::Binary,
     K: Debug,
 {
     pool: Vec<Bucket<H, K>>,
@@ -14,7 +15,7 @@ where
 
 impl<H, K> BucketPool<H, K>
 where
-    H: Ord + Debug,
+    H: Ord + Debug + std::fmt::Binary,
     K: Debug,
 {
     pub fn get(&mut self) -> Bucket<H, K> {
@@ -28,7 +29,7 @@ where
 
 impl<H, K> Default for BucketPool<H, K>
 where
-    H: Ord + Debug,
+    H: Ord + Debug + std::fmt::Binary,
     K: Debug,
 {
     fn default() -> Self {
@@ -38,7 +39,7 @@ where
 
 pub struct Bucket<H, K>
 where
-    H: Ord + Debug,
+    H: Ord + Debug + std::fmt::Binary,
     K: Debug,
 {
     pub left: Vec<(H, K)>,
@@ -47,7 +48,7 @@ where
 
 impl<H, K> Bucket<H, K>
 where
-    H: Ord + Debug,
+    H: Ord + Debug + std::fmt::Binary,
     K: Debug,
 {
     pub fn new() -> Self {
@@ -125,7 +126,7 @@ where
 
 impl<H, K> Bucket<H, (K, u8)>
 where
-    H: Ord + PrefixHash + Debug,
+    H: Ord + PrefixHash + Debug + std::fmt::Binary,
     K: Debug,
 {
     /// This method can be applied just to buckets such that information about the
@@ -169,7 +170,7 @@ where
 
 impl<H, K> Default for Bucket<H, K>
 where
-    H: Ord + Debug,
+    H: Ord + Debug + std::fmt::Binary,
     K: Debug,
 {
     fn default() -> Self {
@@ -179,7 +180,7 @@ where
 
 pub struct AdaptiveBucket<H, K>
 where
-    H: PrefixHash + Ord + Debug,
+    H: PrefixHash + Ord + Debug + std::fmt::Binary,
     K: Debug,
 {
     left: HashMap<u8, Vec<(H, K)>>,
@@ -188,7 +189,7 @@ where
 
 impl<H, K> Default for AdaptiveBucket<H, K>
 where
-    H: PrefixHash + Ord + Debug,
+    H: PrefixHash + Ord + Debug + std::fmt::Binary,
     K: Debug,
 {
     fn default() -> Self {
@@ -201,7 +202,7 @@ where
 
 impl<H, K> AdaptiveBucket<H, K>
 where
-    H: PrefixHash + Ord + Debug,
+    H: PrefixHash + Ord + Debug + std::fmt::Binary,
     K: Debug,
 {
     pub fn is_empty(&self) -> bool {
@@ -234,7 +235,7 @@ where
     }
 
     fn sort_hashes(hashes: &mut HashMap<u8, Vec<(H, K)>>) {
-        for (_level, hashes) in hashes.iter_mut() {
+        for (level, hashes) in hashes.iter_mut() {
             hashes.sort_unstable_by(|h1, h2| h1.0.lex_cmp(&h2.0));
         }
     }
@@ -249,15 +250,12 @@ where
         for (level_left, hashes_left) in self.left.iter() {
             for (level_right, hashes_right) in self.right.iter() {
                 let prefix_len = std::cmp::min(level_left, level_right);
+                // info!("Prefix length {}", prefix_len);
                 let iter = BucketsPrefixIter::new(hashes_left, hashes_right, *prefix_len as usize);
                 for (l_vecs, r_vecs) in iter {
-                    for l_tile in l_vecs.chunks(8) {
-                        for r_tile in r_vecs.chunks(8) {
-                            for (_hl, l) in l_tile {
-                                for (_hr, r) in r_tile {
-                                    action(l, r);
-                                }
-                            }
+                    for (_hl, l) in l_vecs {
+                        for (_hr, r) in r_vecs {
+                            action(l, r);
                         }
                     }
                 }
@@ -360,7 +358,7 @@ where
 
 impl<'a, H, K1, K2> BucketsPrefixIter<'a, H, K1, K2>
 where
-    H: PartialOrd + PrefixHash,
+    H: PartialOrd + PrefixHash + std::fmt::Binary,
     K1: Debug,
     K2: Debug,
 {
@@ -376,9 +374,12 @@ where
     fn find_bucket_end<K>(&self, items: &'a [(H, K)], start: usize) -> (&'a H, usize) {
         let start_hash = &items[start].0;
         let mut end = start + 1;
+        // info!("Start hash {:32b}", start_hash.prefix(self.prefix_len));
         while end < items.len() && items[end].0.prefix_eq(start_hash, self.prefix_len) {
+            // info!("      hash {:32b}", items[end].0.prefix(self.prefix_len));
             end += 1;
         }
+        // info!("Found end  {:32b}", items[end].0.prefix(self.prefix_len));
         (start_hash, end)
     }
 }
@@ -387,7 +388,7 @@ impl<'a, H, K1, K2> Iterator for BucketsPrefixIter<'a, H, K1, K2>
 where
     K1: Debug,
     K2: Debug,
-    H: PartialOrd + PrefixHash + Debug,
+    H: PartialOrd + PrefixHash + Debug + std::fmt::Binary,
 {
     // TODO: This can be merged with the other, specializing just on find_bucket end
     type Item = (&'a [(H, K1)], &'a [(H, K2)]);
@@ -397,22 +398,24 @@ where
             if self.cur_left >= self.left.len() || self.cur_right >= self.right.len() {
                 return None;
             }
+            // info!("Searching left end");
             let lend = self.find_bucket_end(self.left, self.cur_left);
+            // info!("Searching right end");
             let rend = self.find_bucket_end(self.right, self.cur_right);
-            if lend.0.prefix(self.prefix_len) < rend.0.prefix(self.prefix_len) {
-                self.cur_left = lend.1;
-            } else if lend.0.prefix(self.prefix_len) > rend.0.prefix(self.prefix_len) {
-                self.cur_right = rend.1;
-            } else {
-                // We are in a non empty bucket!
-                let lstart = self.cur_left;
-                let rstart = self.cur_right;
-                self.cur_left = lend.1;
-                self.cur_right = rend.1;
-                return Some((
-                    &self.left[lstart..self.cur_left],
-                    &self.right[rstart..self.cur_right],
-                ));
+            match lend.0.lex_cmp_partial(&rend.0, self.prefix_len) {
+                Ordering::Less => self.cur_left = lend.1,
+                Ordering::Greater => self.cur_right = rend.1,
+                Ordering::Equal => {
+                    // We are in a non empty bucket!
+                    let lstart = self.cur_left;
+                    let rstart = self.cur_right;
+                    self.cur_left = lend.1;
+                    self.cur_right = rend.1;
+                    return Some((
+                        &self.left[lstart..self.cur_left],
+                        &self.right[rstart..self.cur_right],
+                    ));
+                }
             }
         }
     }

@@ -1,3 +1,4 @@
+#![feature(is_sorted)]
 #![feature(fn_traits)]
 #![feature(unboxed_closures)]
 #![feature(range_contains)]

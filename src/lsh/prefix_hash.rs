@@ -4,9 +4,10 @@ use crate::operators::Route;
 use std::cmp::Ordering;
 
 pub trait PrefixHash {
-    type PrefixType: Eq + Ord + Clone + Route;
+    type PrefixType: Eq + Ord + Clone + Route + std::fmt::Binary;
     fn prefix(&self, n: usize) -> Self::PrefixType;
     fn lex_cmp(&self, other: &Self) -> Ordering;
+    fn lex_cmp_partial(&self, other: &Self, len: usize) -> Ordering;
     fn prefix_eq(&self, other: &Self, n: usize) -> bool {
         self.prefix(n) == other.prefix(n)
     }
@@ -50,6 +51,28 @@ impl PrefixHash for u32 {
             return Ordering::Equal;
         }
         for _ in 0..32 {
+            let a_bit = a & 1;
+            let b_bit = b & 1;
+            if a_bit < b_bit {
+                return Ordering::Less;
+            } else if a_bit > b_bit {
+                return Ordering::Greater;
+            }
+            a >>= 1;
+            b >>= 1;
+        }
+        // We should never get here, we have an early return
+        // before the loop for the equality case
+        Ordering::Equal
+    }
+
+    fn lex_cmp_partial(&self, other: &Self, len: usize) -> Ordering {
+        let mut a: u32 = *self;
+        let mut b: u32 = *other;
+        if a == b {
+            return Ordering::Equal;
+        }
+        for _ in 0..len {
             let a_bit = a & 1;
             let b_bit = b & 1;
             if a_bit < b_bit {

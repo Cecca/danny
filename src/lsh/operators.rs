@@ -50,7 +50,17 @@ impl<G, T, H, K> BucketStream<G, T, H, K> for Stream<G, (H, K)>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + ToStepId,
-    H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
+    H: Data
+        + Route
+        + Debug
+        + Send
+        + Sync
+        + Abomonation
+        + Clone
+        + Eq
+        + Hash
+        + Ord
+        + std::fmt::Binary,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     #[allow(clippy::explicit_counter_loop)]
@@ -220,7 +230,7 @@ impl<G, T, H, K> BucketPrefixesStream<G, T, H, K> for Stream<G, (H, (K, u8))>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + ToStepId,
-    H: HashData + Debug + PrefixHash,
+    H: HashData + Debug + PrefixHash + std::fmt::Binary,
     K: ExchangeData + Debug,
 {
     #[allow(clippy::explicit_counter_loop)]
