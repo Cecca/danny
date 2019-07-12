@@ -20,7 +20,7 @@ experiments:
         - 13124534
     parameters:
       --algorithm: lsh
-      --range: [0.5,0.7,0.9]
+      --range: 0.5
       --measure: cosine
       --sketch-bits: 128
       -k: [11,13,15,17]
@@ -36,7 +36,7 @@ experiments:
         - 13124534
     parameters:
       --algorithm: lsh
-      --range: [0.5,0.7,0.9]
+      --range: 0.5
       --measure: jaccard
       --sketch-bits: 128
       -k: [11,13,15,17]
@@ -55,7 +55,7 @@ experiments:
         - 13124534
     parameters:
       --algorithm: lsh
-      --range: [0.5,0.7,0.9]
+      --range: 0.5
       --measure: cosine
       --sketch-bits: 128
       --adaptive-k: "11,20"
@@ -71,7 +71,7 @@ experiments:
         - 13124534
     parameters:
       --algorithm: lsh
-      --range: [0.5,0.7,0.9]
+      --range: 0.5
       --measure: jaccard
       --sketch-bits: 128
       --adaptive-k: "11,20"
