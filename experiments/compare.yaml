@@ -7,7 +7,7 @@ environment:
   DANNY_REPETITION_COST: 1
   DANNY_DATA_DIR: /mnt/fast_storage/users/mcec
   DANNY_SKETCH_EPSILON: 0.01
-  DANNY_SAMPLING_FACTOR: 10
+  DANNY_SAMPLING_FACTOR: 1
 experiments:
 
   - name: Glove (fixed)
