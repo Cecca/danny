@@ -463,13 +463,37 @@ for r in [0.5,0.7,0.9]:
     )
     derived_datasets.append(d)
 
-d = DerivedDataset(
+derived_datasets.append(DerivedDataset(
     'Livejournal-diverse-exp-{}-3M'.format(0.5),
     'Livejournal-diverse-exp-{}-3000000.bin'.format(0.5),
     DATASETS['Livejournal'],
     preprocess_diverse_expansion
-)
-derived_datasets.append(d)
+))
+derived_datasets.append(DerivedDataset(
+    'Orkut-diverse-exp-{}-3M'.format(0.5),
+    'Orkut-diverse-exp-{}-3000000.bin'.format(0.5),
+    DATASETS['Orkut'],
+    preprocess_diverse_expansion
+))
+derived_datasets.append(DerivedDataset(
+    'AOL-diverse-exp-{}-3M'.format(0.5),
+    'AOL-diverse-exp-{}-3000000.bin'.format(0.5),
+    DATASETS['AOL'],
+    preprocess_diverse_expansion
+))
+derived_datasets.append(DerivedDataset(
+    'wiki-10k-diverse-exp-{}-3M'.format(0.5),
+    'wiki-10k-diverse-exp-{}-3000000.bin'.format(0.5),
+    DATASETS['wiki-10k'],
+    preprocess_diverse_expansion
+))
+derived_datasets.append(DerivedDataset(
+    'Glove-27-diverse-exp-{}-3M'.format(r),
+    'Glove-27-diverse=exp-{}-3000000.bin'.format(r),
+    DATASETS['Glove-27-200'],
+    preprocess_diverse
+))
+
 
 for d in derived_datasets:
     DATASETS[d.name] = d
