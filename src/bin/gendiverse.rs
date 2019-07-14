@@ -164,7 +164,7 @@ fn run<D>(
     for (difficulty, _) in data.iter() {
         let diff = difficulty - last_difficulty;
         assert!(diff >= 0.0);
-        weights.push(diff * diff);
+        weights.push(diff);
         last_difficulty = *difficulty;
     }
     let mut rng = XorShiftRng::seed_from_u64(seed);
