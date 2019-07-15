@@ -21,7 +21,6 @@ use rand::distributions::WeightedIndex;
 use rand::Rng;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
-use std::ffi::OsStr;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
@@ -156,7 +155,6 @@ fn run<D>(
             weights.push(weight);
             i += 1;
         }
-        info!("{} {} {} {}", difficulty, weight, num_equal, diff);
         last_difficulty = difficulty;
     }
     assert!(weights.len() == data.len());
