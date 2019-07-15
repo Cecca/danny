@@ -68,28 +68,7 @@ impl Perturb for BagOfWords {
     }
 }
 
-#[derive(Clone, Copy)]
-enum DifficultyMeasure {
-    Expansion,
-    LID,
-}
-
-impl DifficultyMeasure {
-    fn from_path(path: &PathBuf) -> Self {
-        match path
-            .extension()
-            .expect("Path should have extension")
-            .to_str()
-        {
-            Some("exp") => DifficultyMeasure::Expansion,
-            Some("lid") => DifficultyMeasure::LID,
-            _ => panic!("Unsupported extension"),
-        }
-    }
-}
-
 fn add_difficulties<D>(path: &PathBuf, range: f64, vecs: &mut Vec<(f64, D)>) {
-    let measure = DifficultyMeasure::from_path(path);
     let f = File::open(path).expect("Problem opening difficulty file");
     let input = BufReader::new(f);
     let mut cnt = 0;
@@ -161,12 +140,27 @@ fn run<D>(
     info!("Sorted by difficulty");
     let mut weights = Vec::new();
     let mut last_difficulty = 0.0;
-    for (difficulty, _) in data.iter() {
+    let mut i = 0;
+    while i < data.len() {
+        // find a run of equal difficulties
+        let mut j = i + 1;
+        let difficulty = data[i].0;
+        while j < data.len() && data[j].0 == difficulty {
+            j += 1;
+        }
+        let num_equal = (j - i) as f64;
         let diff = difficulty - last_difficulty;
-        assert!(diff >= 0.0);
-        weights.push(diff);
-        last_difficulty = *difficulty;
+        // Distribute the weight across all equal difficulty points
+        let weight = diff / num_equal;
+        while i < j {
+            weights.push(weight);
+            i += 1;
+        }
+        info!("{} {} {} {}", difficulty, weight, num_equal, diff);
+        last_difficulty = difficulty;
     }
+    assert!(weights.len() == data.len());
+
     let mut rng = XorShiftRng::seed_from_u64(seed);
     let index_distribution =
         WeightedIndex::new(weights).expect("Problem setting up the distribution");
@@ -179,8 +173,8 @@ fn run<D>(
         }
         cnt += 1;
         let idx = rng.sample(&index_distribution);
-        // Some(data[idx].1.clone())
-        Some(data[idx].1.perturb(&mut rng))
+        Some(data[idx].1.clone())
+        // Some(data[idx].1.perturb(&mut rng))
     });
     WriteBinaryFile::write_binary(
         outputpath.to_path_buf(),
