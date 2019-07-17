@@ -28,6 +28,21 @@ use std::io::BufReader;
 use std::io::Write;
 use std::path::PathBuf;
 
+enum GeneratorType {
+    Random,
+    Extreme,
+}
+
+impl GeneratorType {
+    fn from_string(s: &str) -> Self {
+        match s {
+            "random" => GeneratorType::Random,
+            "extreme" => GeneratorType::Extreme,
+            _ => panic!("Unknown generator type {}", s),
+        }
+    }
+}
+
 trait Perturb {
     fn perturb<R>(&self, rng: &mut R) -> Self
     where
@@ -100,11 +115,75 @@ fn add_difficulties<D>(path: &PathBuf, range: f64, vecs: &mut Vec<(f64, D)>) {
     );
 }
 
+fn gen_extreme<'a, D: Clone + 'static>(
+    data: &'a Vec<(f64, D)>,
+    target: usize,
+) -> Box<dyn Iterator<Item = D> + 'a> {
+    let n = data
+        .iter()
+        .filter(|(d, _)| !(d.is_infinite() || *d == 0.0))
+        .count();
+    let bottom = data
+        .iter()
+        .filter(|(d, _)| !(d.is_infinite() || *d == 0.0))
+        .map(|p| p.1.clone())
+        .take(target / 2);
+    let top = data
+        .iter()
+        .filter(|(d, _)| !(d.is_infinite() || *d == 0.0))
+        .map(|p| p.1.clone())
+        .skip(n - target / 2);
+    Box::new(bottom.chain(top))
+}
+
+fn gen_random<'a, D: Clone + 'static>(
+    data: &'a Vec<(f64, D)>,
+    target: usize,
+    seed: u64,
+) -> Box<dyn Iterator<Item = D> + 'a> {
+    let mut weights = Vec::new();
+    let mut last_difficulty = 0.0;
+    let mut i = 0;
+    while i < data.len() {
+        // find a run of equal difficulties
+        let mut j = i + 1;
+        let difficulty = data[i].0;
+        while j < data.len() && data[j].0 == difficulty {
+            j += 1;
+        }
+        let num_equal = (j - i) as f64;
+        let diff = difficulty - last_difficulty;
+        // Distribute the weight across all equal difficulty points
+        let weight = diff / num_equal;
+        while i < j {
+            weights.push(weight);
+            i += 1;
+        }
+        last_difficulty = difficulty;
+    }
+    assert!(weights.len() == data.len());
+    let mut rng = XorShiftRng::seed_from_u64(seed);
+    let index_distribution =
+        WeightedIndex::new(weights).expect("Problem setting up the distribution");
+    info!("Start sampling {} elements", target);
+    let mut cnt = 0;
+    Box::new(std::iter::from_fn(move || {
+        if cnt >= target {
+            info!("Written {} elements", cnt);
+            return None;
+        }
+        cnt += 1;
+        let idx = rng.sample(&index_distribution);
+        Some(data[idx].1.clone())
+    }))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run<D>(
     path: &PathBuf,
     outputpath: &PathBuf,
     difficulty_path: &PathBuf,
+    generator_type: GeneratorType,
     range: f64,
     target: usize,
     seed: u64,
@@ -131,49 +210,10 @@ fn run<D>(
     info!("Loaded dataset with {} elements", data.len());
     add_difficulties(difficulty_path, range, &mut data);
     data.sort_by(|t1, t2| t1.0.partial_cmp(&t2.0).expect("Problem doing comparison"));
-    let mut last_index = data.len() - 1;
-    while data[last_index].0.is_infinite() {
-        last_index -= 1;
-    }
-    let data = &data[..last_index];
-    info!("Sorted by difficulty");
-    let mut weights = Vec::new();
-    let mut last_difficulty = 0.0;
-    let mut i = 0;
-    while i < data.len() {
-        // find a run of equal difficulties
-        let mut j = i + 1;
-        let difficulty = data[i].0;
-        while j < data.len() && data[j].0 == difficulty {
-            j += 1;
-        }
-        let num_equal = (j - i) as f64;
-        let diff = difficulty - last_difficulty;
-        // Distribute the weight across all equal difficulty points
-        let weight = diff / num_equal;
-        while i < j {
-            weights.push(weight);
-            i += 1;
-        }
-        last_difficulty = difficulty;
-    }
-    assert!(weights.len() == data.len());
-
-    let mut rng = XorShiftRng::seed_from_u64(seed);
-    let index_distribution =
-        WeightedIndex::new(weights).expect("Problem setting up the distribution");
-    info!("Start sampling {} elements", target);
-    let mut cnt = 0;
-    let output_iter = std::iter::from_fn(move || {
-        if cnt >= target {
-            info!("Written {} elements", cnt);
-            return None;
-        }
-        cnt += 1;
-        let idx = rng.sample(&index_distribution);
-        Some(data[idx].1.clone())
-        // Some(data[idx].1.perturb(&mut rng))
-    });
+    let output_iter = match generator_type {
+        GeneratorType::Random => gen_random(&data, target, seed),
+        GeneratorType::Extreme => gen_extreme(&data, target),
+    };
     WriteBinaryFile::write_binary(
         outputpath.to_path_buf(),
         D::num_chunks(path.to_path_buf()),
@@ -187,6 +227,7 @@ fn main() {
         (author: "Matteo Ceccarello <mcec@itu.dk>")
         (about: "Build a dataset with a diverse distribution of local intrinsic dimensionalities")
         (@arg TYPE: -t +takes_value +required "The type of data, either bag-of-words or unit-norm-vector")
+        (@arg GEN: --gen -g +takes_value "The type of data, either bag-of-words or unit-norm-vector")
         (@arg RANGE: -r +takes_value +required "The range for the difficulty selection")
         (@arg TARGET: -s +takes_value +required "Target size")
         (@arg SEED: --seed +takes_value "Seed for the random number generator")
@@ -202,6 +243,10 @@ fn main() {
         .init();
 
     let input: PathBuf = matches.value_of("INPUT").unwrap().into();
+    let generator_type = matches
+        .value_of("GEN")
+        .map(GeneratorType::from_string)
+        .unwrap_or(GeneratorType::Random);
     let difficulty_path: PathBuf = matches.value_of("DIFFICULTY").unwrap().into();
     let output: PathBuf = matches.value_of("OUTPUT").unwrap().into();
     let target: usize = matches
@@ -221,10 +266,24 @@ fn main() {
         .expect("Problem parsing the seed");
     let datatype: String = matches.value_of("TYPE").unwrap().to_owned();
     match datatype.as_ref() {
-        "bag-of-words" => run::<BagOfWords>(&input, &output, &difficulty_path, range, target, seed),
-        "unit-norm-vector" => {
-            run::<UnitNormVector>(&input, &output, &difficulty_path, range, target, seed)
-        }
+        "bag-of-words" => run::<BagOfWords>(
+            &input,
+            &output,
+            &difficulty_path,
+            generator_type,
+            range,
+            target,
+            seed,
+        ),
+        "unit-norm-vector" => run::<UnitNormVector>(
+            &input,
+            &output,
+            &difficulty_path,
+            generator_type,
+            range,
+            target,
+            seed,
+        ),
         e => panic!("Unsupported measure {}", e),
     };
     info!("Done!");
