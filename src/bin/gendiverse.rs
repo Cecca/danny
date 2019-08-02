@@ -28,19 +28,16 @@ use std::io::BufReader;
 use std::io::Write;
 use std::path::PathBuf;
 
-enum GeneratorType {
-    Random,
-    Extreme,
+struct ExtremeConfig {
+    bottom: usize,
+    top: usize,
+    bottom_difficulty: f64,
+    top_difficulty: f64,
 }
 
-impl GeneratorType {
-    fn from_string(s: &str) -> Self {
-        match s {
-            "random" => GeneratorType::Random,
-            "extreme" => GeneratorType::Extreme,
-            _ => panic!("Unknown generator type {}", s),
-        }
-    }
+enum GeneratorType {
+    Random(usize),
+    Extreme(ExtremeConfig),
 }
 
 trait Perturb {
@@ -117,8 +114,12 @@ fn add_difficulties<D>(path: &PathBuf, range: f64, vecs: &mut Vec<(f64, D)>) {
 
 fn gen_extreme<'a, D: Clone + 'static>(
     data: &'a Vec<(f64, D)>,
-    target: usize,
+    config: ExtremeConfig,
 ) -> Box<dyn Iterator<Item = D> + 'a> {
+    let top_difficulty = config.top_difficulty;
+    let bottom_difficulty = config.bottom_difficulty;
+    assert!(data[0].0 <= bottom_difficulty);
+    assert!(data[data.len() - 1].0 >= top_difficulty);
     let n = data
         .iter()
         .filter(|(d, _)| !(d.is_infinite() || *d == 0.0))
@@ -126,13 +127,18 @@ fn gen_extreme<'a, D: Clone + 'static>(
     let bottom = data
         .iter()
         .filter(|(d, _)| !(d.is_infinite() || *d == 0.0))
+        .filter(move |(d, _)| *d <= bottom_difficulty)
+        .cycle()
         .map(|p| p.1.clone())
-        .take(target / 2);
+        .take(config.bottom);
     let top = data
         .iter()
+        .rev()
         .filter(|(d, _)| !(d.is_infinite() || *d == 0.0))
+        .filter(move |(d, _)| *d >= top_difficulty)
+        .cycle()
         .map(|p| p.1.clone())
-        .skip(n - target / 2);
+        .take(config.top);
     Box::new(bottom.chain(top))
 }
 
@@ -185,7 +191,6 @@ fn run<D>(
     difficulty_path: &PathBuf,
     generator_type: GeneratorType,
     range: f64,
-    target: usize,
     seed: u64,
 ) where
     D: ReadBinaryFile
@@ -211,8 +216,8 @@ fn run<D>(
     add_difficulties(difficulty_path, range, &mut data);
     data.sort_by(|t1, t2| t1.0.partial_cmp(&t2.0).expect("Problem doing comparison"));
     let output_iter = match generator_type {
-        GeneratorType::Random => gen_random(&data, target, seed),
-        GeneratorType::Extreme => gen_extreme(&data, target),
+        GeneratorType::Random(target) => gen_random(&data, target, seed),
+        GeneratorType::Extreme(config) => gen_extreme(&data, config),
     };
     WriteBinaryFile::write_binary(
         outputpath.to_path_buf(),
@@ -227,9 +232,13 @@ fn main() {
         (author: "Matteo Ceccarello <mcec@itu.dk>")
         (about: "Build a dataset with a diverse distribution of local intrinsic dimensionalities")
         (@arg TYPE: -t +takes_value +required "The type of data, either bag-of-words or unit-norm-vector")
-        (@arg GEN: --gen -g +takes_value "The type of data, either bag-of-words or unit-norm-vector")
+        (@arg GEN: --gen -g +takes_value "The type of data, either random or extreme")
         (@arg RANGE: -r +takes_value +required "The range for the difficulty selection")
-        (@arg TARGET: -s +takes_value +required "Target size")
+        (@arg TARGET: -s +takes_value "Target size")
+        (@arg BOTTOM: --bottom +takes_value "Number of bottom values")
+        (@arg BOTTOM_DIFFICULTY: --("bottom-difficulty") +takes_value "Number of bottom values")
+        (@arg TOP: --top +takes_value "Number of top values")
+        (@arg TOP_DIFFICULTY: --("top-difficulty") +takes_value "Number of top values")
         (@arg SEED: --seed +takes_value "Seed for the random number generator")
         (@arg INPUT: +required "The input path")
         (@arg DIFFICULTY: +required "The 'difficulty file' path. Can be either a LID or an expansion file")
@@ -243,17 +252,40 @@ fn main() {
         .init();
 
     let input: PathBuf = matches.value_of("INPUT").unwrap().into();
-    let generator_type = matches
-        .value_of("GEN")
-        .map(GeneratorType::from_string)
-        .unwrap_or(GeneratorType::Random);
+    let generator_type = match matches.value_of("GEN") {
+        Some("random") => GeneratorType::Random(
+            matches
+                .value_of("TARGET")
+                .unwrap()
+                .parse::<usize>()
+                .expect("Problem parsing the target"),
+        ),
+        Some("extreme") => GeneratorType::Extreme(ExtremeConfig {
+            top: matches
+                .value_of("TOP")
+                .unwrap()
+                .parse::<usize>()
+                .expect("Problem parsing the top"),
+            bottom: matches
+                .value_of("BOTTOM")
+                .unwrap()
+                .parse::<usize>()
+                .expect("Problem parsing the bottom"),
+            top_difficulty: matches
+                .value_of("TOP_DIFFICULTY")
+                .unwrap()
+                .parse::<f64>()
+                .expect("Problem parsing the top difficutly"),
+            bottom_difficulty: matches
+                .value_of("BOTTOM_DIFFICULTY")
+                .unwrap()
+                .parse::<f64>()
+                .expect("Problem parsing the bottom difficutly"),
+        }),
+        _ => panic!("Error parsing the generator"),
+    };
     let difficulty_path: PathBuf = matches.value_of("DIFFICULTY").unwrap().into();
     let output: PathBuf = matches.value_of("OUTPUT").unwrap().into();
-    let target: usize = matches
-        .value_of("TARGET")
-        .unwrap()
-        .parse::<usize>()
-        .expect("Problem parsing the target");
     let seed: u64 = matches
         .value_of("SEED")
         .unwrap_or("140981350987")
@@ -272,7 +304,6 @@ fn main() {
             &difficulty_path,
             generator_type,
             range,
-            target,
             seed,
         ),
         "unit-norm-vector" => run::<UnitNormVector>(
@@ -281,7 +312,6 @@ fn main() {
             &difficulty_path,
             generator_type,
             range,
-            target,
             seed,
         ),
         e => panic!("Unsupported measure {}", e),
