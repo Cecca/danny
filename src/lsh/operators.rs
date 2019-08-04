@@ -383,6 +383,182 @@ where
     }
 }
 
+pub trait BucketPrefixesStreamAsymm<G, T, H, K>
+where
+    G: Scope<Timestamp = T>,
+    T: Timestamp,
+    H: HashData + PrefixHash,
+    K: ExchangeData,
+{
+    fn bucket_prefixes_asymm<P, PD>(
+        &self,
+        right: &Stream<G, (H, K)>,
+        routing_prefix: usize,
+        proximity_predicate: P,
+        distinct_predicate: PD,
+    ) -> Stream<G, (K, K)>
+    where
+        P: FnMut(&K, &K) -> bool + 'static,
+        PD: FnMut(&K, &K) -> bool + 'static;
+}
+
+impl<G, T, H, K> BucketPrefixesStreamAsymm<G, T, H, K> for Stream<G, (H, (K, u8))>
+where
+    G: Scope<Timestamp = T>,
+    T: Timestamp + ToStepId,
+    H: HashData + Debug + PrefixHash + std::fmt::Binary,
+    K: ExchangeData + Debug,
+{
+    #[allow(clippy::explicit_counter_loop)]
+    fn bucket_prefixes_asymm<P, PD>(
+        &self,
+        right: &Stream<G, (H, K)>,
+        routing_prefix: usize,
+        mut sketch_pred: P,
+        mut distinct_predicate: PD,
+    ) -> Stream<G, (K, K)>
+    where
+        P: FnMut(&K, &K) -> bool + 'static,
+        PD: FnMut(&K, &K) -> bool + 'static,
+    {
+        let mut buckets = HashMap::new();
+        let logger = self.scope().danny_logger();
+
+        self.binary_frontier(
+            &right,
+            ExchangePact::new(move |pair: &(H, (K, u8))| pair.0.prefix(routing_prefix).route()),
+            ExchangePact::new(move |pair: &(H, K)| pair.0.prefix(routing_prefix).route()),
+            "bucket",
+            move |_, _| {
+                move |left_in, right_in, output| {
+                    left_in.for_each(|t, d| {
+                        let _pg = ProfileGuard::new(
+                            logger.clone(),
+                            t.time().to_step_id(),
+                            1,
+                            "bucket_receive",
+                        );
+                        debug!(
+                            "Received batch of left messages for time {:?}:\n\t{:?}",
+                            t.time(),
+                            d.iter()
+                        );
+                        let mut data = d.replace(Vec::new());
+                        log_event!(
+                            logger,
+                            LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
+                        );
+                        let rep_entry = buckets.entry(t.retain()).or_insert_with(AsymmetricAdaptiveBucket::default);
+                        for (h, (k, level)) in data.drain(..) {
+                            rep_entry.push_left(level, h, k);
+                        }
+                    });
+                    right_in.for_each(|t, d| {
+                        let _pg = ProfileGuard::new(
+                            logger.clone(),
+                            t.time().to_step_id(),
+                            1,
+                            "bucket_receive",
+                        );
+                        debug!(
+                            "Received batch of right messages for time {:?}:\n\t{:?}",
+                            t.time(),
+                            d.iter()
+                        );
+                        let mut data = d.replace(Vec::new());
+                        log_event!(
+                            logger,
+                            LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
+                        );
+                        let rep_entry = buckets.entry(t.retain()).or_insert_with(AsymmetricAdaptiveBucket::default);
+                        for (h, k) in data.drain(..) {
+                            rep_entry.push_right(h, k);
+                        }
+                    });
+                    let frontiers = &[left_in.frontier(), right_in.frontier()];
+                    for (time, buckets) in buckets.iter_mut() {
+                        if frontiers.iter().all(|f| !f.less_equal(time)) {
+                            let _pg = ProfileGuard::new(
+                                logger.clone(),
+                                time.time().to_step_id(),
+                                1,
+                                "candidate_emission",
+                            );
+                            // Emit some output pairs
+                            debug!(
+                                "Outputting pairs out of buckets from {} left and {} right vectors",
+                                buckets.len_left(),
+                                buckets.len_right()
+                            );
+                            let mut session = output.session(time);
+                            let mut cnt = 0;
+                            let mut bloom_discarded = 0;
+                            let mut sketch_discarded = 0;
+                            debug!("Starting candidate emission ({})", proc_mem!());
+                            let start = Instant::now();
+                            if !buckets.is_one_side_empty() {
+                                buckets.for_prefixes(|l, r| {
+                                    if sketch_pred(l, r) {
+                                        if distinct_predicate(l, r) {
+                                            session.give((l.clone(), r.clone()));
+                                            cnt += 1;
+                                        } else {
+                                            bloom_discarded += 1;
+                                        }
+                                    } else {
+                                        sketch_discarded += 1;
+                                    }
+                                });
+                            }
+                            buckets.clear();
+                            let end = Instant::now();
+                            log_event!(
+                                logger,
+                                LogEvent::GeneratedPairs(time.time().to_step_id(), cnt)
+                            );
+                            log_event!(
+                                logger,
+                                LogEvent::SketchDiscarded(
+                                    time.time().to_step_id(),
+                                    sketch_discarded
+                                )
+                            );
+                            log_event!(
+                                logger,
+                                LogEvent::DuplicatesDiscarded(
+                                    time.time().to_step_id(),
+                                    bloom_discarded
+                                )
+                            );
+                            info!(
+                                "Candidates: Emitted {} / Discarded {} / Duplicates {} in {:?} ({}) (repetition {:?})",
+                                cnt,
+                                sketch_discarded,
+                                bloom_discarded,
+                                end - start,
+                                proc_mem!(),
+                                time.time()
+                            );
+                        }
+                    }
+
+                    // Cleanup exhausted buckets, returning buckets to the pool,
+                    // so to reuse the allocated memory in the future
+                    let cleanup_times: Vec<Capability<T>> = buckets
+                        .iter()
+                        .filter(|(_, b)| b.is_empty())
+                        .map(|p| p.0)
+                        .cloned()
+                        .collect();
+                    for t in cleanup_times.iter() {
+                        let bucket = buckets.remove(t).unwrap();
+                    }
+                }
+            },
+        )
+    }
+}
+
 struct RepetitionStopWatch {
     start: Option<Instant>,
     counter: usize,
@@ -429,7 +605,7 @@ pub fn source_hashed_sketched<G, T, K, D, F, V>(
     matrix: MatrixDescription,
     direction: MatrixDirection,
     throttling_probe: ProbeHandle<G::Timestamp>,
-) -> Stream<G, (u32, (V, K))>
+) -> Stream<G, (u32, (K, V))>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ,
@@ -472,7 +648,7 @@ where
                     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
                         let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
                         let s = sketches.get(k).expect("Missing sketch");
-                        session.give((h, (s.clone(), k.clone())));
+                        session.give((h, (k.clone(), s.clone())));
                     }
                     current_repetition += 1;
                     cap.downgrade(&cap.time().succ());

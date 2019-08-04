@@ -288,3 +288,55 @@ where
 
     (best_left, best_right)
 }
+
+/// A balance towards 0 penalizes collisions, a balance towards 1 penalizes repetitions
+#[allow(clippy::too_many_arguments)]
+pub fn find_best_level_left<G, T, K, D, F, V, R>(
+    scope: G,
+    left: Arc<ChunkedDataset<K, D>>,
+    right: Arc<ChunkedDataset<K, D>>,
+    params: AdaptiveParams,
+    hasher: Arc<DKTCollection<F>>,
+    sketches_left: Arc<HashMap<K, V>>,
+    sketches_right: Arc<HashMap<K, V>>,
+    matrix: MatrixDescription,
+    rng: R,
+) -> Stream<G, (K, usize)>
+where
+    G: Scope<Timestamp = T>,
+    T: Timestamp + Succ + ToStepId + Debug,
+    D: ExchangeData + Debug + SketchEstimate,
+    K: ExchangeData + Debug + Route + Hash + Ord,
+    F: LSHFunction<Input = D, Output = u32> + Send + Clone + Sync + 'static,
+    V: ExchangeData + Debug + BitBasedSketch,
+    R: Rng + Clone + 'static,
+{
+    let prob_right = params.sampling_factor / (right.global_n as f64).sqrt();
+    let prob_right = if prob_right > 1.0 {
+        warn!("Capping the sampling probability to 1");
+        1.0
+    } else {
+        prob_right
+    };
+    let weight_right = 1.0 / prob_right;
+
+    let sample_right = sample_sketches(
+        &scope,
+        Arc::clone(&right),
+        prob_right,
+        Arc::clone(&sketches_right),
+        matrix,
+        MatrixDirection::Columns,
+        rng.clone(),
+    );
+
+    compute_best_level(
+        &sample_right,
+        Arc::clone(&left),
+        Arc::clone(&hasher),
+        Arc::clone(&sketches_left),
+        params.with_weight(weight_right),
+        matrix,
+        MatrixDirection::Rows,
+    )
+}

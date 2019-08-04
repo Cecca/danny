@@ -303,7 +303,7 @@ where
         self.left.entry(level).or_default().push((h, k));
     }
 
-    pub fn push_right(&mut self, level: u8, h: H, k: K) {
+    pub fn push_right(&mut self, h: H, k: K) {
         self.right.push((h, k));
     }
 

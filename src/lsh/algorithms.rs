@@ -256,10 +256,10 @@ where
     );
     left_hashes.bucket_pred(
         &right_hashes,
-        move |a, b| sketch_predicate.eval(&a.0, &b.0),
+        move |a, b| sketch_predicate.eval(&a.1, &b.1),
         // move |a, b| !filter.test_and_insert(&(a.1, b.1)),
         |_, _| true,
-        |x| x.1,
+        |x| x.0,
     )
 }
 
@@ -336,7 +336,7 @@ where
 
     let min_level = min_k;
 
-    let (levels_left, levels_right) = find_best_level(
+    let levels_left = find_best_level_left(
         scope.clone(),
         Arc::clone(&left),
         Arc::clone(&right),
@@ -350,9 +350,6 @@ where
     let levels_left = levels_left
         .matrix_distribute(MatrixDirection::Rows, matrix)
         .map(|triplet| (triplet.1, triplet.2));
-    let levels_right = levels_right
-        .matrix_distribute(MatrixDirection::Columns, matrix)
-        .map(|triplet| (triplet.1, triplet.2));
 
     let left_hashes = source_hashed_adaptive_sketched(
         &scope,
@@ -364,9 +361,8 @@ where
         MatrixDirection::Rows,
         probe.clone(),
     );
-    let right_hashes = source_hashed_adaptive_sketched(
+    let right_hashes = source_hashed_sketched(
         &scope,
-        &levels_right,
         Arc::clone(&right),
         Arc::clone(&hasher),
         Arc::clone(&sketches_right),
@@ -375,7 +371,7 @@ where
         probe.clone(),
     );
     left_hashes
-        .bucket_prefixes(
+        .bucket_prefixes_asymm(
             &right_hashes,
             min_level,
             move |l, r| sketch_predicate.eval(&l.1, &r.1),
