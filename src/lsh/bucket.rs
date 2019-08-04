@@ -264,6 +264,90 @@ where
     }
 }
 
+pub struct AsymmetricAdaptiveBucket<H, K>
+where
+    H: PrefixHash + Ord + Debug + std::fmt::Binary,
+    K: Debug,
+{
+    left: HashMap<u8, Vec<(H, K)>>,
+    right: Vec<(H, K)>,
+}
+
+impl<H, K> Default for AsymmetricAdaptiveBucket<H, K>
+where
+    H: PrefixHash + Ord + Debug + std::fmt::Binary,
+    K: Debug,
+{
+    fn default() -> Self {
+        Self {
+            left: HashMap::new(),
+            right: Vec::new(),
+        }
+    }
+}
+
+impl<H, K> AsymmetricAdaptiveBucket<H, K>
+where
+    H: PrefixHash + Ord + Debug + std::fmt::Binary,
+    K: Debug,
+{
+    pub fn is_empty(&self) -> bool {
+        self.left.is_empty() && self.right.is_empty()
+    }
+
+    pub fn is_one_side_empty(&self) -> bool {
+        self.left.is_empty() || self.right.is_empty()
+    }
+
+    pub fn push_left(&mut self, level: u8, h: H, k: K) {
+        self.left.entry(level).or_default().push((h, k));
+    }
+
+    pub fn push_right(&mut self, level: u8, h: H, k: K) {
+        self.right.push((h, k));
+    }
+
+    pub fn len_left(&self) -> usize {
+        self.left.iter().map(|vs| vs.1.len()).sum()
+    }
+
+    pub fn len_right(&self) -> usize {
+        self.right.len()
+    }
+
+    pub fn clear(&mut self) {
+        self.left.clear();
+        self.right.clear();
+    }
+
+    fn sort_hashes(hashes: &mut HashMap<u8, Vec<(H, K)>>) {
+        for (level, hashes) in hashes.iter_mut() {
+            hashes.sort_unstable_by(|h1, h2| h1.0.lex_cmp(&h2.0));
+        }
+    }
+
+    pub fn for_prefixes<F>(&mut self, mut action: F)
+    where
+        F: FnMut(&K, &K) -> (),
+    {
+        Self::sort_hashes(&mut self.left);
+        self.right.sort_unstable_by(|h1, h2| h1.0.lex_cmp(&h2.0));
+
+        for (level_left, hashes_left) in self.left.iter() {
+            let prefix_len = level_left;
+            // info!("Prefix length {}", prefix_len);
+            let iter = BucketsPrefixIter::new(hashes_left, &self.right, *prefix_len as usize);
+            for (l_vecs, r_vecs) in iter {
+                for (_hl, l) in l_vecs {
+                    for (_hr, r) in r_vecs {
+                        action(l, r);
+                    }
+                }
+            }
+        }
+    }
+}
+
 trait FindBucketEnd<'a, H, K> {
     fn find_bucket_end(&self, items: &'a [(H, K)], start: usize) -> (&'a H, usize);
 }
