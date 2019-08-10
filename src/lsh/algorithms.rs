@@ -5,61 +5,51 @@ use crate::experiment::Experiment;
 use crate::io::*;
 use crate::logging::init_event_logging;
 use crate::logging::*;
+use crate::lsh::adaptive::*;
 use crate::lsh::functions::*;
 use crate::lsh::operators::*;
-use crate::lsh::prefix_hash::*;
-use crate::operators::Route;
 use crate::operators::*;
 use crate::sketch::*;
-use abomonation::Abomonation;
+use crate::types::*;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
-use timely::dataflow::operators::concat::Concatenate;
-
 use std::clone::Clone;
-
+use std::collections::HashMap;
 use std::fmt::Debug;
-use std::hash::Hash;
-
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
-
 use std::time::Duration;
-
+use std::time::Instant;
 use timely::dataflow::channels::pact::Exchange as ExchangePact;
 use timely::dataflow::channels::pact::Pipeline as PipelinePact;
 use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
 use timely::dataflow::operators::*;
-
 use timely::dataflow::*;
-
 use timely::progress::timestamp::Timestamp;
-use timely::Data;
 use timely::ExchangeData;
 
 #[allow(clippy::too_many_arguments)]
-pub fn fixed_param_lsh<D, F, H, O, S, V, B, R>(
+pub fn fixed_param_lsh<D, F, H, S, V, B, R>(
     left_path: &str,
     right_path: &str,
+    range: f64,
     k: ParamK,
-    hash_collection_builder: B,
-    sketcher_pair: Option<(S, SketchPredicate<V>)>,
+    hash_function_builder: B,
+    sketcher: S,
+    sketch_predicate: SketchPredicate<V>,
     sim_pred: F,
     rng: &mut R,
     config: &Config,
     experiment: &mut Experiment,
 ) -> usize
 where
-    for<'de> D:
-        ReadBinaryFile + Deserialize<'de> + Data + Sync + Send + Clone + Abomonation + Debug,
+    for<'de> D: ReadBinaryFile + Deserialize<'de> + ExchangeData + Debug + SketchEstimate,
     F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
-    H: LSHFunction<Input = D, Output = O> + Sync + Send + Clone + 'static,
-    for<'a> O:
-        Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash + Ord + PrefixHash<'a>,
+    H: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
     S: Sketcher<Input = D, Output = V> + Send + Sync + Clone + 'static,
-    V: Data + Debug + Sync + Send + Clone + Abomonation + SketchEstimate + BitBasedSketch,
+    V: SketchData + Debug,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
-    B: Fn(usize, &mut R) -> LSHCollection<H, O> + Sized + Send + Sync + Clone + 'static,
+    B: Fn(usize, &mut R) -> H + Sized + Send + Sync + Clone + 'static,
 {
     let network = NetworkGauge::start();
     let timely_builder = config.get_timely_builder();
@@ -70,26 +60,39 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let hash_collection_builder = hash_collection_builder.clone();
+    let hasher = match k {
+        ParamK::Fixed(k) => DKTCollection::new(k, k, range, hash_function_builder, rng),
+        ParamK::Adaptive(min_k, max_k) => {
+            DKTCollection::new(min_k, max_k, range, hash_function_builder, rng)
+        }
+    };
+    let hasher = Arc::new(hasher);
+
     let rng = rng.clone();
 
-    info!(
+    debug!(
         "Left dataset has {} points, right has {}",
         D::num_elements(left_path.into()),
         D::num_elements(right_path.into())
     );
     let (global_left, global_right) = load_vectors(left_path, right_path, &config);
 
-    let estimator_samples = config.get_estimator_samples();
-    let cost_balance = config.get_cost_balance();
-
-    let bloom_filter = Arc::new(AtomicBloomFilter::<u32>::from_config(&config, rng.clone()));
+    let bloom_filter = Arc::new(AtomicBloomFilter::<ElementId>::from_config(
+        &config,
+        rng.clone(),
+    ));
+    let bloom_filter_pre_communication = Arc::new(AtomicBloomFilter::<ElementId>::from_config(
+        &config,
+        rng.clone(),
+    ));
+    let adaptive_params = AdaptiveParams::from_config(&config);
 
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
         let global_left = Arc::clone(&global_left);
         let global_right = Arc::clone(&global_right);
         let bloom_filter = Arc::clone(&bloom_filter);
-        let hash_collection_builder = hash_collection_builder.clone();
+        let hasher = Arc::clone(&hasher);
+        let bloom_filter_pre_communication = Arc::clone(&bloom_filter_pre_communication);
         let mut rng = rng.clone();
         let execution_summary = init_event_logging(&worker);
         let output_send_ch = output_send_ch
@@ -97,12 +100,11 @@ where
             .expect("Cannot get lock on output channel")
             .clone();
         let sim_pred = sim_pred.clone();
-
-        let sketcher_pair = sketcher_pair.clone();
+        let sketch_predicate = sketch_predicate.clone();
+        let sketcher = sketcher.clone();
 
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
             let mut probe = ProbeHandle::new();
-            let sketcher_pair = sketcher_pair;
 
             let candidates = match k {
                 ParamK::Adaptive(min_k, max_k) => generate_candidates_adaptive(
@@ -110,21 +112,25 @@ where
                     Arc::clone(&global_right),
                     min_k,
                     max_k,
-                    estimator_samples,
-                    cost_balance,
+                    adaptive_params,
                     scope.clone(),
-                    hash_collection_builder,
-                    sketcher_pair,
+                    hasher,
+                    sketcher,
+                    sketch_predicate,
+                    Arc::clone(&bloom_filter_pre_communication),
                     probe.clone(),
                     &mut rng,
                 ),
-                k => generate_candidates_global_k(
+                ParamK::Fixed(k) => generate_candidates_global_k(
                     Arc::clone(&global_left),
                     Arc::clone(&global_right),
+                    range,
                     k,
                     scope.clone(),
-                    hash_collection_builder,
-                    sketcher_pair,
+                    hasher,
+                    sketcher,
+                    sketch_predicate,
+                    Arc::clone(&bloom_filter_pre_communication),
                     probe.clone(),
                     &mut rng,
                 ),
@@ -149,10 +155,6 @@ where
         // worker.step_while(|| probe.less_than(&(repetitions as u32)));
         worker.step_while(|| probe.with_frontier(|f| !f.is_empty()));
 
-        // info!(
-        //     "Execution summary for worker {}: {:?}",
-        //     index, execution_summary
-        // );
         collect_execution_summaries(execution_summary, send_exec_summary.clone(), &mut worker);
     })
     .expect("Problems with the dataflow");
@@ -184,16 +186,6 @@ where
             .map(|pair| pair.1.clone().iter().sum::<u64>())
             .sum();
 
-        // let precision = count as f64 / global_summary.distinct_pairs as f64;
-        // let _potential_pairs =
-        //     D::num_elements(left_path.into()) * D::num_elements(right_path.into());
-        // let fraction_distinct = global_summary.distinct_pairs as f64 / potential_pairs as f64;
-        // info!(
-        //     "Evaluated fraction of the potential pairs: {} ({}/{})",
-        //     fraction_distinct, global_summary.distinct_pairs, potential_pairs
-        // );
-        // info!("Precision: {}", precision);
-
         count as usize
     } else {
         0
@@ -201,126 +193,159 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-fn generate_candidates_global_k<K, D, G, T, F, H, S, SV, R, B>(
+fn generate_candidates_global_k<K, D, G, T, F, S, SV, R>(
     left: Arc<ChunkedDataset<K, D>>,
     right: Arc<ChunkedDataset<K, D>>,
-    k: ParamK,
+    range: f64,
+    k: usize,
     scope: G,
-    hash_collection_builder: B,
-    sketcher_pair: Option<(S, SketchPredicate<SV>)>,
+    hasher: Arc<DKTCollection<F>>,
+    sketcher: S,
+    sketch_predicate: SketchPredicate<SV>,
+    filter: Arc<AtomicBloomFilter<K>>,
     probe: ProbeHandle<T>,
     rng: &mut R,
 ) -> Stream<G, (K, K)>
 where
-    K: ExchangeData + Debug + Route + Hash + Eq + Copy + Into<u64>,
-    D: Data + Sync + Send + Clone + Abomonation + Debug,
+    K: KeyData + Debug + Into<u64>,
+    D: ExchangeData + Debug,
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId,
-    F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
-    H: Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash + Ord,
+    F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
     S: Sketcher<Input = D, Output = SV> + Send + Sync + Clone + 'static,
-    SV: Data + Debug + Sync + Send + Clone + Abomonation + SketchEstimate + BitBasedSketch,
+    SV: SketchData + Debug,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
-    B: Fn(usize, &mut R) -> LSHCollection<F, H> + Sized + Send + Sync + Clone + 'static,
 {
+    let worker = scope.index() as u64;
     let peers = scope.peers();
     let matrix = MatrixDescription::for_workers(peers as usize);
+    let sketcher = Arc::new(sketcher);
 
-    let hash_fn = match k {
-        ParamK::Exact(k) => hash_collection_builder(k, rng),
-        ParamK::Adaptive(_, _) => panic!("You should not be here!!"),
-    };
+    let sketches_left = build_sketches(
+        Arc::clone(&left),
+        Arc::clone(&sketcher),
+        worker,
+        matrix,
+        MatrixDirection::Rows,
+    );
+    let sketches_right = build_sketches(
+        Arc::clone(&right),
+        Arc::clone(&sketcher),
+        worker,
+        matrix,
+        MatrixDirection::Columns,
+    );
 
-    match sketcher_pair {
-        Some((sketcher, sketch_predicate)) => {
-            let left_hashes = source_hashed_sketched(
-                &scope,
-                Arc::clone(&left),
-                hash_fn.clone(),
-                sketcher.clone(),
-                matrix,
-                MatrixDirection::Rows,
-                probe.clone(),
-            );
-            let right_hashes = source_hashed_sketched(
-                &scope,
-                Arc::clone(&right),
-                hash_fn.clone(),
-                sketcher.clone(),
-                matrix,
-                MatrixDirection::Rows,
-                probe.clone(),
-            );
-            left_hashes
-                .bucket(&right_hashes)
-                .filter_sketches(sketch_predicate)
-        }
-        None => {
-            let left_hashes = source_hashed(
-                &scope,
-                Arc::clone(&left),
-                hash_fn.clone(),
-                matrix,
-                MatrixDirection::Rows,
-                probe.clone(),
-            );
-            let right_hashes = source_hashed(
-                &scope,
-                Arc::clone(&right),
-                hash_fn.clone(),
-                matrix,
-                MatrixDirection::Columns,
-                probe.clone(),
-            );
-            left_hashes.bucket(&right_hashes)
-        }
+    let left_hashes = source_hashed_sketched(
+        &scope,
+        Arc::clone(&left),
+        Arc::clone(&hasher),
+        sketches_left,
+        matrix,
+        MatrixDirection::Rows,
+        probe.clone(),
+    );
+    let right_hashes = source_hashed_sketched(
+        &scope,
+        Arc::clone(&right),
+        Arc::clone(&hasher),
+        sketches_right,
+        matrix,
+        MatrixDirection::Columns,
+        probe.clone(),
+    );
+    left_hashes.bucket_pred(
+        &right_hashes,
+        move |a, b| sketch_predicate.eval(&a.0, &b.0),
+        // move |a, b| !filter.test_and_insert(&(a.1, b.1)),
+        |_, _| true,
+        |x| x.1,
+    )
+}
+
+fn build_sketches<D, K, S, SV>(
+    vectors: Arc<ChunkedDataset<K, D>>,
+    sketcher: Arc<S>,
+    worker: u64,
+    matrix: MatrixDescription,
+    direction: MatrixDirection,
+) -> Arc<HashMap<K, SV>>
+where
+    D: ExchangeData,
+    K: KeyData + Debug,
+    S: Sketcher<Input = D, Output = SV> + Clone + 'static,
+    SV: SketchData + Debug,
+{
+    let mut sketches: HashMap<K, SV> =
+        HashMap::with_capacity(vectors.stripe_len(matrix, direction, worker));
+    debug!("Computing sketches");
+    let start_sketch = Instant::now();
+    for (k, v) in vectors.iter_stripe(matrix, direction, worker) {
+        let s = sketcher.sketch(v);
+        sketches.insert(k.clone(), s);
     }
+    let end_sketch = Instant::now();
+    debug!("Sketches computed in {:?}", end_sketch - start_sketch);
+    Arc::new(sketches)
 }
 
 #[allow(clippy::too_many_arguments)]
-fn generate_candidates_adaptive<K, D, G, T, F, H, S, SV, R, B>(
+fn generate_candidates_adaptive<K, D, G, T, F, S, SV, R>(
     left: Arc<ChunkedDataset<K, D>>,
     right: Arc<ChunkedDataset<K, D>>,
     min_k: usize,
     max_k: usize,
-    sample_size: usize,
-    cost_balance: f64,
+    params: AdaptiveParams,
     scope: G,
-    hash_collection_builder: B,
-    sketcher_pair: Option<(S, SketchPredicate<SV>)>,
+    hasher: Arc<DKTCollection<F>>,
+    sketcher: S,
+    sketch_predicate: SketchPredicate<SV>,
+    filter: Arc<AtomicBloomFilter<K>>,
     probe: ProbeHandle<T>,
     rng: &mut R,
 ) -> Stream<G, (K, K)>
 where
-    K: Data + Sync + Send + Clone + Abomonation + Debug + Route + Hash + Eq + Ord,
-    D: Data + Sync + Send + Clone + Abomonation + Debug,
+    K: KeyData + Debug + Into<u64>,
+    D: ExchangeData + Debug + SketchEstimate,
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId,
-    F: LSHFunction<Input = D, Output = H> + Sync + Send + Clone + 'static,
-    for<'a> H:
-        Data + Sync + Send + Clone + Abomonation + Debug + Route + Eq + Hash + Ord + PrefixHash<'a>,
+    F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
     S: Sketcher<Input = D, Output = SV> + Send + Sync + Clone + 'static,
-    SV: Data + Debug + Sync + Send + Clone + Abomonation + SketchEstimate + BitBasedSketch,
+    SV: SketchData + Debug,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
-    B: Fn(usize, &mut R) -> LSHCollection<F, H> + Sized + Send + Sync + Clone + 'static,
 {
     let peers = scope.peers();
     let matrix = MatrixDescription::for_workers(peers as usize);
+    let _logger = scope.danny_logger();
+    let worker: u64 = scope.index() as u64;
+    let sketcher = Arc::new(sketcher);
+    let sketches_left = build_sketches(
+        Arc::clone(&left),
+        Arc::clone(&sketcher),
+        worker,
+        matrix,
+        MatrixDirection::Rows,
+    );
+    let sketches_right = build_sketches(
+        Arc::clone(&right),
+        Arc::clone(&sketcher),
+        worker,
+        matrix,
+        MatrixDirection::Columns,
+    );
 
-    let multihash = Arc::new(MultilevelHasher::new(
-        min_k,
-        max_k,
-        hash_collection_builder,
-        rng,
-    ));
+    let min_level = min_k;
 
     let (levels_left, levels_right) = find_best_level(
         scope.clone(),
         Arc::clone(&left),
         Arc::clone(&right),
-        Arc::clone(&multihash),
+        params,
+        Arc::clone(&hasher),
+        Arc::clone(&sketches_left),
+        Arc::clone(&sketches_right),
         matrix,
-        cost_balance,
+        rng.clone(),
     );
     let levels_left = levels_left
         .matrix_distribute(MatrixDirection::Rows, matrix)
@@ -329,58 +354,35 @@ where
         .matrix_distribute(MatrixDirection::Columns, matrix)
         .map(|triplet| (triplet.1, triplet.2));
 
-    match sketcher_pair {
-        Some((sketcher, sketch_predicate)) => {
-            let left_hashes = source_hashed_adaptive_sketched(
-                &scope,
-                &levels_left,
-                Arc::clone(&left),
-                Arc::clone(&multihash),
-                sketcher.clone(),
-                matrix,
-                MatrixDirection::Rows,
-                probe.clone(),
-                rng.clone(),
-            );
-            let right_hashes = source_hashed_adaptive_sketched(
-                &scope,
-                &levels_right,
-                Arc::clone(&right),
-                Arc::clone(&multihash),
-                sketcher.clone(),
-                matrix,
-                MatrixDirection::Columns,
-                probe.clone(),
-                rng.clone(),
-            );
-            left_hashes
-                .bucket_prefixes(&right_hashes, move |l, r| sketch_predicate.eval(&l.1, &r.1))
-                .map(|(l, r)| (l.0, r.0))
-        }
-        None => {
-            let left_hashes = source_hashed_adaptive(
-                &scope,
-                &levels_left,
-                Arc::clone(&left),
-                Arc::clone(&multihash),
-                matrix,
-                MatrixDirection::Rows,
-                probe.clone(),
-                rng.clone(),
-            );
-            let right_hashes = source_hashed_adaptive(
-                &scope,
-                &levels_right,
-                Arc::clone(&right),
-                Arc::clone(&multihash),
-                matrix,
-                MatrixDirection::Columns,
-                probe.clone(),
-                rng.clone(),
-            );
-            left_hashes.bucket_prefixes(&right_hashes, |_, _| true)
-        }
-    }
+    let left_hashes = source_hashed_adaptive_sketched(
+        &scope,
+        &levels_left,
+        Arc::clone(&left),
+        Arc::clone(&hasher),
+        Arc::clone(&sketches_left),
+        matrix,
+        MatrixDirection::Rows,
+        probe.clone(),
+    );
+    let right_hashes = source_hashed_adaptive_sketched(
+        &scope,
+        &levels_right,
+        Arc::clone(&right),
+        Arc::clone(&hasher),
+        Arc::clone(&sketches_right),
+        matrix,
+        MatrixDirection::Columns,
+        probe.clone(),
+    );
+    left_hashes
+        .bucket_prefixes(
+            &right_hashes,
+            min_level,
+            move |l, r| sketch_predicate.eval(&l.1, &r.1),
+            // move |l: &(K, SV), r: &(K, SV)| !filter.test_and_insert(&(l.0, r.0)),
+            |_, _| true,
+        )
+        .map(|(l, r)| (l.0, r.0))
 }
 
 fn candidates_filter_count<G, T, K, D, F>(
@@ -393,8 +395,8 @@ fn candidates_filter_count<G, T, K, D, F>(
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ + ToStepId,
-    K: Data + Route + Sync + Send + Clone + Abomonation + Debug + Hash + Into<u64> + Copy,
-    D: Data + Sync + Send + Clone + Abomonation + Debug,
+    K: KeyData + Debug + Into<u64>,
+    D: ExchangeData + Debug,
     F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
 {
     let peers = candidates.scope().peers();

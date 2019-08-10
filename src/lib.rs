@@ -1,3 +1,4 @@
+#![feature(is_sorted)]
 #![feature(fn_traits)]
 #![feature(unboxed_closures)]
 #![feature(range_contains)]
@@ -16,6 +17,9 @@ extern crate clap;
 extern crate abomonation;
 #[macro_use]
 extern crate abomonation_derive;
+#[macro_use]
+extern crate lazy_static;
+extern crate bitvec;
 extern crate chrono;
 extern crate core;
 extern crate probabilistic_collections;
@@ -24,6 +28,7 @@ extern crate rand_xorshift;
 extern crate serde_json;
 extern crate siphasher;
 extern crate smallbitvec;
+extern crate statrs;
 extern crate timely;
 
 #[macro_use]
@@ -39,9 +44,6 @@ pub mod lsh;
 pub mod measure;
 pub mod operators;
 pub mod sketch;
-/// This module collects algorithms to compute on some datasets,
-/// which might be useful to understand their behaviour
-pub mod stats;
 pub mod types;
 pub mod version {
     include!(concat!(env!("OUT_DIR"), "/version.rs"));

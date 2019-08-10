@@ -353,6 +353,36 @@ def preprocess_diverse(base_path, filepath):
         ]
     )
 
+def preprocess_diverse_expansion(base_path, filepath):
+    datatype = "unit-norm-vector" if "glove" in base_path else "bag-of-words"
+    pre, ext = os.path.splitext(filepath)
+    extreme = "extreme" in filepath
+    tokens = pre.split("-")
+    similarity_range = tokens[-2]
+    size = tokens[-1]
+    pre, ext = os.path.splitext(base_path)
+    exp_path = pre + ".exp"
+    if not os.path.exists(exp_path):
+        print("Missing expansion file for dataset", base_path)
+        print("Aborting!")
+        sys.exit(1)
+    subprocess.run(
+        [
+            "gendiverse",
+            "-t",
+            datatype,
+            "-s",
+            str(size),
+            "-r",
+            str(similarity_range),
+            "-g",
+            "extreme" if extreme else "random",
+            base_path,
+            exp_path,
+            filepath,
+        ]
+    )
+
 
 DATASETS = {
     "Glove-6B-100": Dataset(
@@ -436,10 +466,72 @@ for r in [0.5,0.7,0.9]:
     )
     derived_datasets.append(d)
 
+derived_datasets.append(DerivedDataset(
+    'Livejournal-diverse-exp-{}-3M'.format(0.5),
+    'Livejournal-diverse-exp-{}-3000000.bin'.format(0.5),
+    DATASETS['Livejournal'],
+    preprocess_diverse_expansion
+))
+derived_datasets.append(DerivedDataset(
+    'Orkut-diverse-exp-{}-3M'.format(0.5),
+    'Orkut-diverse-exp-{}-3000000.bin'.format(0.5),
+    DATASETS['Orkut'],
+    preprocess_diverse_expansion
+))
+derived_datasets.append(DerivedDataset(
+    'AOL-diverse-exp-{}-3M'.format(0.5),
+    'AOL-diverse-exp-{}-3000000.bin'.format(0.5),
+    DATASETS['AOL'],
+    preprocess_diverse_expansion
+))
+derived_datasets.append(DerivedDataset(
+    'wiki-10k-diverse-exp-{}-3M'.format(0.5),
+    'wiki-10k-diverse-exp-{}-3000000.bin'.format(0.5),
+    DATASETS['wiki-10k'],
+    preprocess_diverse_expansion
+))
+derived_datasets.append(DerivedDataset(
+    'Glove-27-diverse-exp-{}-3M'.format(0.5),
+    'Glove-27-diverse-exp-{}-3000000.bin'.format(0.5),
+    DATASETS['Glove-27-200'],
+    preprocess_diverse_expansion
+))
+
+
+derived_datasets.append(DerivedDataset(
+    'Livejournal-diverse-extreme-{}'.format(0.5),
+    'Livejournal-diverse-extreme-{}-300000.bin'.format(0.5),
+    DATASETS['Livejournal'],
+    preprocess_diverse_expansion
+))
+derived_datasets.append(DerivedDataset(
+    'Orkut-diverse-extreme-{}'.format(0.5),
+    'Orkut-diverse-extreme-{}-300000.bin'.format(0.5),
+    DATASETS['Orkut'],
+    preprocess_diverse_expansion
+))
+derived_datasets.append(DerivedDataset(
+    'AOL-diverse-extreme-{}'.format(0.5),
+    'AOL-diverse-extreme-{}-300000.bin'.format(0.5),
+    DATASETS['AOL'],
+    preprocess_diverse_expansion
+))
+derived_datasets.append(DerivedDataset(
+    'wiki-10k-diverse-extreme-{}'.format(0.5),
+    'wiki-10k-diverse-extreme-{}-300000.bin'.format(0.5),
+    DATASETS['wiki-10k'],
+    preprocess_diverse_expansion
+))
+derived_datasets.append(DerivedDataset(
+    'Glove-27-diverse-extreme-{}'.format(0.5),
+    'Glove-27-diverse-extreme-{}-300000.bin'.format(0.5),
+    DATASETS['Glove-27-200'],
+    preprocess_diverse_expansion
+))
+
+
 for d in derived_datasets:
     DATASETS[d.name] = d
-
-
 
 
 def should_run(exp_tags, only_tags):

@@ -1,19 +1,16 @@
 use crate::bloom::*;
 use crate::logging::*;
+use crate::types::*;
 use abomonation::Abomonation;
-
-use std::cell::Ref;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::hash::Hasher;
 use std::ops::Add;
-
-use std::rc::Rc;
 use std::sync::Arc;
 use timely::dataflow::channels::pact::ParallelizationContract;
 use timely::dataflow::channels::pact::Pipeline as PipelinePact;
-use timely::dataflow::operators::capture::event::{Event, EventPusher};
+
 use timely::dataflow::operators::*;
 use timely::dataflow::Scope;
 use timely::dataflow::Stream;
@@ -96,7 +93,16 @@ impl Route for i32 {
 impl Route for u32 {
     #[inline(always)]
     fn route(&self) -> u64 {
-        u64::from(*self)
+        let mut h = std::hash::SipHasher::new();
+        self.hash(&mut h);
+        h.finish()
+    }
+}
+
+impl Route for ElementId {
+    #[inline(always)]
+    fn route(&self) -> u64 {
+        self.0 as u64
     }
 }
 
@@ -137,6 +143,17 @@ impl Route for Vec<u32> {
     }
 }
 
+impl Route for &[u32] {
+    #[inline(always)]
+    fn route(&self) -> u64 {
+        let mut h = 0u64;
+        for &x in self.iter() {
+            h = h.wrapping_mul(31).wrapping_add(u64::from(x));
+        }
+        h
+    }
+}
+
 impl<D> Route for (u64, D) {
     #[inline(always)]
     fn route(&self) -> u64 {
@@ -148,32 +165,6 @@ impl<D> Route for (u32, D) {
     #[inline(always)]
     fn route(&self) -> u64 {
         u64::from(self.0)
-    }
-}
-
-// TODO: Remove this trait completely
-pub trait PairRoute<G, K>
-where
-    K: Data + Abomonation + Sync + Send + Clone + Route,
-    G: Scope,
-{
-    #[allow(clippy::type_complexity)]
-    fn pair_route(&self, matrix_description: MatrixDescription) -> Stream<G, ((u8, u8), (K, K))>;
-}
-
-impl<G, K> PairRoute<G, K> for Stream<G, (K, K)>
-where
-    K: Data + Abomonation + Sync + Send + Clone + Route,
-    G: Scope,
-{
-    #[allow(clippy::type_complexity)]
-    fn pair_route(&self, matrix_description: MatrixDescription) -> Stream<G, ((u8, u8), (K, K))> {
-        self.map(move |pair| {
-            let row = pair.0.route() % u64::from(matrix_description.rows);
-            let col = pair.1.route() % u64::from(matrix_description.columns);
-            ((row as u8, col as u8), pair)
-        })
-        .exchange(move |tuple| matrix_description.row_major((tuple.0).0, (tuple.0).1))
     }
 }
 
@@ -216,46 +207,6 @@ impl MatrixDescription {
         let row = l.route() % u64::from(self.rows);
         let col = r.route() % u64::from(self.columns);
         self.row_major(row as u8, col as u8)
-    }
-
-    pub fn strip_partitioner(
-        self,
-        num_workers: u64,
-        direction: MatrixDirection,
-    ) -> StripMatrixPartitioner {
-        StripMatrixPartitioner {
-            matrix: self,
-            num_workers,
-            direction,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct StripMatrixPartitioner {
-    matrix: MatrixDescription,
-    num_workers: u64,
-    direction: MatrixDirection,
-}
-
-impl StripMatrixPartitioner {
-    pub fn belongs_to_worker<K>(&self, k: K, w: u64) -> bool
-    where
-        K: Route,
-    {
-        let strip = k.route() % self.num_workers;
-        match self.direction {
-            MatrixDirection::Columns => {
-                strip
-                    == u64::from(self.matrix.rows) * (w % u64::from(self.matrix.columns))
-                        + (w / u64::from(self.matrix.columns))
-            }
-            MatrixDirection::Rows => {
-                strip
-                    == u64::from(self.matrix.columns) * (w % u64::from(self.matrix.rows))
-                        + (w / u64::from(self.matrix.rows))
-            }
-        }
     }
 }
 
@@ -311,117 +262,6 @@ where
             }
         })
         .exchange(move |tuple| matrix_description.row_major((tuple.0).0, (tuple.0).1))
-    }
-}
-
-pub trait PredicateJoin<G, T, K, D1>
-where
-    G: Scope<Timestamp = T>,
-    T: Timestamp + Succ,
-    K: Data + Route + Clone + Abomonation + Sync + Send + Debug,
-    D1: Data + Clone + Abomonation + Sync + Send + Debug,
-{
-    fn two_way_predicate_join<D2, P>(
-        &self,
-        right: &Stream<G, (K, D2)>,
-        predicate: P,
-        workers: u64,
-    ) -> Stream<G, (K, K)>
-    where
-        D2: Data + Clone + Abomonation + Sync + Send + Debug,
-        P: Fn(&D1, &D2) -> bool + 'static;
-}
-
-impl<G, T, K, D1> PredicateJoin<G, T, K, D1> for Stream<G, (K, D1)>
-where
-    G: Scope<Timestamp = T>,
-    T: Timestamp + Succ,
-    K: Data + Route + Clone + Abomonation + Sync + Send + Debug,
-    D1: Data + Clone + Abomonation + Sync + Send + Debug,
-{
-    fn two_way_predicate_join<D2, P>(
-        &self,
-        right: &Stream<G, (K, D2)>,
-        predicate: P,
-        workers: u64,
-    ) -> Stream<G, (K, K)>
-    where
-        D2: Data + Clone + Abomonation + Sync + Send + Debug,
-        P: Fn(&D1, &D2) -> bool + 'static,
-    {
-        // Round to the next power of two
-        let matrix = MatrixDescription::for_workers(workers as usize);
-        info!(
-            "Each vector will be replicated on a {} x {} matrix",
-            matrix.rows, matrix.columns
-        );
-        let left_replicas = self.matrix_distribute(MatrixDirection::Rows, matrix);
-        let right_replicas = right.matrix_distribute(MatrixDirection::Columns, matrix);
-
-        let mut left_stash = HashMap::new();
-        let mut right_stash = HashMap::new();
-
-        left_replicas.binary_frontier(
-            &right_replicas,
-            PipelinePact, // Communication happened in matrix_distribute
-            PipelinePact, // Same as above
-            "two way predicate join",
-            move |_, _| {
-                move |left_in, right_in, output| {
-                    left_in.for_each(|t, data| {
-                        let mut data = data.replace(Vec::new());
-                        let inner = left_stash.entry(t.retain()).or_insert_with(HashMap::new);
-                        for (p, k, v) in data.drain(..) {
-                            inner.entry(p).or_insert_with(Vec::new).push((k, v));
-                        }
-                    });
-                    right_in.for_each(|t, data| {
-                        let mut data = data.replace(Vec::new());
-                        let inner = right_stash.entry(t.retain()).or_insert_with(HashMap::new);
-                        for (p, k, v) in data.drain(..) {
-                            inner.entry(p).or_insert_with(Vec::new).push((k, v));
-                        }
-                    });
-                    let frontiers = &[left_in.frontier(), right_in.frontier()];
-
-                    for (time, left_stash) in left_stash.iter_mut() {
-                        if let Some(right_stash) = right_stash.get_mut(&time) {
-                            if frontiers.iter().all(|f| !f.less_equal(time)) {
-                                info!(
-                                    "Time {:?}: still {} blocks remaining",
-                                    time.time(),
-                                    left_stash.len()
-                                );
-                                let mut session = output.session(&time);
-                                for (left_matrix_key, left_stash) in left_stash.drain() {
-                                    if let Some(right_stash) = right_stash.get(&left_matrix_key) {
-                                        info!(
-                                            "Time {:?} :: {:?} :: {}x{}",
-                                            time.time(),
-                                            left_matrix_key,
-                                            left_stash.len(),
-                                            right_stash.len()
-                                        );
-                                        for (lk, lv) in left_stash.iter() {
-                                            for (rk, rv) in right_stash.iter() {
-                                                if predicate(&lv, &rv) {
-                                                    session.give((lk.clone(), rk.clone()));
-                                                }
-                                            }
-                                        }
-                                        info!("Completed block {:?}.", left_matrix_key);
-                                    }
-                                }
-                                right_stash.clear();
-                            }
-                        }
-                    }
-
-                    left_stash.retain(|_, data| !data.is_empty());
-                    right_stash.retain(|_, data| !data.is_empty());
-                }
-            },
-        )
     }
 }
 
@@ -495,74 +335,6 @@ where
     }
 }
 
-pub trait BroadcastedMin<G>
-where
-    G: Scope,
-{
-    fn broadcasted_min(&self) -> Stream<G, usize>;
-}
-
-impl<G, K> BroadcastedMin<G> for Stream<G, (K, usize)>
-where
-    G: Scope,
-    K: Data + Debug + Send + Sync + Abomonation,
-{
-    fn broadcasted_min(&self) -> Stream<G, usize> {
-        self.map(|p| p.1)
-            // Find the minimum in each worker
-            .accumulate(std::usize::MAX, |min_val, data| {
-                for &x in data.iter() {
-                    *min_val = std::cmp::min(*min_val, x);
-                }
-            })
-            // Find the minimum of the minimum
-            .exchange(|_| 0)
-            .accumulate(std::usize::MAX, |min_val, data| {
-                for &x in data.iter() {
-                    *min_val = std::cmp::min(*min_val, x);
-                }
-            })
-            // Send the overall minimum to everybody
-            .broadcast()
-    }
-}
-
-pub trait StreamCount<G, D>
-where
-    G: Scope,
-    D: Data,
-{
-    fn stream_count(&self) -> Stream<G, u64>;
-}
-
-impl<G, D> StreamCount<G, D> for Stream<G, D>
-where
-    G: Scope,
-    D: Data,
-{
-    fn stream_count(&self) -> Stream<G, u64> {
-        let mut counts: HashMap<Capability<G::Timestamp>, Option<u64>> = HashMap::new();
-        self.unary_frontier(PipelinePact, "stream-count", move |_, _| {
-            move |input, output| {
-                input.for_each(|t, d| {
-                    counts
-                        .entry(t.retain())
-                        .and_modify(|e| *e = e.map(|c| c + d.len() as u64))
-                        .or_insert_with(|| Some(d.len() as u64));
-                });
-
-                for (time, cnt) in counts.iter_mut() {
-                    if !input.frontier().less_equal(time) {
-                        output.session(time).give(cnt.take().unwrap());
-                    }
-                }
-
-                counts.retain(|_, c| c.is_some());
-            }
-        })
-    }
-}
-
 pub trait StreamSum<G, D>
 where
     G: Scope,
@@ -604,93 +376,15 @@ where
     }
 }
 
-#[derive(Default)]
-pub struct LocalData<D> {
-    local_data: Rc<RefCell<Vec<D>>>,
-}
-
-impl<D> Clone for LocalData<D> {
-    fn clone(&self) -> Self {
-        Self {
-            local_data: Rc::clone(&self.local_data),
-        }
-    }
-}
-
-impl<D> LocalData<D> {
-    pub fn new() -> Self {
-        Self {
-            local_data: Rc::new(RefCell::new(Vec::new())),
-        }
-    }
-
-    pub fn data(&self) -> Ref<Vec<D>> {
-        self.local_data.borrow()
-    }
-}
-
-impl<T, D> EventPusher<T, D> for LocalData<D> {
-    fn push(&mut self, event: Event<T, D>) {
-        if let Event::Messages(_, mut data) = event {
-            for d in data.drain(..) {
-                self.local_data.borrow_mut().push(d);
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
+
     use std::sync::mpsc;
     use std::sync::{Arc, Mutex};
     use timely::dataflow::operators::capture::event::Event;
     use timely::dataflow::operators::{Capture, Probe};
     use timely::dataflow::ProbeHandle;
-
-    #[test]
-    fn test_two_way_join_2() {
-        let n_left = 5;
-        let n_right = 5;
-        let conf = timely::Configuration::Process(4).try_build().unwrap();
-        let (send, recv) = mpsc::channel();
-        let send = Arc::new(Mutex::new(send));
-        timely::execute::execute_from(conf.0, conf.1, move |worker| {
-            let peers = worker.peers();
-            let send = send.lock().unwrap().clone();
-            worker.dataflow::<u32, _, _>(|scope| {
-                let left = (0..n_left).to_stream(scope).map(|i| (i, i));
-                let right = (0..n_right).to_stream(scope).map(|i| (i, i));
-                left.two_way_predicate_join(&right, |a, b| a < b, peers as u64)
-                    // .inspect(|x| println!("Binary join check {:?} ", x))
-                    .capture_into(send);
-            });
-        })
-        .unwrap();
-
-        let mut check = HashSet::new();
-        for output in recv.iter() {
-            println!("{:?} ", output);
-            match output {
-                Event::Messages(_t, data) => {
-                    for pair in data.iter() {
-                        check.insert(pair.clone());
-                    }
-                }
-                _ => (),
-            }
-        }
-        let mut expected = HashSet::new();
-        for i in 0..n_left {
-            for j in 0..n_right {
-                if i < j {
-                    expected.insert((i, j));
-                }
-            }
-        }
-        assert_eq!(check, expected);
-    }
 
     fn test_matrix_distribute(threads: usize, num_workers: u8, num_elements: u32) {
         // Check that elemens are distributed equally

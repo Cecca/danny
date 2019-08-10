@@ -3,6 +3,7 @@
 archive/
 __pycache__
 results.json
+results.json.bz2
 results/
 /target
 **/*.rs.bk

@@ -10,7 +10,7 @@ environment:
   DANNY_SAMPLING_FACTOR: 1
 experiments:
 
-  - name: Glove fixed
+  - name: Glove (fixed)
     tags:
       - glove
       - cosine
@@ -22,25 +22,10 @@ experiments:
       --algorithm: lsh
       --range: 0.5
       --measure: cosine
+      --sketch-bits: 128
       -k: [11,13,15,17]
     arguments:
-      - ["{{ dataset('Glove-27-diverse-0.9-3M')}}", "{{ dataset('Glove-27-200') }}"]
-
-  - name: Glove adaptive
-    tags:
-      - glove
-      - cosine
-      - adaptive
-    environment:
-      DANNY_SEED:
-        - 13124534
-    parameters:
-      --algorithm: lsh
-      --range: 0.5
-      --measure: cosine
-      --adaptive-k: "11,20"
-    arguments:
-      - ["{{ dataset('Glove-27-diverse-exp-0.5-3M')}}", "{{ dataset('Glove-27-200') }}"]
+      - ["{{ dataset('Glove-27-200') }}", "{{ dataset('Glove-27-200') }}"]
 
   - name: Bag of Words (fixed)
     tags:
@@ -53,13 +38,31 @@ experiments:
       --algorithm: lsh
       --range: 0.5
       --measure: jaccard
+      --sketch-bits: 128
       -k: [11,13,15,17]
     arguments:
-      - ["{{ dataset('AOL-diverse-exp-0.5-3M') }}", "{{ dataset('AOL') }}"]
-      - ["{{ dataset('Livejournal-diverse-exp-0.5-3M') }}", "{{ dataset('Livejournal') }}"]      
-      - ["{{ dataset('Orkut-diverse-exp-0.5-3M') }}", "{{ dataset('Orkut') }}"]
+      - ["{{ dataset('AOL') }}", "{{ dataset('AOL') }}"]
+      - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
+      - ["{{ dataset('Livejournal') }}", "{{ dataset('Livejournal') }}"]
 
-  - name: Bag of Words (adaptive)
+  - name: Glove (adaptive)
+    tags:
+      - glove
+      - cosine
+      - adaptive
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --algorithm: lsh
+      --range: 0.5
+      --measure: cosine
+      --sketch-bits: 128
+      --adaptive-k: "11,20"
+    arguments:
+      - ["{{ dataset('Glove-27-200') }}", "{{ dataset('Glove-27-200') }}"]
+
+  - name: Bag of Words (fixed)
     tags:
       - jaccard
       - adaptive
@@ -70,8 +73,9 @@ experiments:
       --algorithm: lsh
       --range: 0.5
       --measure: jaccard
+      --sketch-bits: 128
       --adaptive-k: "11,20"
     arguments:
-      - ["{{ dataset('AOL-diverse-exp-0.5-3M') }}", "{{ dataset('AOL') }}"]
-      - ["{{ dataset('Livejournal-diverse-exp-0.5-3M') }}", "{{ dataset('Livejournal') }}"]      
-      - ["{{ dataset('Orkut-diverse-exp-0.5-3M') }}", "{{ dataset('Orkut') }}"]
+      - ["{{ dataset('AOL') }}", "{{ dataset('AOL') }}"]
+      - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
+      - ["{{ dataset('Livejournal') }}", "{{ dataset('Livejournal') }}"]

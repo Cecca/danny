@@ -1,11 +1,171 @@
 use crate::lsh::*;
-use crate::measure::*;
 use crate::types::*;
-use rand::distributions::{Distribution, Normal};
+use packed_simd::u64x2;
+use packed_simd::u64x4;
+use packed_simd::u64x8;
 use rand::Rng;
+use statrs::distribution::Binomial;
+use statrs::distribution::Discrete;
 
-pub trait BitBasedSketch {
-    fn bits(&self) -> &Vec<u32>;
+pub trait Sketcher {
+    type Input;
+    type Output;
+
+    fn sketch(&self, v: &Self::Input) -> Self::Output;
+}
+
+pub trait BitBasedSketch: Clone + Copy {
+    fn different_bits(&self, other: &Self) -> u32;
+    fn same_bits(&self, other: &Self) -> u32;
+    fn num_bits(&self) -> usize;
+}
+
+pub trait FromJaccard: Sized {
+    type SketcherType: Sketcher<Input = BagOfWords, Output = Self> + Send + Sync + Clone + 'static;
+    fn from_jaccard<R: Rng>(rng: &mut R) -> Self::SketcherType;
+}
+
+pub trait FromCosine: Sized {
+    type SketcherType: Sketcher<Input = UnitNormVector, Output = Self>
+        + Send
+        + Sync
+        + Clone
+        + 'static;
+    fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self::SketcherType;
+}
+
+#[derive(Debug, Clone, Copy, Abomonation, Hash, Eq, PartialEq)]
+pub struct Sketch64 {
+    data: u64,
+}
+
+impl BitBasedSketch for Sketch64 {
+    fn different_bits(&self, other: &Self) -> u32 {
+        (self.data ^ other.data).count_ones()
+    }
+    fn same_bits(&self, other: &Self) -> u32 {
+        (self.data ^ other.data).count_zeros()
+    }
+    fn num_bits(&self) -> usize {
+        64
+    }
+}
+
+#[derive(Clone)]
+pub struct Sketcher64<T, F>
+where
+    F: LSHFunction<Input = T, Output = u32>,
+{
+    lsh_functions: [F; 2],
+}
+
+impl FromCosine for Sketch64 {
+    type SketcherType = Sketcher64<UnitNormVector, Hyperplane>;
+    fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self::SketcherType {
+        Sketcher64 {
+            lsh_functions: [Hyperplane::new(32, dim, rng), Hyperplane::new(32, dim, rng)],
+        }
+    }
+}
+
+impl FromJaccard for Sketch64 {
+    type SketcherType = Sketcher64<BagOfWords, OneBitMinHash>;
+    fn from_jaccard<R: Rng>(rng: &mut R) -> Self::SketcherType {
+        Sketcher64 {
+            lsh_functions: [OneBitMinHash::new(32, rng), OneBitMinHash::new(32, rng)],
+        }
+    }
+}
+
+impl<T, F> Sketcher for Sketcher64<T, F>
+where
+    F: LSHFunction<Input = T, Output = u32>,
+{
+    type Input = T;
+    type Output = Sketch64;
+    fn sketch(&self, v: &Self::Input) -> Self::Output {
+        let a = self.lsh_functions[0].hash(v) as u64;
+        let b = self.lsh_functions[1].hash(v) as u64;
+        Sketch64 {
+            data: (a << 32) | b,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Abomonation, Hash, Eq, PartialEq)]
+pub struct Sketch128 {
+    data: [u64; 2],
+}
+
+impl BitBasedSketch for Sketch128 {
+    fn different_bits(&self, other: &Self) -> u32 {
+        (u64x2::from_slice_unaligned(&self.data) ^ u64x2::from_slice_unaligned(&other.data))
+            .count_ones()
+            .wrapping_sum() as u32
+    }
+
+    fn same_bits(&self, other: &Self) -> u32 {
+        (u64x2::from_slice_unaligned(&self.data) ^ u64x2::from_slice_unaligned(&other.data))
+            .count_zeros()
+            .wrapping_sum() as u32
+    }
+    fn num_bits(&self) -> usize {
+        128
+    }
+}
+
+#[derive(Clone)]
+pub struct Sketcher128<T, F>
+where
+    F: LSHFunction<Input = T, Output = u32>,
+{
+    lsh_functions: [F; 4],
+}
+
+impl FromCosine for Sketch128 {
+    type SketcherType = Sketcher128<UnitNormVector, Hyperplane>;
+    fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self::SketcherType {
+        Sketcher128 {
+            lsh_functions: [
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+            ],
+        }
+    }
+}
+
+impl FromJaccard for Sketch128 {
+    type SketcherType = Sketcher128<BagOfWords, OneBitMinHash>;
+    fn from_jaccard<R: Rng>(rng: &mut R) -> Self::SketcherType {
+        Sketcher128 {
+            lsh_functions: [
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+            ],
+        }
+    }
+}
+
+impl<T, F> Sketcher for Sketcher128<T, F>
+where
+    F: LSHFunction<Input = T, Output = u32>,
+{
+    type Input = T;
+    type Output = Sketch128;
+    fn sketch(&self, v: &Self::Input) -> Self::Output {
+        Sketch128 {
+            data: [
+                ((self.lsh_functions[0].hash(v) as u64) << 32)
+                    | (self.lsh_functions[1].hash(v) as u64),
+                ((self.lsh_functions[2].hash(v) as u64) << 32)
+                    | (self.lsh_functions[3].hash(v) as u64),
+            ],
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -15,7 +175,7 @@ where
 {
     /// The number of bits that can be different between two sketches without having to reject the
     /// pair.
-    bit_threshold: usize,
+    bit_threshold: u32,
     _marker: std::marker::PhantomData<T>,
 }
 
@@ -24,15 +184,21 @@ where
     T: BitBasedSketch,
 {
     pub fn from_probability(k: usize, p: f64, epsilon: f64) -> Self {
-        let k = k as f64;
-        let delta = (3.0 / (p * k) * (1.0 / epsilon).ln()).sqrt();
-        let bit_threshold = ((1.0 + delta) * p * k).ceil() as usize;
-        info!(
-            "Using bit thresold {} of different bits to reject (delta {} epsilon {})",
-            bit_threshold, delta, epsilon
+        let distr = Binomial::new(p, k as u64).expect("Error creating the distribution");
+        let mut prob_different_bits = 0.0;
+        let mut bit_threshold = 0;
+        while prob_different_bits < 1.0 - epsilon {
+            prob_different_bits += distr.pmf(bit_threshold);
+            bit_threshold += 1;
+        }
+        debug!(
+            "Using bit thresold {} of different bits to reject (epsilon {}, mean {}",
+            bit_threshold,
+            epsilon,
+            k as f64 * p,
         );
         SketchPredicate {
-            bit_threshold,
+            bit_threshold: bit_threshold as u32,
             _marker: std::marker::PhantomData,
         }
     }
@@ -47,188 +213,240 @@ where
         Self::from_probability(k, p, epsilon)
     }
 
-    /// Return true if the two sketches represent vectors associated with vectors
+    /// Return true if the two sketches are associated with vectors
     /// within the similarity threshold this predicate was built with
     pub fn eval(&self, a: &T, b: &T) -> bool {
-        let threshold = self.bit_threshold;
-        let different_bits: usize = a
-            .bits()
-            .iter()
-            .zip(b.bits().iter())
-            .map(|(x, y)| (x ^ y).count_ones() as usize)
-            .sum();
-        different_bits <= threshold
+        a.different_bits(b) <= self.bit_threshold
+    }
+}
+
+#[derive(Debug, Clone, Copy, Abomonation, Hash, Eq, PartialEq)]
+pub struct Sketch256 {
+    data: [u64; 4],
+}
+
+impl BitBasedSketch for Sketch256 {
+    fn different_bits(&self, other: &Self) -> u32 {
+        (u64x4::from_slice_unaligned(&self.data) ^ u64x4::from_slice_unaligned(&other.data))
+            .count_ones()
+            .wrapping_sum() as u32
+    }
+    fn same_bits(&self, other: &Self) -> u32 {
+        (u64x4::from_slice_unaligned(&self.data) ^ u64x4::from_slice_unaligned(&other.data))
+            .count_zeros()
+            .wrapping_sum() as u32
+    }
+    fn num_bits(&self) -> usize {
+        256
+    }
+}
+
+#[derive(Clone)]
+pub struct Sketcher256<T, F>
+where
+    F: LSHFunction<Input = T, Output = u32>,
+{
+    lsh_functions: [F; 8],
+}
+
+impl FromCosine for Sketch256 {
+    type SketcherType = Sketcher256<UnitNormVector, Hyperplane>;
+    fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self::SketcherType {
+        Sketcher256 {
+            lsh_functions: [
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+            ],
+        }
+    }
+}
+
+impl FromJaccard for Sketch256 {
+    type SketcherType = Sketcher256<BagOfWords, OneBitMinHash>;
+    fn from_jaccard<R: Rng>(rng: &mut R) -> Self::SketcherType {
+        Sketcher256 {
+            lsh_functions: [
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+            ],
+        }
+    }
+}
+
+impl<T, F> Sketcher for Sketcher256<T, F>
+where
+    F: LSHFunction<Input = T, Output = u32>,
+{
+    type Input = T;
+    type Output = Sketch256;
+    fn sketch(&self, v: &Self::Input) -> Self::Output {
+        Sketch256 {
+            data: [
+                ((self.lsh_functions[0].hash(v) as u64) << 32)
+                    | (self.lsh_functions[1].hash(v) as u64),
+                ((self.lsh_functions[2].hash(v) as u64) << 32)
+                    | (self.lsh_functions[3].hash(v) as u64),
+                ((self.lsh_functions[4].hash(v) as u64) << 32)
+                    | (self.lsh_functions[5].hash(v) as u64),
+                ((self.lsh_functions[6].hash(v) as u64) << 32)
+                    | (self.lsh_functions[7].hash(v) as u64),
+            ],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Abomonation, Hash, Eq, PartialEq)]
+pub struct Sketch512 {
+    data: [u64; 8],
+}
+
+impl BitBasedSketch for Sketch512 {
+    fn different_bits(&self, other: &Self) -> u32 {
+        (u64x8::from_slice_unaligned(&self.data) ^ u64x8::from_slice_unaligned(&other.data))
+            .count_ones()
+            .wrapping_sum() as u32
+    }
+    fn same_bits(&self, other: &Self) -> u32 {
+        (u64x8::from_slice_unaligned(&self.data) ^ u64x8::from_slice_unaligned(&other.data))
+            .count_zeros()
+            .wrapping_sum() as u32
+    }
+    fn num_bits(&self) -> usize {
+        512
+    }
+}
+
+#[derive(Clone)]
+pub struct Sketcher512<T, F>
+where
+    F: LSHFunction<Input = T, Output = u32>,
+{
+    lsh_functions: [F; 16],
+}
+
+impl FromCosine for Sketch512 {
+    type SketcherType = Sketcher512<UnitNormVector, Hyperplane>;
+    fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self::SketcherType {
+        Sketcher512 {
+            lsh_functions: [
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+                Hyperplane::new(32, dim, rng),
+            ],
+        }
+    }
+}
+
+impl FromJaccard for Sketch512 {
+    type SketcherType = Sketcher512<BagOfWords, OneBitMinHash>;
+    fn from_jaccard<R: Rng>(rng: &mut R) -> Self::SketcherType {
+        Sketcher512 {
+            lsh_functions: [
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+                OneBitMinHash::new(32, rng),
+            ],
+        }
+    }
+}
+
+impl<T, F> Sketcher for Sketcher512<T, F>
+where
+    F: LSHFunction<Input = T, Output = u32>,
+{
+    type Input = T;
+    type Output = Sketch512;
+    fn sketch(&self, v: &Self::Input) -> Self::Output {
+        Sketch512 {
+            data: [
+                ((self.lsh_functions[0].hash(v) as u64) << 32)
+                    | (self.lsh_functions[1].hash(v) as u64),
+                ((self.lsh_functions[2].hash(v) as u64) << 32)
+                    | (self.lsh_functions[3].hash(v) as u64),
+                ((self.lsh_functions[4].hash(v) as u64) << 32)
+                    | (self.lsh_functions[5].hash(v) as u64),
+                ((self.lsh_functions[6].hash(v) as u64) << 32)
+                    | (self.lsh_functions[7].hash(v) as u64),
+                ((self.lsh_functions[8].hash(v) as u64) << 32)
+                    | (self.lsh_functions[9].hash(v) as u64),
+                ((self.lsh_functions[10].hash(v) as u64) << 32)
+                    | (self.lsh_functions[11].hash(v) as u64),
+                ((self.lsh_functions[12].hash(v) as u64) << 32)
+                    | (self.lsh_functions[13].hash(v) as u64),
+                ((self.lsh_functions[14].hash(v) as u64) << 32)
+                    | (self.lsh_functions[15].hash(v) as u64),
+            ],
+        }
     }
 }
 
 pub trait SketchEstimate {
-    fn estimate(a: &Self, b: &Self) -> f64;
+    fn sketch_estimate<S: BitBasedSketch>(a: &S, b: &S) -> f64;
+    fn collision_probability_estimate<S: BitBasedSketch>(a: &S, b: &S) -> f64;
 }
 
-impl SketchEstimate for SimHashValue {
-    #[allow(clippy::cast_lossless)]
-    fn estimate(a: &SimHashValue, b: &SimHashValue) -> f64 {
-        let p = a
-            .bits
-            .iter()
-            .zip(b.bits.iter())
-            .map(|(x, y)| (x ^ y).count_zeros())
-            .sum::<u32>() as f64
-            / (32.0 * a.bits.len() as f64);
+impl SketchEstimate for UnitNormVector {
+    fn sketch_estimate<S: BitBasedSketch>(a: &S, b: &S) -> f64 {
+        let p = f64::from(a.same_bits(b)) / (a.num_bits() as f64);
         (std::f64::consts::PI * (1.0 - p)).cos()
     }
-}
-
-impl BitBasedSketch for OneBitMinHashValue {
-    fn bits(&self) -> &Vec<u32> {
-        &self.bits
+    fn collision_probability_estimate<S: BitBasedSketch>(a: &S, b: &S) -> f64 {
+        f64::from(a.same_bits(b)) / (a.num_bits() as f64)
     }
 }
 
-impl BitBasedSketch for SimHashValue {
-    fn bits(&self) -> &Vec<u32> {
-        &self.bits
-    }
-}
-
-impl SketchEstimate for OneBitMinHashValue {
-    #[allow(clippy::cast_lossless)]
-    fn estimate(a: &OneBitMinHashValue, b: &OneBitMinHashValue) -> f64 {
-        let p = a
-            .bits
-            .iter()
-            .zip(b.bits.iter())
-            .map(|(x, y)| (x ^ y).count_zeros())
-            .sum::<u32>() as f64
-            / (32.0 * a.bits.len() as f64);
+impl SketchEstimate for BagOfWords {
+    fn sketch_estimate<S: BitBasedSketch>(a: &S, b: &S) -> f64 {
+        let p = f64::from(a.same_bits(b)) / (a.num_bits() as f64);
         2.0 * p - 1.0
     }
-}
-
-pub trait Sketcher {
-    type Input;
-    type Output;
-
-    fn sketch(&self, v: &Self::Input) -> Self::Output;
-}
-
-impl Sketcher for Hyperplane {
-    type Input = UnitNormVector;
-    type Output = u32;
-
-    fn sketch(&self, v: &UnitNormVector) -> u32 {
-        self.hash(v)
-    }
-}
-
-#[derive(Abomonation, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SimHashValue {
-    bits: Vec<u32>,
-}
-
-#[derive(Clone)]
-pub struct LongSimHash {
-    k: usize,
-    planes: Vec<UnitNormVector>,
-}
-
-impl LongSimHash {
-    pub fn new<R>(k: usize, dim: usize, rng: &mut R) -> Self
-    where
-        R: Rng + ?Sized,
-    {
-        let mut planes = Vec::with_capacity(k);
-        let gaussian = Normal::new(0.0, 1.0);
-        for _ in 0..k {
-            let mut plane = Vec::with_capacity(dim);
-            for _ in 0..dim {
-                plane.push(gaussian.sample(rng) as f32);
-            }
-            let plane = UnitNormVector::new(plane);
-            planes.push(plane);
-        }
-        LongSimHash { k, planes }
-    }
-}
-
-impl Sketcher for LongSimHash {
-    type Input = UnitNormVector;
-    type Output = SimHashValue;
-
-    fn sketch(&self, v: &UnitNormVector) -> SimHashValue {
-        let num_elems = (self.k as f64 / 4.0).ceil() as usize;
-        let mut sketch = Vec::with_capacity(num_elems);
-        let mut part = 0u32;
-        for (i, plane) in self.planes.iter().enumerate() {
-            if i != 0 && i % 32 == 0 {
-                sketch.push(part);
-                part = 0;
-            }
-            if InnerProduct::inner_product(plane, v) >= 0_f64 {
-                part = (part << 1) | 1;
-            } else {
-                part <<= 1;
-            }
-        }
-        if sketch.len() != num_elems {
-            sketch.push(part);
-        }
-        SimHashValue { bits: sketch }
-    }
-}
-
-#[derive(Clone)]
-pub struct OneBitMinHash {
-    k: usize,
-    hashers: Vec<TabulatedHasher>,
-}
-
-#[derive(Abomonation, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct OneBitMinHashValue {
-    bits: Vec<u32>,
-}
-
-impl OneBitMinHash {
-    pub fn new<R>(k: usize, rng: &mut R) -> Self
-    where
-        R: Rng + ?Sized,
-    {
-        let mut hashers = Vec::with_capacity(k);
-        for _ in 0..k {
-            hashers.push(TabulatedHasher::new(rng));
-        }
-        OneBitMinHash { k, hashers }
-    }
-}
-
-impl Sketcher for OneBitMinHash {
-    type Input = BagOfWords;
-    type Output = OneBitMinHashValue;
-
-    fn sketch(&self, v: &BagOfWords) -> OneBitMinHashValue {
-        let num_elems = (self.k as f32 / 32.0).ceil() as usize;
-        let mut bits = Vec::with_capacity(num_elems);
-        let mut part = 0u32;
-
-        for (i, hasher) in self.hashers.iter().enumerate() {
-            if i % 32 == 0 && i > 0 {
-                bits.push(part);
-                part = 0;
-            }
-            let h = v.words().iter().map(|w| hasher.hash(*w)).min().unwrap();
-            part = (part << 1) | (1 & h) as u32;
-        }
-        if bits.len() < num_elems {
-            bits.push(part);
-        }
-
-        OneBitMinHashValue { bits }
+    fn collision_probability_estimate<S: BitBasedSketch>(a: &S, b: &S) -> f64 {
+        f64::from(a.same_bits(b)) / (a.num_bits() as f64)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::measure::*;
     use rand::SeedableRng;
     use rand_xorshift::XorShiftRng;
 
@@ -244,10 +462,10 @@ mod tests {
         let mut sum_preds = 0.0;
 
         for _ in 0..samples {
-            let sketcher = OneBitMinHash::new(k, &mut rng);
+            let sketcher = Sketch64::from_jaccard(&mut rng);
             let h1 = sketcher.sketch(&s1);
             let h2 = sketcher.sketch(&s2);
-            let predicted = SketchEstimate::estimate(&h1, &h2);
+            let predicted = BagOfWords::sketch_estimate(&h1, &h2);
             let error = predicted - similarity;
             sum_squared_error += error * error;
             sum_preds += predicted
@@ -267,15 +485,14 @@ mod tests {
         let s1 = UnitNormVector::new(vec![1.0, 0.2, 0.3, 0.7]);
         let s2 = UnitNormVector::new(vec![4.0, 0.2, 2.3, 0.7]);
         let similarity = InnerProduct::cosine(&s1, &s2);
-        let k = 512;
         let mut sum_squared_error = 0.0;
         let mut sum_preds = 0.0;
 
         for _ in 0..samples {
-            let sketcher = LongSimHash::new(k, s1.dim(), &mut rng);
+            let sketcher = Sketch64::from_cosine(s1.dim(), &mut rng);
             let h1 = sketcher.sketch(&s1);
             let h2 = sketcher.sketch(&s2);
-            let predicted = SketchEstimate::estimate(&h1, &h2);
+            let predicted = UnitNormVector::sketch_estimate(&h1, &h2);
             let error = predicted - similarity;
             sum_squared_error += error * error;
             sum_preds += predicted

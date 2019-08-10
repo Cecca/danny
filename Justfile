@@ -48,3 +48,12 @@ run-debug: build-release
   cargo run --release --bin danny -- -r 0.6 -m cosine -a fixed-lsh --adaptive-k 10,12 {{data}} {{data}} 2> /tmp/log   
   less /tmp/log
 
+
+check-gendiverse:
+  rm -rf ~/Datasets/Wikipedia/wiki-bow-10k-diverse-exp.bin/
+  cargo run --bin gendiverse --release -- -r 0.5 -t bag-of-words -s 9000 ~/datasets/Wikipedia/wiki-bow-10k-left.bin/ ~/Datasets/Wikipedia/wiki-bow-10k-left.exp ~/Datasets/Wikipedia/wiki-bow-10k-diverse-exp.bin/
+  cargo run --bin expansion --release -- -r 0.5 -m jaccard ~/Datasets/Wikipedia/wiki-bow-10k-diverse-exp.bin/ ~/datasets/Wikipedia/wiki-bow-10k-left.bin/ 
+  R -e "library(tidyverse); d <- read_delim('~/Datasets/Wikipedia/wiki-bow-10k-diverse-exp.exp', ' ', col_name=c('id', 'range', 'expansion')); qplot(expansion, data=d, geom='histogram'); ggsave('/tmp/hist.png')"
+  open /tmp/hist.png
+
+

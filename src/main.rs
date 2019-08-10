@@ -10,12 +10,65 @@ use danny::experiment::Experiment;
 use danny::io::*;
 use danny::logging::*;
 use danny::lsh;
-
 use danny::measure::*;
 use danny::sketch::*;
 use danny::types::*;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::fmt::Debug;
+
+fn run_lsh<SV>(args: &CmdlineConfig, config: &Config, experiment: &mut Experiment) -> usize
+where
+    SV: BitBasedSketch + FromCosine + FromJaccard + SketchData + Debug,
+{
+    let mut rng = config.get_random_generator(0);
+    match args.measure.as_ref() {
+        "cosine" => {
+            let k = args.k.expect("K is needed on the command line");
+            let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
+            let threshold = args.threshold;
+            let sketch_bits = args.sketch_bits.expect("Sketches are mandatory");
+            let sketcher = SV::from_cosine(dim, &mut rng);
+            let sketch_predicate =
+                SketchPredicate::cosine(sketch_bits, threshold, config.get_sketch_epsilon());
+            lsh::fixed_param_lsh::<UnitNormVector, _, _, _, _, _, _>(
+                &args.left_path,
+                &args.right_path,
+                threshold,
+                k,
+                lsh::Hyperplane::builder(dim),
+                sketcher,
+                sketch_predicate,
+                move |a, b| InnerProduct::cosine(a, b) >= threshold,
+                &mut rng,
+                &config,
+                experiment,
+            )
+        }
+        "jaccard" => {
+            let k = args.k.expect("K is needed on the command line");
+            let threshold = args.threshold;
+            let sketch_bits = args.sketch_bits.expect("Sketch bits are mandatory");
+            let sketcher = SV::from_jaccard(&mut rng);
+            let sketch_predicate =
+                SketchPredicate::jaccard(sketch_bits, threshold, config.get_sketch_epsilon());
+            lsh::fixed_param_lsh::<BagOfWords, _, _, _, _, _, _>(
+                &args.left_path,
+                &args.right_path,
+                threshold,
+                k,
+                lsh::OneBitMinHash::builder(),
+                sketcher,
+                sketch_predicate,
+                move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
+                &mut rng,
+                &config,
+                experiment,
+            )
+        }
+        _ => unimplemented!("Unknown measure {}", args.measure),
+    }
+}
 
 fn main() {
     let config = Config::get();
@@ -23,94 +76,20 @@ fn main() {
     let args = CmdlineConfig::get();
     let mut experiment = Experiment::from_config(&config, &args);
 
-    info!("Starting...");
-    info!("Initial memory {}", proc_mem!());
-    let mut rng = config.get_random_generator(0);
+    debug!("Starting...");
+    debug!("Initial memory {}", proc_mem!());
 
     let threshold = args.threshold;
     let start = std::time::Instant::now();
+
     let count = match args.algorithm.as_ref() {
-        "lsh" => match args.measure.as_ref() {
-            "cosine" => {
-                let k = args.k.expect("K is needed on the command line");
-                let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
-                let threshold = args.threshold;
-                let hash_funs_builder = lsh::Hyperplane::collection_builder(threshold, dim);
-                let sketcher_pair = args.sketch_bits.map(|bits| {
-                    (
-                        LongSimHash::new(bits, dim, &mut rng),
-                        SketchPredicate::cosine(bits, threshold, config.get_sketch_epsilon()),
-                    )
-                });
-                lsh::fixed_param_lsh::<UnitNormVector, _, _, _, _, _, _, _>(
-                    &args.left_path,
-                    &args.right_path,
-                    k,
-                    hash_funs_builder,
-                    sketcher_pair,
-                    move |a, b| InnerProduct::cosine(a, b) >= threshold,
-                    &mut rng,
-                    &config,
-                    &mut experiment,
-                )
-            }
-            "jaccard" => {
-                let k = args.k.expect("K is needed on the command line");
-                let threshold = args.threshold;
-                let hash_funs_builder = lsh::MinHash::collection_builder(threshold);
-                let sketcher_pair = args.sketch_bits.map(|bits| {
-                    (
-                        OneBitMinHash::new(bits, &mut rng),
-                        SketchPredicate::jaccard(bits, threshold, config.get_sketch_epsilon()),
-                    )
-                });
-                lsh::fixed_param_lsh::<BagOfWords, _, _, _, _, _, _, _>(
-                    &args.left_path,
-                    &args.right_path,
-                    k,
-                    hash_funs_builder,
-                    sketcher_pair,
-                    move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
-                    &mut rng,
-                    &config,
-                    &mut experiment,
-                )
-            }
-            _ => unimplemented!("Unknown measure {}", args.measure),
-        },
-        "local-lsh" => match args.measure.as_ref() {
-            "cosine" => {
-                let k = args.k.expect("K is needed on the command line");
-                let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
-                let threshold = args.threshold;
-                let hash_funs_builder = lsh::Hyperplane::collection_builder(threshold, dim);
-                lsh::local_lsh::<UnitNormVector, _, _, _, _, _>(
-                    &args.left_path,
-                    &args.right_path,
-                    k,
-                    hash_funs_builder,
-                    move |a, b| InnerProduct::cosine(a, b) >= threshold,
-                    &config,
-                    &mut rng,
-                    &mut experiment,
-                )
-            }
-            "jaccard" => {
-                let k = args.k.expect("K is needed on the command line");
-                let threshold = args.threshold;
-                let hash_funs_builder = lsh::MinHash::collection_builder(threshold);
-                lsh::local_lsh::<BagOfWords, _, _, _, _, _>(
-                    &args.left_path,
-                    &args.right_path,
-                    k,
-                    hash_funs_builder,
-                    move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
-                    &config,
-                    &mut rng,
-                    &mut experiment,
-                )
-            }
-            _ => unimplemented!("Unknown measure {}", args.measure),
+        "lsh" => match args.sketch_bits {
+            Some(64) => run_lsh::<Sketch64>(&args, &config, &mut experiment),
+            Some(128) => run_lsh::<Sketch128>(&args, &config, &mut experiment),
+            Some(256) => run_lsh::<Sketch256>(&args, &config, &mut experiment),
+            Some(512) => run_lsh::<Sketch512>(&args, &config, &mut experiment),
+            Some(bits) => panic!("Unsupported number of sketch bits: {}", bits),
+            None => panic!("you should supply the number of sketch bits"),
         },
         "all-2-all" => match args.measure.as_ref() {
             "cosine" => baseline::all_pairs_parallel::<UnitNormVector, _>(
@@ -146,6 +125,7 @@ fn main() {
         },
         _ => unimplemented!("Unknown algorithm {}", args.algorithm),
     };
+
     let end = std::time::Instant::now();
     let total_time_d = end - start;
     let total_time = total_time_d.as_secs() * 1000 + u64::from(total_time_d.subsec_millis());

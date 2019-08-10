@@ -140,11 +140,14 @@ where
             files.push(writer);
         }
 
+        let mut cnt = 0;
         for (i, element) in elements.enumerate() {
             let writer = files.get_mut(i % num_chunks).expect("Out of bounds index");
             let pair = (i as u32, element);
             bincode::serialize_into(writer, &pair).expect("Error while serializing");
+            cnt += 1;
         }
+        info!("Actually written {} elements", cnt);
     }
 }
 
@@ -321,7 +324,10 @@ pub fn load_vectors<D>(
     left_path_main: &str,
     right_path_main: &str,
     config: &Config,
-) -> (Arc<ChunkedDataset<u32, D>>, Arc<ChunkedDataset<u32, D>>)
+) -> (
+    Arc<ChunkedDataset<ElementId, D>>,
+    Arc<ChunkedDataset<ElementId, D>>,
+)
 where
     for<'de> D: Deserialize<'de> + ReadBinaryFile + Sync + Send + Clone + 'static,
 {
@@ -349,13 +355,13 @@ where
     let mut left_builder = ChunkedDataset::builder(matrix_desc.rows as usize);
     let mut right_builder = ChunkedDataset::builder(matrix_desc.columns as usize);
 
-    info!("Getting coordinates");
+    debug!("Getting coordinates");
     for (i, j) in recv_coords.iter() {
         // We know we will receive exactly that many messages
         row_set.insert(i);
         column_set.insert(j);
     }
-    info!("Got coordinates");
+    debug!("Got coordinates");
 
     debug!("This machine is responsible for rows: {:?}", row_set);
     debug!("This machine is responsible for columns: {:?}", column_set);
@@ -364,14 +370,14 @@ where
         left_path_main.into(),
         |l| row_set.contains(&((l % matrix_desc.rows as usize) as u8)),
         |c, v| {
-            left_builder.insert(c as u32, v);
+            left_builder.insert(ElementId(c as u32), v);
         },
     );
     ReadBinaryFile::read_binary(
         right_path_main.into(),
         |l| column_set.contains(&((l % matrix_desc.columns as usize) as u8)),
         |c, v| {
-            right_builder.insert(c as u32, v);
+            right_builder.insert(ElementId(c as u32), v);
         },
     );
 

@@ -33,14 +33,18 @@ pub struct Config {
     baselines_path: PathBuf,
     #[serde(default = "Config::default_sketch_epsilon")]
     sketch_epsilon: f64,
-    #[serde(default = "Config::default_estimator_samples")]
-    estimator_samples: usize,
     #[serde(default = "Config::default_cost_balance")]
     cost_balance: f64,
+    #[serde(default = "Config::default_repetition_cost")]
+    repetition_cost: f64,
+    #[serde(default = "Config::default_sampling_factor")]
+    sampling_factor: f64,
     #[serde(default = "Config::default_bloom_bits")]
     bloom_bits: String,
     #[serde(default = "Config::default_bloom_k")]
     bloom_k: usize,
+    #[serde(default = "Config::default_desired_bucket_size")]
+    bucket_size: u32,
 }
 
 #[allow(dead_code)]
@@ -56,12 +60,15 @@ impl Config {
             DANNY_SEED        The seed for the random number generator
             DANNY_SKETCH_EPSILON  The value of epsilon for the sketcher (if used)
             DANNY_BASELINES_PATH  The path to the baselines file
-            DANNY_ESTIMATOR_SAMPLES  The number of vectors to sample _in each worker_ to
-                                     estimate the best k value
-            DANNY_COST_BALANCE In the adaptive algorithm, a number less than 1 gives more weight
-                               to the collisions, a number larger than 1 penalizes the repetitions
+            DANNY_SAMPLING_FACTOR  We take this number times sqrt(n) samples in the cost estimation (default 10)
+            DANNY_COST_BALANCE In the adaptive algorithm, a number between 0 and 1 (default 0.5)
+                               Values toward 0 penalize collisions (thus making more points have a higher level), 
+                               whereas values toward 1 penalize repetitions (thus making basically all the points 
+                               consider just collisions for the cost estimation)
             DANNY_BLOOM_BITS  Number of bits for the bloom filter (default 4G, use a string in the form \\d{K,M,G}B?)
             DANNY_BLOOM_K     Number of hash functions of the bloom filter (default 5)
+            DANNY_BUCKET_SIZE  The desired number of items in each bucket
+            DANNY_REPETITION_COST   The cost of performing a single repetition in the estimation process
         "
     }
 
@@ -70,10 +77,6 @@ impl Config {
             Ok(config) => config,
             Err(error) => panic!("{:#?}", error),
         }
-    }
-
-    fn default_estimator_samples() -> usize {
-        100
     }
 
     fn default_bloom_bits() -> String {
@@ -137,6 +140,14 @@ impl Config {
         0.5
     }
 
+    fn default_repetition_cost() -> f64 {
+        100.0
+    }
+
+    fn default_sampling_factor() -> f64 {
+        10.0
+    }
+
     fn default_threads() -> usize {
         1
     }
@@ -169,16 +180,33 @@ impl Config {
         self.baselines_path.clone()
     }
 
-    pub fn get_estimator_samples(&self) -> usize {
-        self.estimator_samples
-    }
-
     pub fn get_cost_balance(&self) -> f64 {
         assert!(
             self.cost_balance >= 0.0 && self.cost_balance <= 1.0,
             "Cost balance should be between 0 and 1"
         );
         self.cost_balance
+    }
+
+    pub fn get_repetition_cost(&self) -> f64 {
+        assert!(self.repetition_cost > 0.0, "Repetition cost should be > 0");
+        self.repetition_cost
+    }
+
+    pub fn get_sampling_factor(&self) -> f64 {
+        assert!(
+            self.sampling_factor >= 0.0,
+            "Sampling factor should be larger than 1"
+        );
+        self.sampling_factor
+    }
+
+    pub fn get_desired_bucket_size(&self) -> u32 {
+        self.bucket_size
+    }
+
+    pub fn default_desired_bucket_size() -> u32 {
+        0
     }
 
     pub fn get_timely_builder(&self) -> (Vec<GenericBuilder>, Box<dyn Any + 'static>) {
@@ -248,14 +276,14 @@ impl Config {
 
 #[derive(Debug, Clone, Copy)]
 pub enum ParamK {
-    Exact(usize),
+    Fixed(usize),
     Adaptive(usize, usize),
 }
 
 impl ParamK {
     pub fn to_string(&self) -> String {
         match self {
-            ParamK::Exact(k) => format!("Exact({})", k),
+            ParamK::Fixed(k) => format!("Fixed({})", k),
             ParamK::Adaptive(min_k, max_k) => format!("Adaptive({},{})", min_k, max_k),
         }
     }
@@ -315,7 +343,7 @@ impl CmdlineConfig {
                 let _k = k_str
                     .parse::<usize>()
                     .expect("k should be an unsigned integer");
-                ParamK::Exact(_k)
+                ParamK::Fixed(_k)
             })
             .or_else(|| {
                 matches.value_of("ADAPTIVE_K").map(|adaptive_k_str| {
