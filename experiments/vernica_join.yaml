@@ -16,11 +16,10 @@ experiments:
       DANNY_SEED:
         - 13124534
     parameters:
-      --range: 
+      -r: 
         - 0.5
         - 0.7
         - 0.9
-      --measure: jaccard
       -g: 40
     arguments:
       - ["{{ dataset('AOL-diverse-exp-0.5-3M') }}", "{{ dataset('AOL') }}"]
