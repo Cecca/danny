@@ -572,7 +572,10 @@ fn main() {
             .tag("left", input_left.to_str().unwrap())
             .tag("right", input_right.to_str().unwrap())
             .tag("threshold", range);
-        timed_out_experiment.append("result", row!("timed_out" => true));
+        timed_out_experiment.append(
+            "result",
+            row!("timed_out" => true, "total_time_ms" => timeout.as_millis() as u64),
+        );
 
         start_terminator(timeout, move || {
             timed_out_experiment.save();
