@@ -35,7 +35,6 @@ impl Experiment {
             .tag("total_threads", config.get_total_workers())
             .tag("seed", config.get_seed())
             .tag("sketch_epsilon", config.get_sketch_epsilon())
-            .tag("estimator_samples", config.get_estimator_samples())
             .tag("cost_balance", config.get_cost_balance())
             .tag("git_revision", version::short_sha())
             .tag("git_commit_date", version::commit_date())

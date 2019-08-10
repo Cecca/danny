@@ -32,6 +32,7 @@ use std::io::BufReader;
 use std::io::BufWriter;
 use std::io::Write;
 use std::path::PathBuf;
+use std::time::Duration;
 use std::time::Instant;
 use timely::dataflow::channels::pact::Exchange as ExchangePact;
 use timely::dataflow::channels::pact::Pipeline as PipelinePact;
@@ -531,7 +532,7 @@ fn run(left_path: PathBuf, right_path: PathBuf, range: f64, num_groups: u32, con
         );
         experiment.append(
             "result",
-            row!("output_size" => matching_count, "total_time_ms" => total_time, "recall" => recall, "speedup" => speedup),
+            row!("timed_out" => false, "output_size" => matching_count, "total_time_ms" => total_time, "recall" => recall, "speedup" => speedup),
         );
         experiment.save();
     }
@@ -564,9 +565,43 @@ fn main() {
 
     let config = Config::get();
     init_logging(&config);
+    if let Some(timeout) = config.get_timeout() {
+        let mut timed_out_experiment = Experiment::from_env(&config)
+            .tag("algorithm", "Vernica_join")
+            .tag("num_groups", num_groups)
+            .tag("left", input_left.to_str().unwrap())
+            .tag("right", input_right.to_str().unwrap())
+            .tag("threshold", range);
+        timed_out_experiment.append("result", row!("timed_out" => true));
+
+        start_terminator(timeout, move || {
+            timed_out_experiment.save();
+        });
+    }
 
     info!("Starting");
     run(input_left, input_right, range, num_groups, config);
 
     info!("Done!");
+}
+
+/// Starts a thread that kills the entire application
+/// if the program runs for too long
+fn start_terminator<F>(timeout: Duration, callback: F)
+where
+    F: FnOnce() + Sync + Send + 'static,
+{
+    info!("Starting killer ({:?})", timeout);
+    std::thread::spawn(move || {
+        let start = Instant::now();
+        let sleep_time = Duration::from_secs(10);
+        loop {
+            std::thread::sleep(sleep_time);
+            if start.elapsed() > timeout {
+                callback();
+                warn!("Killing the application!!");
+                std::process::exit(1);
+            }
+        }
+    });
 }

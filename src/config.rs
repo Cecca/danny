@@ -7,6 +7,7 @@ use rand_xorshift::XorShiftRng;
 use regex::Regex;
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::Duration;
 use timely::communication::allocator::generic::GenericBuilder;
 use timely::communication::initialize::Configuration as TimelyConfig;
 
@@ -45,6 +46,8 @@ pub struct Config {
     bloom_k: usize,
     #[serde(default = "Config::default_desired_bucket_size")]
     bucket_size: u32,
+    #[serde(default = "Config::default_timeout")]
+    timeout: Option<u64>,
 }
 
 #[allow(dead_code)]
@@ -69,6 +72,7 @@ impl Config {
             DANNY_BLOOM_K     Number of hash functions of the bloom filter (default 5)
             DANNY_BUCKET_SIZE  The desired number of items in each bucket
             DANNY_REPETITION_COST   The cost of performing a single repetition in the estimation process
+            DANNY_TIMEOUT     Number of seconds before killing a run (default: unbounded)
         "
     }
 
@@ -81,6 +85,14 @@ impl Config {
 
     fn default_bloom_bits() -> String {
         "4G".to_owned()
+    }
+
+    fn default_timeout() -> Option<u64> {
+        None
+    }
+
+    pub fn get_timeout(&self) -> Option<Duration> {
+        self.timeout.map(|t| Duration::from_secs(t))
     }
 
     pub fn get_bloom_bits(&self) -> usize {
