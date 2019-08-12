@@ -22,6 +22,6 @@ experiments:
         - 0.9
       -g: 40
     arguments:
-      - ["{{ dataset('AOL-diverse-exp-0.5-3M') }}", "{{ dataset('AOL') }}"]
-      - ["{{ dataset('Livejournal-diverse-exp-0.5-3M') }}", "{{ dataset('Livejournal') }}"]      
-      - ["{{ dataset('Orkut-diverse-exp-0.5-3M') }}", "{{ dataset('Orkut') }}"]
+      - ["{{ dataset('AOL') }}", "{{ dataset('AOL') }}"]
+      - ["{{ dataset('Livejournal') }}", "{{ dataset('Livejournal') }}"]      
+      - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
