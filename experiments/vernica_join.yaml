@@ -5,7 +5,7 @@ environment:
   DANNY_BASELINES_PATH: "/mnt/fast_storage/users/mcec/baselines.csv"
   DANNY_DATA_DIR: /mnt/fast_storage/users/mcec
   DANNY_EXEC: vernica_join
-  DANNY_TIMEOUT: 7200
+  DANNY_TIMEOUT: 3600
 experiments:
 
   - name: Bag of Words
