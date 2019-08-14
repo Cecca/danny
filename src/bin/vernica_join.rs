@@ -323,8 +323,9 @@ where
         "'left sets'".to_owned(),
         Some(left.len() as u64),
     );
+    let mut overlap_map: HashMap<u64, usize> = HashMap::new();
     for (l, l_bow) in left {
-        let mut overlap_map: HashMap<u64, usize> = HashMap::new();
+        overlap_map.clear();
         for (token_pos, token) in l_bow
             .words()
             .iter()
