@@ -20,7 +20,7 @@ experiments:
         - 0.5
         - 0.7
         - 0.9
-      -g: 40
+      -g: 1000000
     arguments:
       - ["{{ dataset('AOL') }}", "{{ dataset('AOL') }}"]
       - ["{{ dataset('Livejournal') }}", "{{ dataset('Livejournal') }}"]      
