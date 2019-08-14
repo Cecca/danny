@@ -5,7 +5,7 @@ environment:
   DANNY_BASELINES_PATH: "/mnt/fast_storage/users/mcec/baselines.csv"
   DANNY_DATA_DIR: /mnt/fast_storage/users/mcec
   DANNY_EXEC: vernica_join
-  DANNY_TIMEOUT: 7200
+  DANNY_TIMEOUT: 3600
 experiments:
 
   - name: Bag of Words
@@ -16,13 +16,12 @@ experiments:
       DANNY_SEED:
         - 13124534
     parameters:
-      --range: 
+      -r: 
         - 0.5
         - 0.7
         - 0.9
-      --measure: jaccard
       -g: 40
     arguments:
-      - ["{{ dataset('AOL-diverse-exp-0.5-3M') }}", "{{ dataset('AOL') }}"]
-      - ["{{ dataset('Livejournal-diverse-exp-0.5-3M') }}", "{{ dataset('Livejournal') }}"]      
-      - ["{{ dataset('Orkut-diverse-exp-0.5-3M') }}", "{{ dataset('Orkut') }}"]
+      - ["{{ dataset('AOL') }}", "{{ dataset('AOL') }}"]
+      - ["{{ dataset('Livejournal') }}", "{{ dataset('Livejournal') }}"]      
+      - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
