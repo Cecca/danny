@@ -46,3 +46,37 @@ experiments:
       - ["{{ dataset('AOL') }}", "{{ dataset('AOL') }}"]
       - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
       - ["{{ dataset('Livejournal') }}", "{{ dataset('Livejournal') }}"]
+
+  - name: Wikipedia
+    tags:
+      - jaccard
+      - fixed
+      - wiki
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --algorithm: lsh
+      --range: [0.5,0.7,0.9]
+      --measure: jaccard
+      --sketch-bits: 128
+      --adaptive-k: "11,20"
+    arguments:
+      - ["{{ dataset('wiki-10k') }}", "{{ dataset('wiki-10k') }}"]
+
+  - name: GNews
+    tags:
+      - cosine
+      - fixed
+      - gnews
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --algorithm: lsh
+      --range: [0.5,0.7,0.9]
+      --measure: cosine
+      --sketch-bits: 128
+      --adaptive-k: "11,20"
+    arguments:
+      - ["{{ dataset('GNews') }}", "{{ dataset('GNews') }}"]
