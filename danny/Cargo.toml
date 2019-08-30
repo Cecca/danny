@@ -1,0 +1,43 @@
+[package]
+name = "danny"
+version = "0.1.0"
+authors = ["Matteo Ceccarello <ceccarel@dei.unipd.it>"]
+edition = "2018"
+
+[dependencies]
+timely = "0.8"
+abomonation = "0.7"
+abomonation_derive = "0.3"
+clap = "2.32"
+envy = "0.3"
+serde = "1"
+serde_derive = "1"
+serde_json = "1.0"
+log = "0.4"
+env_logger = "0.6"
+log-panics = "2.0.0"
+smallbitvec = "2.3"
+rand = "0.6"
+rand_xorshift = "0.1.0"
+chrono = "0.4"
+siphasher = "0.3"
+jemallocator = "0.1.8"
+bincode = "1.0"
+packed_simd = "0.3.0"
+rayon = "1.0"
+crossbeam-channel = "0.3"
+probabilistic-collections = "0.5"
+regex = "1"
+statrs = "0.11"
+lazy_static = "1.3"
+bitvec = "0.14"
+
+[build-dependencies]
+vergen = "0.1"
+
+[dev-dependencies]
+criterion = "0.2"
+
+[[bench]]
+name = "benchmarks"
+harness = false
