@@ -1,6 +1,8 @@
+use danny_base::lsh::*;
+use danny_base::sketch::*;
+use danny_base::types::*;
 use crate::bloom::*;
 use crate::logging::*;
-use crate::types::*;
 use abomonation::Abomonation;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -18,6 +20,18 @@ use timely::order::Product;
 use timely::progress::Timestamp;
 use timely::Data;
 use timely::ExchangeData;
+
+/// Composite trait for keys. Basically everything that behaves like an integer
+pub trait KeyData: ExchangeData + Hash + Eq + Ord + Copy + Route {}
+impl<T: ExchangeData + Hash + Eq + Ord + Copy + Route> KeyData for T {}
+
+/// Composite trait for hash values
+pub trait HashData: ExchangeData + Hash + Eq + Copy + Ord + Route {}
+impl<T: ExchangeData + Hash + Eq + Copy + Ord + Route> HashData for T {}
+
+/// Composite trait for sketch data.
+pub trait SketchData: ExchangeData + Copy + Hash + Eq + BitBasedSketch {}
+impl<T: ExchangeData + Copy + Hash + Eq + BitBasedSketch> SketchData for T {}
 
 pub trait Succ
 where

@@ -10,8 +10,8 @@ extern crate serde;
 
 use danny::io::*;
 use danny::logging::ProgressLogger;
-use danny::measure::*;
-use danny::types::*;
+use danny_base::measure::*;
+use danny_base::types::*;
 use rayon::prelude::*;
 use std::fs::File;
 use std::io::BufWriter;

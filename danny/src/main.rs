@@ -8,11 +8,13 @@ use danny::baseline::Baselines;
 use danny::config::*;
 use danny::experiment::Experiment;
 use danny::io::*;
+use danny::operators::*;
+use danny::lsh::algorithms::fixed_param_lsh;
 use danny::logging::*;
-use danny::lsh;
-use danny::measure::*;
-use danny::sketch::*;
-use danny::types::*;
+use danny_base::measure::*;
+use danny_base::lsh::*;
+use danny_base::sketch::*;
+use danny_base::types::*;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -31,12 +33,12 @@ where
             let sketcher = SV::from_cosine(dim, &mut rng);
             let sketch_predicate =
                 SketchPredicate::cosine(sketch_bits, threshold, config.get_sketch_epsilon());
-            lsh::fixed_param_lsh::<UnitNormVector, _, _, _, _, _, _>(
+            fixed_param_lsh::<UnitNormVector, _, _, _, _, _, _>(
                 &args.left_path,
                 &args.right_path,
                 threshold,
                 k,
-                lsh::Hyperplane::builder(dim),
+                Hyperplane::builder(dim),
                 sketcher,
                 sketch_predicate,
                 move |a, b| InnerProduct::cosine(a, b) >= threshold,
@@ -52,12 +54,12 @@ where
             let sketcher = SV::from_jaccard(&mut rng);
             let sketch_predicate =
                 SketchPredicate::jaccard(sketch_bits, threshold, config.get_sketch_epsilon());
-            lsh::fixed_param_lsh::<BagOfWords, _, _, _, _, _, _>(
+            fixed_param_lsh::<BagOfWords, _, _, _, _, _, _>(
                 &args.left_path,
                 &args.right_path,
                 threshold,
                 k,
-                lsh::OneBitMinHash::builder(),
+                OneBitMinHash::builder(),
                 sketcher,
                 sketch_predicate,
                 move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),

@@ -3,6 +3,7 @@
 #![feature(unboxed_closures)]
 #![feature(range_contains)]
 
+extern crate danny_base;
 #[macro_use]
 extern crate log;
 extern crate env_logger;
@@ -38,13 +39,10 @@ pub mod logging;
 pub mod baseline;
 pub mod bloom;
 pub mod config;
+pub mod lsh;
 pub mod dataset;
 pub mod io;
-pub mod lsh;
-pub mod measure;
 pub mod operators;
-pub mod sketch;
-pub mod types;
 pub mod version {
     include!(concat!(env!("OUT_DIR"), "/version.rs"));
 }

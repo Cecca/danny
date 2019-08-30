@@ -13,7 +13,7 @@ extern crate rayon;
 extern crate serde;
 
 use danny::io::*;
-use danny::types::*;
+use danny_base::types::*;
 use rand::distributions::Exp1;
 use rand::distributions::Normal;
 use rand::distributions::Uniform;

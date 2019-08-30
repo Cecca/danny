@@ -9,9 +9,9 @@ extern crate rayon;
 extern crate serde;
 
 use danny::io::*;
-use danny::measure::*;
+use danny_base::measure::*;
 
-use danny::types::*;
+use danny_base::types::*;
 use std::path::PathBuf;
 
 use std::io::Write;

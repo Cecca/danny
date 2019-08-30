@@ -1,11 +1,11 @@
 use crate::dataset::*;
 use crate::logging::*;
-use crate::lsh::bucket::*;
-use crate::lsh::functions::*;
-use crate::lsh::prefix_hash::*;
+use danny_base::bucket::*;
+use danny_base::lsh::*;
+use danny_base::prefix_hash::*;
 use crate::operators::Route;
 use crate::operators::*;
-use crate::types::*;
+use danny_base::types::*;
 use abomonation::Abomonation;
 use std::clone::Clone;
 use std::collections::HashMap;
@@ -212,6 +212,7 @@ where
     G: Scope<Timestamp = T>,
     T: Timestamp,
     H: HashData + PrefixHash,
+    H::PrefixType: Route,
     K: ExchangeData,
 {
     fn bucket_prefixes<P, PD>(
@@ -231,6 +232,7 @@ where
     G: Scope<Timestamp = T>,
     T: Timestamp + ToStepId,
     H: HashData + Debug + PrefixHash + std::fmt::Binary,
+    H::PrefixType: Route,
     K: ExchangeData + Debug,
 {
     #[allow(clippy::explicit_counter_loop)]

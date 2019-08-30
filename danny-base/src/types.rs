@@ -1,5 +1,4 @@
 use crate::measure::{InnerProduct, Jaccard};
-use crate::operators::Route;
 use crate::sketch::BitBasedSketch;
 use abomonation::Abomonation;
 use rand::distributions::{Distribution, Exp, Normal, Uniform};
@@ -8,19 +7,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::fmt::Debug;
 use std::hash::Hash;
-use timely::ExchangeData;
 
-/// Composite trait for keys. Basically everything that behaves like an integer
-pub trait KeyData: ExchangeData + Hash + Eq + Ord + Copy + Route {}
-impl<T: ExchangeData + Hash + Eq + Ord + Copy + Route> KeyData for T {}
-
-/// Composite trait for hash values
-pub trait HashData: ExchangeData + Hash + Eq + Copy + Ord + Route {}
-impl<T: ExchangeData + Hash + Eq + Copy + Ord + Route> HashData for T {}
-
-/// Composite trait for sketch data.
-pub trait SketchData: ExchangeData + Copy + Hash + Eq + BitBasedSketch {}
-impl<T: ExchangeData + Copy + Hash + Eq + BitBasedSketch> SketchData for T {}
 
 #[derive(Clone, Default)]
 pub struct VectorWithNorm {

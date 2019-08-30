@@ -4,7 +4,7 @@ use crate::config::*;
 use crate::dataset::*;
 use crate::logging::*;
 use crate::operators::*;
-use crate::types::*;
+use danny_base::types::*;
 use serde::de::Deserialize;
 use serde::ser::Serialize;
 use std::collections::HashSet;

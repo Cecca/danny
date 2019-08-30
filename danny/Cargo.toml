@@ -5,6 +5,7 @@ authors = ["Matteo Ceccarello <ceccarel@dei.unipd.it>"]
 edition = "2018"
 
 [dependencies]
+danny-base = { path = "../danny-base" }
 timely = "0.8"
 abomonation = "0.7"
 abomonation_derive = "0.3"

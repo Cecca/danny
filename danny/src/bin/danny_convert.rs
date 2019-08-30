@@ -4,7 +4,7 @@ extern crate danny;
 extern crate serde;
 
 use danny::io::*;
-use danny::types::*;
+use danny_base::types::*;
 use serde::ser::Serialize;
 use std::path::PathBuf;
 
