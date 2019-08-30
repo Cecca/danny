@@ -1,4 +1,4 @@
-use crate::lsh::*;
+
 use crate::prefix_hash::*;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -236,7 +236,7 @@ where
     }
 
     fn sort_hashes(hashes: &mut HashMap<u8, Vec<(H, K)>>) {
-        for (level, hashes) in hashes.iter_mut() {
+        for (_level, hashes) in hashes.iter_mut() {
             hashes.sort_unstable_by(|h1, h2| h1.0.lex_cmp(&h2.0));
         }
     }

@@ -393,7 +393,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    use rand::StdRng;
+    use rand::SeedableRng;
     use std::sync::mpsc;
     use std::sync::{Arc, Mutex};
     use timely::dataflow::operators::capture::event::Event;
@@ -513,6 +514,24 @@ mod tests {
                 assert_eq!((i, j), matrix.row_major_to_pair(matrix.row_major(i, j)));
             }
         }
+    }
+
+    #[test]
+    fn test_minhash_route() {
+        let mut rng = StdRng::seed_from_u64(1232);
+        let k = 18;
+        let n = 10000;
+        let mut distrib = vec![0; 40];
+        let hasher = OneBitMinHash::new(k, &mut rng);
+        for _ in 0..n {
+            let v = BagOfWords::random(3000, 0.01, &mut rng);
+            if !v.is_empty() {
+                let h = hasher.hash(&v);
+                let r = h.route() as usize % distrib.len();
+                distrib[r] += 1;
+            }
+        }
+        println!("{:?}", distrib);
     }
 
 }
