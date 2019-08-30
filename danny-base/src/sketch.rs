@@ -457,7 +457,7 @@ mod tests {
         let s1 = BagOfWords::new(10000, vec![0, 1, 2, 4, 6, 7, 13, 22, 53]);
         let s2 = BagOfWords::new(10000, vec![0, 1, 2, 4, 6, 7, 13, 22, 53, 54]);
         let similarity = Jaccard::jaccard(&s1, &s2);
-        let k = 64;
+        let _k = 64;
         let mut sum_squared_error = 0.0;
         let mut sum_preds = 0.0;
 

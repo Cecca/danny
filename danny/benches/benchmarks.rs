@@ -1,13 +1,14 @@
 #[macro_use]
 extern crate criterion;
 extern crate danny;
+extern crate danny_base;
 
 use criterion::Criterion;
 use danny::bloom::*;
-use danny::lsh::functions::*;
-use danny::measure::InnerProduct;
-use danny::sketch::*;
-use danny::types::*;
+use danny_base::lsh::*;
+use danny_base::measure::InnerProduct;
+use danny_base::sketch::*;
+use danny_base::types::*;
 use rand::RngCore;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
@@ -82,10 +83,28 @@ fn bench_jaccard_sketch(c: &mut Criterion) {
         |bencher, &&k| {
             let mut rng = XorShiftRng::seed_from_u64(124);
             let a = BagOfWords::random(10000, 100.0, &mut rng);
-            let sketcher = OneBitMinHash::new(k, &mut rng);
-            bencher.iter(|| sketcher.sketch(&a));
+            // let sketcher = OneBitMinHash::new(k, &mut rng);
+            match k {
+                64 => {
+                    let sketcher = Sketch64::from_jaccard(&mut rng);
+                    bencher.iter(|| sketcher.sketch(&a));
+                },
+                128 => {
+                    let sketcher = Sketch128::from_jaccard(&mut rng);
+                    bencher.iter(|| sketcher.sketch(&a));
+                },
+                256 => {
+                    let sketcher = Sketch256::from_jaccard(&mut rng);
+                    bencher.iter(|| sketcher.sketch(&a));
+                },
+                512 => {
+                    let sketcher = Sketch512::from_jaccard(&mut rng);
+                    bencher.iter(|| sketcher.sketch(&a));
+                },
+                _ => panic!(),
+            }
         },
-        &[128, 256, 512, 1024],
+        &[64, 128, 256, 512],
     );
 
     c.bench_function_over_inputs(
@@ -94,13 +113,39 @@ fn bench_jaccard_sketch(c: &mut Criterion) {
             let mut rng = XorShiftRng::seed_from_u64(124);
             let a = BagOfWords::random(10000, 100.0, &mut rng);
             let b = BagOfWords::random(10000, 100.0, &mut rng);
-            let sketcher = OneBitMinHash::new(k, &mut rng);
-            let sa = sketcher.sketch(&a);
-            let sb = sketcher.sketch(&b);
-            let predicate = SketchPredicate::jaccard(k, 0.5, 0.5);
-            bencher.iter(|| predicate.eval(&sa, &sb));
+            match k {
+                64 => {
+                    let sketcher = Sketch64::from_jaccard(&mut rng);
+                    let sa = sketcher.sketch(&a);
+                    let sb = sketcher.sketch(&b);
+                    let predicate = SketchPredicate::jaccard(k, 0.5, 0.5);
+                    bencher.iter(|| predicate.eval(&sa, &sb));
+                },
+                128 => {
+                    let sketcher = Sketch128::from_jaccard(&mut rng);
+                    let sa = sketcher.sketch(&a);
+                    let sb = sketcher.sketch(&b);
+                    let predicate = SketchPredicate::jaccard(k, 0.5, 0.5);
+                    bencher.iter(|| predicate.eval(&sa, &sb));
+                },
+                256 => {
+                    let sketcher = Sketch256::from_jaccard(&mut rng);
+                    let sa = sketcher.sketch(&a);
+                    let sb = sketcher.sketch(&b);
+                    let predicate = SketchPredicate::jaccard(k, 0.5, 0.5);
+                    bencher.iter(|| predicate.eval(&sa, &sb));
+                },
+                512 => {
+                    let sketcher = Sketch512::from_jaccard(&mut rng);
+                    let sa = sketcher.sketch(&a);
+                    let sb = sketcher.sketch(&b);
+                    let predicate = SketchPredicate::jaccard(k, 0.5, 0.5);
+                    bencher.iter(|| predicate.eval(&sa, &sb));
+                },
+                _ => panic!(),
+            }
         },
-        &[128, 256, 512, 1024],
+        &[64, 128, 256, 512],
     );
 
     c.bench_function_over_inputs(
@@ -109,12 +154,35 @@ fn bench_jaccard_sketch(c: &mut Criterion) {
             let mut rng = XorShiftRng::seed_from_u64(124);
             let a = BagOfWords::random(10000, 100.0, &mut rng);
             let b = BagOfWords::random(10000, 100.0, &mut rng);
-            let sketcher = OneBitMinHash::new(k, &mut rng);
-            let sa = sketcher.sketch(&a);
-            let sb = sketcher.sketch(&b);
-            bencher.iter(|| SketchEstimate::estimate(&sa, &sb));
+            match k {
+                64 => {
+                    let sketcher = Sketch64::from_jaccard(&mut rng);
+                    let sa = sketcher.sketch(&a);
+                    let sb = sketcher.sketch(&b);
+                    bencher.iter(|| BagOfWords::sketch_estimate(&sa, &sb));
+                },
+                128 => {
+                    let sketcher = Sketch128::from_jaccard(&mut rng);
+                    let sa = sketcher.sketch(&a);
+                    let sb = sketcher.sketch(&b);
+                    bencher.iter(|| BagOfWords::sketch_estimate(&sa, &sb));
+                },
+                256 => {
+                    let sketcher = Sketch256::from_jaccard(&mut rng);
+                    let sa = sketcher.sketch(&a);
+                    let sb = sketcher.sketch(&b);
+                    bencher.iter(|| BagOfWords::sketch_estimate(&sa, &sb));
+                },
+                512 => {
+                    let sketcher = Sketch512::from_jaccard(&mut rng);
+                    let sa = sketcher.sketch(&a);
+                    let sb = sketcher.sketch(&b);
+                    bencher.iter(|| BagOfWords::sketch_estimate(&sa, &sb));
+                },
+                _ => panic!(),
+            }
         },
-        &[128, 256, 512, 1024],
+        &[64, 128, 256, 512],
     );
 }
 

@@ -120,7 +120,7 @@ fn gen_extreme<'a, D: Clone + 'static>(
     let bottom_difficulty = config.bottom_difficulty;
     assert!(data[0].0 <= bottom_difficulty);
     assert!(data[data.len() - 1].0 >= top_difficulty);
-    let n = data
+    let _n = data
         .iter()
         .filter(|(d, _)| !(d.is_infinite() || *d == 0.0))
         .count();

@@ -1,11 +1,11 @@
 use crate::config::*;
 use crate::dataset::*;
 use crate::logging::*;
-use crate::lsh::*;
+
 use crate::operators::*;
 use danny_base::sketch::*;
 use danny_base::lsh::*;
-use danny_base::prefix_hash::*;
+
 use rand::Rng;
 use std::collections::HashMap;
 use std::fmt::Debug;

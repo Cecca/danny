@@ -5,7 +5,7 @@ use danny_base::lsh::*;
 use danny_base::prefix_hash::*;
 use crate::operators::Route;
 use crate::operators::*;
-use danny_base::types::*;
+
 use abomonation::Abomonation;
 use std::clone::Clone;
 use std::collections::HashMap;
@@ -377,7 +377,7 @@ where
                         .cloned()
                         .collect();
                     for t in cleanup_times.iter() {
-                        let bucket = buckets.remove(t).unwrap();
+                        let _bucket = buckets.remove(t).unwrap();
                     }
                 }
             },
@@ -471,7 +471,7 @@ where
                         debug!("Repetition {} with sketches", current_repetition,);
                     }
                     let mut session = output.session(&cap);
-                    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
+                    for (k, _v) in vecs.iter_stripe(matrix, direction, worker) {
                         let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
                         let s = sketches.get(k).expect("Missing sketch");
                         session.give((h, (s.clone(), k.clone())));
