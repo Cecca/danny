@@ -22,6 +22,12 @@
     - name: compile the code and install
       shell: RUSTFLAGS="-C target-cpu=native" PATH=$PATH:~/.cargo/bin cargo +nightly install --path . --force
       args:
-        chdir: "{{ local_repository }}"
+        chdir: "{{ local_repository }}/danny"
+        executable: /bin/bash
+
+    - name: compile the utilities and install
+      shell: RUSTFLAGS="-C target-cpu=native" PATH=$PATH:~/.cargo/bin cargo +nightly install --path . --force
+      args:
+        chdir: "{{ local_repository }}/danny-utilities"
         executable: /bin/bash
 
