@@ -1,4 +1,4 @@
-use crate::bloom::*;
+use danny_base::bloom::*;
 use crate::config::*;
 use crate::dataset::ChunkedDataset;
 use crate::experiment::Experiment;
@@ -77,12 +77,14 @@ where
     );
     let (global_left, global_right) = load_vectors(left_path, right_path, &config);
 
-    let bloom_filter = Arc::new(AtomicBloomFilter::<ElementId>::from_config(
-        &config,
+    let bloom_filter = Arc::new(AtomicBloomFilter::<ElementId>::new(
+        config.get_bloom_bits(),
+        config.get_bloom_k(),
         rng.clone(),
     ));
-    let bloom_filter_pre_communication = Arc::new(AtomicBloomFilter::<ElementId>::from_config(
-        &config,
+    let bloom_filter_pre_communication = Arc::new(AtomicBloomFilter::<ElementId>::new(
+        config.get_bloom_bits(),
+        config.get_bloom_k(),
         rng.clone(),
     ));
     let adaptive_params = AdaptiveParams::from_config(&config);

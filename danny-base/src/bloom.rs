@@ -1,4 +1,3 @@
-use crate::config::Config;
 use rand::Rng;
 use std::fmt::{Debug, Formatter};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -62,12 +61,6 @@ where
 }
 
 impl<K: Into<u64> + Copy> AtomicBloomFilter<K> {
-    pub fn from_config<R: Rng>(config: &Config, rng: R) -> Self {
-        let num_bits = config.get_bloom_bits();
-        let k = config.get_bloom_k();
-        Self::new(num_bits, k, rng)
-    }
-
     pub fn new<R: Rng>(num_bits: usize, k: usize, mut rng: R) -> Self {
         assert!(k < 64 / 2);
         let num_words = (num_bits as f64 / 64_f64).ceil() as usize;

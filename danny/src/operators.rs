@@ -1,7 +1,7 @@
 use danny_base::lsh::*;
 use danny_base::sketch::*;
 use danny_base::types::*;
-use crate::bloom::*;
+use danny_base::bloom::*;
 use crate::logging::*;
 use abomonation::Abomonation;
 use std::collections::HashMap;

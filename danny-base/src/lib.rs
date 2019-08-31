@@ -21,3 +21,4 @@ pub mod measure;
 pub mod lsh;
 pub mod prefix_hash;
 pub mod bucket;
+pub mod bloom;

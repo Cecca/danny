@@ -37,7 +37,6 @@ pub mod experiment;
 #[macro_use]
 pub mod logging;
 pub mod baseline;
-pub mod bloom;
 pub mod config;
 pub mod lsh;
 pub mod dataset;

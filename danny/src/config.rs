@@ -1,4 +1,4 @@
-use crate::bloom::ToBits;
+use danny_base::bloom::ToBits;
 use core::any::Any;
 use rand::rngs::StdRng;
 use rand::RngCore;
