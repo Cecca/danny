@@ -8,11 +8,12 @@ use danny::baseline::Baselines;
 use danny::config::*;
 use danny::experiment::Experiment;
 use danny::io::*;
-use danny::operators::*;
-use danny::lsh::algorithms::distributed_lsh;
 use danny::logging::*;
-use danny_base::measure::*;
+use danny::lsh::algorithms::distributed_lsh;
+use danny::lsh::algorithms::simple_fixed;
+use danny::operators::*;
 use danny_base::lsh::*;
+use danny_base::measure::*;
 use danny_base::sketch::*;
 use danny_base::types::*;
 use serde_json::Value;
@@ -49,12 +50,17 @@ where
         }
         "jaccard" => {
             let k = args.k.expect("K is needed on the command line");
+            let k = match k {
+                ParamK::Fixed(k) => k,
+                ParamK::Adaptive(_,_) => panic!(),
+            };
             let threshold = args.threshold;
             let sketch_bits = args.sketch_bits.expect("Sketch bits are mandatory");
             let sketcher = SV::from_jaccard(&mut rng);
             let sketch_predicate =
                 SketchPredicate::jaccard(sketch_bits, threshold, config.get_sketch_epsilon());
-            distributed_lsh::<BagOfWords, _, _, _, _, _, _>(
+            // distributed_lsh::<BagOfWords, _, _, _, _, _, _>(
+            simple_fixed::<BagOfWords, _, _, _, _, _, _>(
                 &args.left_path,
                 &args.right_path,
                 threshold,

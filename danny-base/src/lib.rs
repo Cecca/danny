@@ -15,10 +15,10 @@ extern crate rand_xorshift;
 extern crate siphasher;
 extern crate statrs;
 
-pub mod types;
-pub mod sketch;
-pub mod measure;
-pub mod lsh;
-pub mod prefix_hash;
-pub mod bucket;
 pub mod bloom;
+pub mod bucket;
+pub mod lsh;
+pub mod measure;
+pub mod prefix_hash;
+pub mod sketch;
+pub mod types;

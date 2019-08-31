@@ -3,8 +3,8 @@ extern crate clap;
 #[macro_use]
 extern crate log;
 extern crate crossbeam_channel;
-extern crate danny_base;
 extern crate danny;
+extern crate danny_base;
 extern crate env_logger;
 extern crate rayon;
 extern crate serde;

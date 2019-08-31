@@ -38,9 +38,9 @@ pub mod experiment;
 pub mod logging;
 pub mod baseline;
 pub mod config;
-pub mod lsh;
 pub mod dataset;
 pub mod io;
+pub mod lsh;
 pub mod operators;
 pub mod version {
     include!(concat!(env!("OUT_DIR"), "/version.rs"));

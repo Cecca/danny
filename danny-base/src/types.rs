@@ -8,7 +8,6 @@ use std::fmt;
 use std::fmt::Debug;
 use std::hash::Hash;
 
-
 #[derive(Clone, Default, Abomonation)]
 pub struct VectorWithNorm {
     data: Vec<f32>,

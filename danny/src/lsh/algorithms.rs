@@ -1,4 +1,3 @@
-use danny_base::bloom::*;
 use crate::config::*;
 use crate::dataset::ChunkedDataset;
 use crate::experiment::Experiment;
@@ -6,9 +5,11 @@ use crate::io::*;
 use crate::logging::init_event_logging;
 use crate::logging::*;
 use crate::lsh::adaptive::*;
-use danny_base::lsh::*;
 use crate::lsh::operators::*;
 use crate::operators::*;
+use danny_base::bloom::*;
+use danny_base::bucket::*;
+use danny_base::lsh::*;
 use danny_base::sketch::*;
 use danny_base::types::*;
 use rand::{Rng, SeedableRng};
@@ -23,6 +24,7 @@ use std::time::Instant;
 use timely::dataflow::channels::pact::Exchange as ExchangePact;
 use timely::dataflow::channels::pact::Pipeline as PipelinePact;
 use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
+use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use timely::progress::timestamp::Timestamp;
@@ -441,4 +443,275 @@ where
             }
         })
         .stream_sum()
+}
+
+fn simple_source<G, K, F, D, S>(
+    scope: &G,
+    vecs: Arc<ChunkedDataset<K, D>>,
+    sketcher: Arc<S>,
+    hash_fns: Arc<DKTCollection<F>>,
+    throttle: Option<ProbeHandle<G::Timestamp>>,
+    worker: u64,
+    matrix: MatrixDescription,
+    direction: MatrixDirection,
+) -> Stream<G, (u32, (S::Output, K))>
+where
+    G: Scope,
+    G::Timestamp: Succ,
+    K: KeyData + Debug,
+    D: ExchangeData + SketchEstimate + Debug,
+    S: Sketcher<Input = D> + Clone + 'static,
+    S::Output: SketchData + Debug,
+    F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
+{
+    let logger = scope.danny_logger();
+    let repetitions = hash_fns.repetitions();
+    let mut current_repetition = 0usize;
+    let sketches = build_sketches(
+        Arc::clone(&vecs),
+        Arc::clone(&sketcher),
+        worker,
+        matrix,
+        direction,
+    );
+    let mut bit_pools: HashMap<K, DKTPool> = HashMap::new();
+    info!("Computing the bit pools");
+    let start = Instant::now();
+    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
+        bit_pools.insert(*k, hash_fns.pool(v));
+    }
+    let end = Instant::now();
+    info!(
+        "Computed the bit pools ({:?}, {})",
+        end - start,
+        proc_mem!()
+    );
+    source(scope, "hashed source", move |capability| {
+        let mut cap = Some(capability);
+        move |output| {
+            let mut done = false;
+            if let Some(cap) = cap.as_mut() {
+                if throttle
+                    .as_ref()
+                    .map(|t| !t.less_than(cap.time()))
+                    .unwrap_or(true)
+                {
+                    let mut session = output.session(&cap);
+                    for (k, _v) in vecs.iter_stripe(matrix, direction, worker) {
+                        let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
+                        let s = sketches.get(k).expect("Missing sketch");
+                        let output_element = (h, (s.clone(), k.clone()));
+                        // Hand out several copies of the vector to all the appropriate processors
+                        match direction {
+                            MatrixDirection::Columns => {
+                                let col = (k.route() % u64::from(matrix.columns)) as u8;
+                                for row in 0..matrix.rows {
+                                    session.give(((row, col), output_element));
+                                }
+                            }
+                            MatrixDirection::Rows => {
+                                let row = (k.route() % u64::from(matrix.rows)) as u8;
+                                for col in 0..matrix.columns {
+                                    session.give(((row, col), output_element));
+                                }
+                            }
+                        };
+                    }
+                    current_repetition += 1;
+                    cap.downgrade(&cap.time().succ());
+                    done = current_repetition >= repetitions;
+                }
+            }
+
+            if done {
+                // Drop the capability to signal that we will send no more data
+                cap = None;
+            }
+        }
+    })
+    .exchange(move |tuple| matrix.row_major((tuple.0).0, (tuple.0).1))
+    .map(|pair| pair.1)
+}
+
+/// A simple take on the fixed parameter algorithm.
+pub fn simple_fixed<D, F, H, S, V, B, R>(
+    left_path: &str,
+    right_path: &str,
+    range: f64,
+    k: usize,
+    hash_function_builder: B,
+    sketcher: S,
+    sketch_predicate: SketchPredicate<V>,
+    sim_pred: F,
+    rng: &mut R,
+    config: &Config,
+    experiment: &mut Experiment,
+) -> usize
+where
+    for<'de> D: ReadBinaryFile + Deserialize<'de> + ExchangeData + Debug + SketchEstimate,
+    F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
+    H: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
+    S: Sketcher<Input = D, Output = V> + Send + Sync + Clone + 'static,
+    V: SketchData + Debug,
+    R: Rng + SeedableRng + Send + Sync + Clone + 'static,
+    B: Fn(usize, &mut R) -> H + Sized + Send + Sync + Clone + 'static,
+{
+    let network = NetworkGauge::start();
+    let timely_builder = config.get_timely_builder();
+    // This channel is used to get the results
+    let (output_send_ch, recv) = channel();
+    let output_send_ch = Arc::new(Mutex::new(output_send_ch));
+
+    let (send_exec_summary, recv_exec_summary) = channel();
+    let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
+
+    let hasher = Arc::new(DKTCollection::new(k, k, range, hash_function_builder, rng));
+
+    let rng = rng.clone();
+
+    debug!(
+        "Left dataset has {} points, right has {}",
+        D::num_elements(left_path.into()),
+        D::num_elements(right_path.into())
+    );
+    let (global_left, global_right) = load_vectors::<D>(left_path, right_path, &config);
+
+    let bloom_filter = Arc::new(AtomicBloomFilter::<ElementId>::new(
+        config.get_bloom_bits(),
+        config.get_bloom_k(),
+        rng.clone(),
+    ));
+
+    timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
+        let global_left = Arc::clone(&global_left);
+        let global_right = Arc::clone(&global_right);
+        let bloom_filter = Arc::clone(&bloom_filter);
+        let hasher = Arc::clone(&hasher);
+        let mut rng = rng.clone();
+        let execution_summary = init_event_logging(&worker);
+        let output_send_ch = output_send_ch
+            .lock()
+            .expect("Cannot get lock on output channel")
+            .clone();
+        let sim_pred = sim_pred.clone();
+        let sketch_predicate = sketch_predicate.clone();
+        let sketcher = sketcher.clone();
+        let sketcher = Arc::new(sketcher);
+        let worker_index = worker.index() as u64;
+        let matrix = MatrixDescription::for_workers(worker.peers());
+
+        let probe = worker.dataflow::<u32, _, _>(move |scope| {
+            let mut probe = ProbeHandle::<u32>::new();
+            let global_left = Arc::clone(&global_left);
+            let global_right = Arc::clone(&global_right);
+
+            let left = simple_source(
+                scope,
+                Arc::clone(&global_left),
+                Arc::clone(&sketcher),
+                Arc::clone(&hasher),
+                Some(probe.clone()),
+                worker_index,
+                matrix,
+                MatrixDirection::Rows,
+            );
+            let right = simple_source(
+                scope,
+                Arc::clone(&global_right),
+                Arc::clone(&sketcher),
+                Arc::clone(&hasher),
+                Some(probe.clone()),
+                worker_index,
+                matrix,
+                MatrixDirection::Columns,
+            );
+
+            left.binary_frontier(&right, PipelinePact, PipelinePact, "bucket", move |_, _| {
+                let mut notificator = FrontierNotificator::new();
+                let mut bucks = HashMap::new();
+                move |left_in, right_in, output| {
+                    left_in.for_each(|t, data| {
+                        let buck = bucks
+                            .entry(t.time().clone())
+                            .or_insert_with(Bucket::default);
+                        for (h, d) in data.replace(Vec::new()).drain(..) {
+                            buck.push_left(h, d);
+                        }
+                        notificator.notify_at(t.retain());
+                    });
+                    right_in.for_each(|t, data| {
+                        let buck = bucks
+                            .entry(t.time().clone())
+                            .or_insert_with(Bucket::default);
+                        for (h, d) in data.replace(Vec::new()).drain(..) {
+                            buck.push_right(h, d);
+                        }
+                        notificator.notify_at(t.retain());
+                    });
+                    notificator.for_each(&[left_in.frontier(), &right_in.frontier()], |t, _| {
+                        if let Some(mut bucket) = bucks.remove(&t) {
+                            let mut cnt = 0;
+                            bucket.for_all(|l, r| {
+                                if sketch_predicate.eval(&l.0, &r.0) {
+                                    if !bloom_filter.test_and_insert(&(l.1, r.1)) {
+                                        if sim_pred(&global_left[&l.1], &global_right[&r.1]) {
+                                            cnt += 1;
+                                        }
+                                    }
+                                }
+                            });
+                            output.session(&t).give(cnt);
+                        }
+                    });
+                }
+            })
+            .stream_sum()
+            .exchange(|_| 0) // Bring all the counts to the first worker
+            .probe_with(&mut probe)
+            .capture_into(output_send_ch);
+
+            probe
+        });
+
+        worker.step_while(|| !probe.done());
+
+        collect_execution_summaries(execution_summary, send_exec_summary.clone(), &mut worker);
+    })
+    .expect("Problems with the dataflow");
+
+    let network_summaries = network.map(|n| n.measure().collect_from_workers(&config));
+
+    if config.is_master() {
+        let mut exec_summaries = Vec::new();
+        for summary in recv_exec_summary.iter() {
+            if let TimelyEvent::Messages(_, msgs) = summary {
+                exec_summaries.extend(msgs);
+            }
+        }
+        for summary in exec_summaries.iter() {
+            summary.add_to_experiment(experiment);
+        }
+        if network_summaries.is_some() {
+            network_summaries
+                .unwrap()
+                .iter()
+                .for_each(|n| n.report(experiment));
+        }
+        // From `recv` we get an entry for each timestamp, containing a one-element vector with the
+        // count of output pairs for a given timestamp. We sum across all the timestamps, so we need to
+        // remove the duplicates
+        let count: u64 = recv
+            .extract()
+            .iter()
+            .map(|pair: &(u32, Vec<u64>)| {
+                let cnt = pair.1.clone().iter().sum::<u64>();
+                println!("Time {}, count {}", pair.0, cnt);
+                cnt
+            })
+            .sum();
+
+        count as usize
+    } else {
+        0
+    }
 }

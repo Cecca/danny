@@ -3,8 +3,8 @@ use crate::dataset::*;
 use crate::logging::*;
 
 use crate::operators::*;
-use danny_base::sketch::*;
 use danny_base::lsh::*;
+use danny_base::sketch::*;
 
 use rand::Rng;
 use std::collections::HashMap;

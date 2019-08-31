@@ -1,10 +1,10 @@
 use crate::dataset::*;
 use crate::logging::*;
+use crate::operators::Route;
+use crate::operators::*;
 use danny_base::bucket::*;
 use danny_base::lsh::*;
 use danny_base::prefix_hash::*;
-use crate::operators::Route;
-use crate::operators::*;
 
 use abomonation::Abomonation;
 use std::clone::Clone;

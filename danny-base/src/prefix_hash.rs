@@ -97,5 +97,4 @@ mod test {
         assert_eq!(hash.prefix(3), 0b100);
         assert_eq!(hash.prefix(7), 0b0101100);
     }
-
 }

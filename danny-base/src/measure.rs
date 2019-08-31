@@ -119,5 +119,4 @@ mod tests {
             assert!((expected - actual).abs() < 10e-5_f64);
         }
     }
-
 }

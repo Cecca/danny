@@ -1,9 +1,9 @@
+use crate::logging::*;
+use abomonation::Abomonation;
+use danny_base::bloom::*;
 use danny_base::lsh::*;
 use danny_base::sketch::*;
 use danny_base::types::*;
-use danny_base::bloom::*;
-use crate::logging::*;
-use abomonation::Abomonation;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -393,8 +393,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::StdRng;
     use rand::SeedableRng;
+    use rand::StdRng;
     use std::sync::mpsc;
     use std::sync::{Arc, Mutex};
     use timely::dataflow::operators::capture::event::Event;
@@ -533,5 +533,4 @@ mod tests {
         }
         println!("{:?}", distrib);
     }
-
 }

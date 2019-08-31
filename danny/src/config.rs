@@ -1,5 +1,5 @@
-use danny_base::bloom::ToBits;
 use core::any::Any;
+use danny_base::bloom::ToBits;
 use rand::rngs::StdRng;
 use rand::RngCore;
 use rand::SeedableRng;
