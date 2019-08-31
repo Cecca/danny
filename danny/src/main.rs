@@ -9,7 +9,7 @@ use danny::config::*;
 use danny::experiment::Experiment;
 use danny::io::*;
 use danny::operators::*;
-use danny::lsh::algorithms::fixed_param_lsh;
+use danny::lsh::algorithms::distributed_lsh;
 use danny::logging::*;
 use danny_base::measure::*;
 use danny_base::lsh::*;
@@ -33,7 +33,7 @@ where
             let sketcher = SV::from_cosine(dim, &mut rng);
             let sketch_predicate =
                 SketchPredicate::cosine(sketch_bits, threshold, config.get_sketch_epsilon());
-            fixed_param_lsh::<UnitNormVector, _, _, _, _, _, _>(
+            distributed_lsh::<UnitNormVector, _, _, _, _, _, _>(
                 &args.left_path,
                 &args.right_path,
                 threshold,
@@ -54,7 +54,7 @@ where
             let sketcher = SV::from_jaccard(&mut rng);
             let sketch_predicate =
                 SketchPredicate::jaccard(sketch_bits, threshold, config.get_sketch_epsilon());
-            fixed_param_lsh::<BagOfWords, _, _, _, _, _, _>(
+            distributed_lsh::<BagOfWords, _, _, _, _, _, _>(
                 &args.left_path,
                 &args.right_path,
                 threshold,

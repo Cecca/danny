@@ -29,7 +29,7 @@ use timely::progress::timestamp::Timestamp;
 use timely::ExchangeData;
 
 #[allow(clippy::too_many_arguments)]
-pub fn fixed_param_lsh<D, F, H, S, V, B, R>(
+pub fn distributed_lsh<D, F, H, S, V, B, R>(
     left_path: &str,
     right_path: &str,
     range: f64,
