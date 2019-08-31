@@ -8,9 +8,11 @@ extern crate clap;
 extern crate log;
 extern crate crossbeam_channel;
 extern crate danny;
+extern crate danny_base;
 extern crate env_logger;
 extern crate rayon;
 extern crate serde;
+extern crate rand;
 
 use danny::io::*;
 use danny_base::types::*;

@@ -1,5 +1,6 @@
 [workspace]
 members = [
   'danny',
-  'danny-base'
+  'danny-base',
+  'danny-utilities'
 ]
