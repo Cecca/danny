@@ -9,7 +9,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Abomonation)]
 pub struct VectorWithNorm {
     data: Vec<f32>,
     norm: f64,
@@ -23,8 +23,6 @@ impl Into<u64> for ElementId {
         self.0.into()
     }
 }
-
-unsafe_abomonate!(VectorWithNorm: data, norm);
 
 impl Debug for VectorWithNorm {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -88,13 +86,11 @@ impl From<VectorWithNorm> for UnitNormVector {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(Abomonation, Serialize, Deserialize, Clone, Debug, Default)]
 pub struct BagOfWords {
     pub universe: u32,
     words: Vec<u32>,
 }
-
-unsafe_abomonate!(BagOfWords: universe, words);
 
 impl BagOfWords {
     pub fn new(universe: u32, mut words: Vec<u32>) -> BagOfWords {
