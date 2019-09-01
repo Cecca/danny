@@ -4,6 +4,7 @@ use std::cmp::Ordering;
 
 pub trait PrefixHash {
     type PrefixType: Eq + Ord + Clone + std::fmt::Binary;
+    fn max_hash_length() -> usize;
     fn prefix(&self, n: usize) -> Self::PrefixType;
     fn lex_cmp(&self, other: &Self) -> Ordering;
     fn lex_cmp_partial(&self, other: &Self, len: usize) -> Ordering;
@@ -41,6 +42,10 @@ impl PrefixHash for u32 {
     fn prefix(&self, n: usize) -> Self::PrefixType {
         assert!(n < 32);
         self & MASKS_32[n]
+    }
+
+    fn max_hash_length() -> usize {
+        32
     }
 
     fn lex_cmp(&self, other: &Self) -> Ordering {

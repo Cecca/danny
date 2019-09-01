@@ -30,7 +30,7 @@ where
             let k = args.k.expect("K is needed on the command line");
             let k = match k {
                 ParamK::Fixed(k) => k,
-                ParamK::Adaptive(_,_) => panic!(),
+                ParamK::Adaptive(_, _) => panic!(),
             };
             let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
             let threshold = args.threshold;
@@ -57,7 +57,7 @@ where
             let k = args.k.expect("K is needed on the command line");
             let k = match k {
                 ParamK::Fixed(k) => k,
-                ParamK::Adaptive(_,_) => panic!(),
+                ParamK::Adaptive(_, _) => panic!(),
             };
             let threshold = args.threshold;
             let sketch_bits = args.sketch_bits.expect("Sketch bits are mandatory");

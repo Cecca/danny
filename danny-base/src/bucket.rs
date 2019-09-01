@@ -358,7 +358,7 @@ where
 
 impl<'a, H, K1, K2> BucketsPrefixIter<'a, H, K1, K2>
 where
-    H: PartialOrd + PrefixHash + std::fmt::Binary,
+    H: PartialOrd + PrefixHash,
     K1: Debug,
     K2: Debug,
 {
@@ -374,12 +374,9 @@ where
     fn find_bucket_end<K>(&self, items: &'a [(H, K)], start: usize) -> (&'a H, usize) {
         let start_hash = &items[start].0;
         let mut end = start + 1;
-        // info!("Start hash {:32b}", start_hash.prefix(self.prefix_len));
         while end < items.len() && items[end].0.prefix_eq(start_hash, self.prefix_len) {
-            // info!("      hash {:32b}", items[end].0.prefix(self.prefix_len));
             end += 1;
         }
-        // info!("Found end  {:32b}", items[end].0.prefix(self.prefix_len));
         (start_hash, end)
     }
 }
@@ -388,7 +385,7 @@ impl<'a, H, K1, K2> Iterator for BucketsPrefixIter<'a, H, K1, K2>
 where
     K1: Debug,
     K2: Debug,
-    H: PartialOrd + PrefixHash + Debug + std::fmt::Binary,
+    H: PartialOrd + PrefixHash,
 {
     // TODO: This can be merged with the other, specializing just on find_bucket end
     type Item = (&'a [(H, K1)], &'a [(H, K2)]);
@@ -415,6 +412,77 @@ where
                         &self.left[lstart..self.cur_left],
                         &self.right[rstart..self.cur_right],
                     ));
+                }
+            }
+        }
+    }
+}
+
+pub struct TrieBucketBuilder<H, T>
+where
+    H: PrefixHash,
+{
+    collision_probability: f64,
+    left: Vec<(H, T)>,
+    right: Vec<(H, T)>,
+}
+
+impl<H: PrefixHash + PartialOrd, T: Debug> TrieBucketBuilder<H, T> {
+    pub fn push_left(&mut self, h: H, data: T) {
+        self.left.push((h, data));
+    }
+    pub fn push_right(&mut self, h: H, data: T) {
+        self.right.push((h, data));
+    }
+    fn sort_inner(&mut self) {
+        self.left.sort_unstable_by(|p1, p2| p1.0.lex_cmp(&p2.0));
+        self.right.sort_unstable_by(|p1, p2| p1.0.lex_cmp(&p2.0));
+    }
+
+    pub fn for_all<F>(&mut self, action: F)
+    where
+        F: FnMut(&T, &T) + Clone,
+    {
+        self.sort_inner();
+        self.for_all_rec(&self.left, &self.right, 0, action);
+    }
+
+    fn cost(&self, left: &[(H, T)], right: &[(H, T)], depth: usize) -> f64 {
+        let comparisons = left.len() * right.len();
+        (left.len() + right.len() + comparisons) as f64
+            / self.collision_probability.powi(depth as i32)
+    }
+
+    fn for_all_rec<F>(&self, left: &[(H, T)], right: &[(H, T)], depth: usize, mut action: F)
+    where
+        F: FnMut(&T, &T) + Clone,
+    {
+        if depth == H::max_hash_length() {
+            // Base case
+            for (_, l) in left {
+                for (_, r) in right {
+                    action(l, r);
+                }
+            }
+        } else {
+            let root_cost = self.cost(left, right, depth);
+            // Now check if recursing down the children can improve the cost
+            let children = BucketsPrefixIter::new(left, right, depth + 1);
+            let split_cost = children
+                .map(|(l_child, r_child)| self.cost(l_child, r_child, depth + 1))
+                .sum::<f64>();
+            if root_cost <= split_cost {
+                // Solve at this level
+                for (_, l) in left {
+                    for (_, r) in right {
+                        action(l, r);
+                    }
+                }
+            } else {
+                // Split the node and recur
+                let children = BucketsPrefixIter::new(left, right, depth + 1);
+                for (l_child, r_child) in children {
+                    self.for_all_rec(l_child, r_child, depth+1, action.clone());
                 }
             }
         }
