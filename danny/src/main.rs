@@ -28,13 +28,18 @@ where
     match args.measure.as_ref() {
         "cosine" => {
             let k = args.k.expect("K is needed on the command line");
+            let k = match k {
+                ParamK::Fixed(k) => k,
+                ParamK::Adaptive(_,_) => panic!(),
+            };
             let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
             let threshold = args.threshold;
             let sketch_bits = args.sketch_bits.expect("Sketches are mandatory");
             let sketcher = SV::from_cosine(dim, &mut rng);
             let sketch_predicate =
                 SketchPredicate::cosine(sketch_bits, threshold, config.get_sketch_epsilon());
-            distributed_lsh::<UnitNormVector, _, _, _, _, _, _>(
+            // distributed_lsh::<UnitNormVector, _, _, _, _, _, _>(
+            simple_fixed::<UnitNormVector, _, _, _, _, _, _>(
                 &args.left_path,
                 &args.right_path,
                 threshold,
