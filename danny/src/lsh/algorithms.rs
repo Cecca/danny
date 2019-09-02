@@ -454,7 +454,7 @@ fn simple_source<G, K, F, D, S>(
     worker: u64,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-) -> Stream<G, (u32, (S::Output, K))>
+) -> Stream<G, (K, (DKTPool, S::Output))>
 where
     G: Scope,
     G::Timestamp: Succ,
@@ -465,8 +465,6 @@ where
     F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
 {
     let logger = scope.danny_logger();
-    let repetitions = hash_fns.repetitions();
-    let mut current_repetition = 0usize;
     let sketches = build_sketches(
         Arc::clone(&vecs),
         Arc::clone(&sketcher),
@@ -489,43 +487,28 @@ where
     source(scope, "hashed source", move |capability| {
         let mut cap = Some(capability);
         move |output| {
-            let mut done = false;
-            if let Some(cap) = cap.as_mut() {
-                if throttle
-                    .as_ref()
-                    .map(|t| !t.less_than(cap.time()))
-                    .unwrap_or(true)
-                {
-                    let mut session = output.session(&cap);
-                    for (k, _v) in vecs.iter_stripe(matrix, direction, worker) {
-                        let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
-                        let s = sketches.get(k).expect("Missing sketch");
-                        let output_element = (h, (s.clone(), k.clone()));
-                        // Hand out several copies of the vector to all the appropriate processors
-                        match direction {
-                            MatrixDirection::Columns => {
-                                let col = (k.route() % u64::from(matrix.columns)) as u8;
-                                for row in 0..matrix.rows {
-                                    session.give(((row, col), output_element));
-                                }
+            if let Some(cap) = cap.take() {
+                let mut session = output.session(&cap);
+                for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
+                    let pool = hash_fns.pool(v);
+                    let s = sketches.get(k).expect("Missing sketch");
+                    let output_element = (k.clone(), (pool.clone(), s.clone()));
+                    // Hand out several copies of the vector to all the appropriate processors
+                    match direction {
+                        MatrixDirection::Columns => {
+                            let col = (k.route() % u64::from(matrix.columns)) as u8;
+                            for row in 0..matrix.rows {
+                                session.give(((row, col), output_element.clone()));
                             }
-                            MatrixDirection::Rows => {
-                                let row = (k.route() % u64::from(matrix.rows)) as u8;
-                                for col in 0..matrix.columns {
-                                    session.give(((row, col), output_element));
-                                }
+                        }
+                        MatrixDirection::Rows => {
+                            let row = (k.route() % u64::from(matrix.rows)) as u8;
+                            for col in 0..matrix.columns {
+                                session.give(((row, col), output_element.clone()));
                             }
-                        };
-                    }
-                    current_repetition += 1;
-                    cap.downgrade(&cap.time().succ());
-                    done = current_repetition >= repetitions;
+                        }
+                    };
                 }
-            }
-
-            if done {
-                // Drop the capability to signal that we will send no more data
-                cap = None;
             }
         }
     })
@@ -628,38 +611,69 @@ where
 
             left.binary_frontier(&right, PipelinePact, PipelinePact, "bucket", move |_, _| {
                 let mut notificator = FrontierNotificator::new();
-                let mut bucks = HashMap::new();
+                let mut left_pools = HashMap::new();
+                let mut right_pools = HashMap::new();
+                let mut left_sketches = HashMap::new();
+                let mut right_sketches = HashMap::new();
                 move |left_in, right_in, output| {
                     left_in.for_each(|t, data| {
-                        let buck = bucks
+                        let pools = left_pools
                             .entry(t.time().clone())
-                            .or_insert_with(Bucket::default);
-                        for (h, d) in data.replace(Vec::new()).drain(..) {
-                            buck.push_left(h, d);
+                            .or_insert_with(HashMap::new);
+                        let sketches = left_sketches
+                            .entry(t.time().clone())
+                            .or_insert_with(HashMap::new);
+                        for (k, (p, s)) in data.replace(Vec::new()).drain(..) {
+                            pools.insert(k, p);
+                            sketches.insert(k, s);
                         }
                         notificator.notify_at(t.retain());
                     });
                     right_in.for_each(|t, data| {
-                        let buck = bucks
+                        let pools = right_pools
                             .entry(t.time().clone())
-                            .or_insert_with(Bucket::default);
-                        for (h, d) in data.replace(Vec::new()).drain(..) {
-                            buck.push_right(h, d);
+                            .or_insert_with(HashMap::new);
+                        let sketches = right_sketches
+                            .entry(t.time().clone())
+                            .or_insert_with(HashMap::new);
+                        for (k, (p, s)) in data.replace(Vec::new()).drain(..) {
+                            pools.insert(k, p);
+                            sketches.insert(k, s);
                         }
                         notificator.notify_at(t.retain());
                     });
                     notificator.for_each(&[left_in.frontier(), &right_in.frontier()], |t, _| {
-                        if let Some(mut bucket) = bucks.remove(&t) {
+                        if let Some(left_pools) = left_pools.remove(&t) {
+                            let right_pools =
+                                right_pools.remove(&t).expect("missing right pool");
+                            let left_sketches =
+                                left_sketches.remove(&t).expect("missing right sketches");
+                            let right_sketches =
+                                right_sketches.remove(&t).expect("missing right sketches");
+                            let repetitions = hasher.repetitions();
                             let mut cnt = 0;
-                            bucket.for_all(|l, r| {
-                                if sketch_predicate.eval(&l.0, &r.0) {
-                                    if !bloom_filter.test_and_insert(&(l.1, r.1)) {
-                                        if sim_pred(&global_left[&l.1], &global_right[&r.1]) {
-                                            cnt += 1;
+                            for rep in 0..repetitions {
+                                let mut bucket = Bucket::default();
+                                for (k, _) in
+                                    global_left.iter_stripe(matrix, MatrixDirection::Rows, worker_index)
+                                {
+                                    bucket.push_left(hasher.hash(&left_pools[k], rep), *k);
+                                }
+                                for (k, _) in
+                                    global_right.iter_stripe(matrix, MatrixDirection::Columns, worker_index)
+                                {
+                                    bucket.push_right(hasher.hash(&right_pools[k], rep), *k);
+                                }
+                                bucket.for_all(|l, r| {
+                                    if sketch_predicate.eval(&left_sketches[l], &right_sketches[r]) {
+                                        if !bloom_filter.test_and_insert(&(*l, *r)) {
+                                            if sim_pred(&global_left[&l], &global_right[&r]) {
+                                                cnt += 1;
+                                            }
                                         }
                                     }
-                                }
-                            });
+                                });
+                            }
                             output.session(&t).give(cnt);
                         }
                     });

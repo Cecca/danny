@@ -482,7 +482,7 @@ impl<H: PrefixHash + PartialOrd, T: Debug> TrieBucketBuilder<H, T> {
                 // Split the node and recur
                 let children = BucketsPrefixIter::new(left, right, depth + 1);
                 for (l_child, r_child) in children {
-                    self.for_all_rec(l_child, r_child, depth+1, action.clone());
+                    self.for_all_rec(l_child, r_child, depth + 1, action.clone());
                 }
             }
         }

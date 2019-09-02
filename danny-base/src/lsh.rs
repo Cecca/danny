@@ -19,19 +19,19 @@ pub trait LSHFunction {
     }
 }
 
-#[derive(Clone, Abomonation)]
+#[derive(Clone, Abomonation, Debug, Hash)]
 pub struct DKTPool {
-    bits: Vec<BitVector>
+    bits: Vec<BitVector>,
 }
 
-#[derive(Clone, Abomonation, Default)]
+#[derive(Clone, Abomonation, Default, Debug, Hash)]
 pub struct BitVector {
     bits: Vec<u32>,
 }
 
 impl BitVector {
     fn from_vec(vec: Vec<u32>) -> Self {
-        Self {bits: vec}
+        Self { bits: vec }
     }
     pub fn get(&self, index: usize) -> bool {
         let word_index = index / 32;
@@ -40,7 +40,6 @@ impl BitVector {
         self.bits[word_index] & mask != 0
     }
 }
-
 
 #[derive(Clone)]
 pub struct DKTCollection<F>
