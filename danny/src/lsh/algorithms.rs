@@ -464,34 +464,15 @@ where
     S::Output: SketchData + Debug,
     F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
 {
-    let logger = scope.danny_logger();
-    let sketches = build_sketches(
-        Arc::clone(&vecs),
-        Arc::clone(&sketcher),
-        worker,
-        matrix,
-        direction,
-    );
-    let mut bit_pools: HashMap<K, DKTPool> = HashMap::new();
-    info!("Computing the bit pools");
-    let start = Instant::now();
-    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
-        bit_pools.insert(*k, hash_fns.pool(v));
-    }
-    let end = Instant::now();
-    info!(
-        "Computed the bit pools ({:?}, {})",
-        end - start,
-        proc_mem!()
-    );
     source(scope, "hashed source", move |capability| {
         let mut cap = Some(capability);
         move |output| {
             if let Some(cap) = cap.take() {
+                let start = Instant::now();
                 let mut session = output.session(&cap);
                 for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
                     let pool = hash_fns.pool(v);
-                    let s = sketches.get(k).expect("Missing sketch");
+                    let s = sketcher.sketch(v);
                     let output_element = (k.clone(), (pool.clone(), s.clone()));
                     // Hand out several copies of the vector to all the appropriate processors
                     match direction {
@@ -509,6 +490,8 @@ where
                         }
                     };
                 }
+                let end = Instant::now();
+                info!("Distributed sketches and pools in {:?}", end - start);
             }
         }
     })
@@ -653,6 +636,7 @@ where
                             let repetitions = hasher.repetitions();
                             let mut cnt = 0;
                             for rep in 0..repetitions {
+                                let start = Instant::now();
                                 let mut bucket = Bucket::default();
                                 for (k, _) in
                                     global_left.iter_stripe(matrix, MatrixDirection::Rows, worker_index)
@@ -673,6 +657,8 @@ where
                                         }
                                     }
                                 });
+                                let end = Instant::now();
+                                info!("Repetition {} ended in {:?}", rep, end - start);
                             }
                             output.session(&t).give(cnt);
                         }
