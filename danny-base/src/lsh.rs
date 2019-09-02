@@ -1,6 +1,5 @@
 use crate::measure::InnerProduct;
 use crate::types::*;
-use bitvec::prelude::*;
 use rand::distributions::{Distribution, Normal, Uniform};
 use rand::Rng;
 use std::clone::Clone;
@@ -20,9 +19,28 @@ pub trait LSHFunction {
     }
 }
 
+#[derive(Clone, Abomonation)]
 pub struct DKTPool {
-    bits: Vec<BitVec<bitvec::cursor::LittleEndian, u32>>,
+    bits: Vec<BitVector>
 }
+
+#[derive(Clone, Abomonation, Default)]
+pub struct BitVector {
+    bits: Vec<u32>,
+}
+
+impl BitVector {
+    fn from_vec(vec: Vec<u32>) -> Self {
+        Self {bits: vec}
+    }
+    pub fn get(&self, index: usize) -> bool {
+        let word_index = index / 32;
+        let bit_index = index % 32;
+        let mask = 1u32 << bit_index;
+        self.bits[word_index] & mask != 0
+    }
+}
+
 
 #[derive(Clone)]
 pub struct DKTCollection<F>
@@ -90,8 +108,7 @@ where
             for f in hashers_row {
                 bits.push(f.hash(v));
             }
-            let mut bits = BitVec::from_vec(bits);
-            bits.truncate(self.num_bits);
+            let mut bits = BitVector::from_vec(bits);
             all_bits.push(bits);
         }
         DKTPool { bits: all_bits }
@@ -108,7 +125,8 @@ where
     pub fn hash(&self, pool: &DKTPool, repetition: usize) -> u32 {
         let mut h = 0u32;
         for (i, bits) in pool.bits.iter().enumerate() {
-            if bits[self.get_bit_index(i, repetition)] {
+            // if bits[self.get_bit_index(i, repetition)] {
+            if bits.get(self.get_bit_index(i, repetition)) {
                 h = (h << 1) | 1;
             } else {
                 h <<= 1;

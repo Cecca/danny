@@ -9,7 +9,6 @@ extern crate abomonation;
 extern crate abomonation_derive;
 #[macro_use]
 extern crate lazy_static;
-extern crate bitvec;
 extern crate rand;
 extern crate rand_xorshift;
 extern crate siphasher;
