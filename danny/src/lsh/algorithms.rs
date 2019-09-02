@@ -565,6 +565,7 @@ where
         let sketcher = Arc::new(sketcher);
         let worker_index = worker.index() as u64;
         let matrix = MatrixDescription::for_workers(worker.peers());
+        let (worker_row, worker_col) = matrix.row_major_to_pair(worker_index);
 
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
             let mut probe = ProbeHandle::<u32>::new();
@@ -627,8 +628,7 @@ where
                     });
                     notificator.for_each(&[left_in.frontier(), &right_in.frontier()], |t, _| {
                         if let Some(left_pools) = left_pools.remove(&t) {
-                            let right_pools =
-                                right_pools.remove(&t).expect("missing right pool");
+                            let right_pools = right_pools.remove(&t).expect("missing right pool");
                             let left_sketches =
                                 left_sketches.remove(&t).expect("missing right sketches");
                             let right_sketches =
@@ -638,18 +638,15 @@ where
                             for rep in 0..repetitions {
                                 let start = Instant::now();
                                 let mut bucket = Bucket::default();
-                                for (k, _) in
-                                    global_left.iter_stripe(matrix, MatrixDirection::Rows, worker_index)
-                                {
+                                for (k, _) in global_left.iter_chunk(worker_row as usize) {
                                     bucket.push_left(hasher.hash(&left_pools[k], rep), *k);
                                 }
-                                for (k, _) in
-                                    global_right.iter_stripe(matrix, MatrixDirection::Columns, worker_index)
-                                {
+                                for (k, _) in global_right.iter_chunk(worker_col as usize) {
                                     bucket.push_right(hasher.hash(&right_pools[k], rep), *k);
                                 }
                                 bucket.for_all(|l, r| {
-                                    if sketch_predicate.eval(&left_sketches[l], &right_sketches[r]) {
+                                    if sketch_predicate.eval(&left_sketches[l], &right_sketches[r])
+                                    {
                                         if !bloom_filter.test_and_insert(&(*l, *r)) {
                                             if sim_pred(&global_left[&l], &global_right[&r]) {
                                                 cnt += 1;
