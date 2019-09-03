@@ -3,6 +3,8 @@ use crate::dataset::*;
 use crate::logging::*;
 
 use crate::operators::*;
+use danny_base::bucket::*;
+use danny_base::bloom::*;
 use danny_base::lsh::*;
 use danny_base::sketch::*;
 
@@ -25,6 +27,18 @@ pub struct AdaptiveParams {
     pub weight: f64,
     pub bucket_size: u32,
     pub repetition_cost: f64,
+}
+
+impl Default for AdaptiveParams {
+    fn default() -> Self {
+        Self {
+            sampling_factor: 1.0,
+            balance: 0.5,
+            weight: 1.0,
+            bucket_size: 0,
+            repetition_cost: 1.0,
+        }
+    }
 }
 
 impl AdaptiveParams {
@@ -108,6 +122,60 @@ where
     })
 }
 
+pub fn estimate_best_level<'a, D, I, S, H>(
+    sketches: I,
+    sketch: &S,
+    min_level: usize,
+    max_level: usize,
+    params: AdaptiveParams,
+    hasher: Arc<DKTCollection<H>>,
+) -> usize
+where
+    D: SketchEstimate,
+    I: Iterator<Item = &'a S>,
+    S: BitBasedSketch + 'static,
+    H: LSHFunction<Input = D, Output = u32> + Send + Clone + Sync + 'static,
+{
+    let probabilities: Vec<f64> = sketches
+        .map(|s| D::collision_probability_estimate(sketch, s))
+        .collect();
+    let mut powers = vec![1.0; probabilities.len()];
+    for _ in 1..min_level {
+        // Start from 1 beause otherwise the we are elevating the power to on too much
+        for i in 0..powers.len() {
+            powers[i] *= probabilities[i];
+        }
+    }
+
+    // Try the different levels
+    let mut best_level = min_level;
+    let mut min_cost = std::f64::INFINITY;
+    for level in min_level..=max_level {
+        let repetitions = hasher.repetitions_at(level) as f64;
+        let mut prob_sum = 0.0;
+        for i in 0..powers.len() {
+            powers[i] *= probabilities[i];
+            prob_sum += powers[i];
+        }
+        // let prob_sum: f64 =
+        //     probabilities.iter().map(|&p| p.powi(level as i32)).sum();
+        let estimated_collisions: f64 = params.weight * prob_sum;
+        let cost = repetitions
+            * (params.repetition_cost * params.balance
+                + (1.0 - params.balance) * estimated_collisions);
+        if cost < min_cost {
+            min_cost = cost;
+            best_level = level;
+        }
+        if estimated_collisions <= f64::from(params.bucket_size) {
+            // Early break if we are happy with this number of collisions
+            best_level = level;
+            break;
+        }
+    }
+    best_level
+}
+
 #[allow(dead_code, clippy::too_many_arguments)]
 fn compute_best_level<G, K, D, F, V>(
     sample: &Stream<G, V>,
@@ -157,44 +225,14 @@ where
                         let sketch_v = sketches
                             .get(k)
                             .expect("Missing sketch for key (estimation)");
-                        let probabilities: Vec<f64> = sampled_sketches
-                            .iter()
-                            .map(|s| D::collision_probability_estimate(sketch_v, s))
-                            .collect();
-                        let mut powers = vec![1.0; probabilities.len()];
-                        for _ in 1..min_level {
-                            // Start from 1 beause otherwise the we are elevating the power to on too much
-                            for i in 0..powers.len() {
-                                powers[i] *= probabilities[i];
-                            }
-                        }
-
-                        // Try the different levels
-                        let mut best_level = min_level;
-                        let mut min_cost = std::f64::INFINITY;
-                        for level in min_level..=max_level {
-                            let repetitions = hasher.repetitions_at(level) as f64;
-                            let mut prob_sum = 0.0;
-                            for i in 0..powers.len() {
-                                powers[i] *= probabilities[i];
-                                prob_sum += powers[i];
-                            }
-                            // let prob_sum: f64 =
-                            //     probabilities.iter().map(|&p| p.powi(level as i32)).sum();
-                            let estimated_collisions: f64 = params.weight * prob_sum;
-                            let cost = repetitions
-                                * (params.repetition_cost * params.balance
-                                    + (1.0 - params.balance) * estimated_collisions);
-                            if cost < min_cost {
-                                min_cost = cost;
-                                best_level = level;
-                            }
-                            if estimated_collisions <= f64::from(params.bucket_size) {
-                                // Early break if we are happy with this number of collisions
-                                best_level = level;
-                                break;
-                            }
-                        }
+                        let best_level = estimate_best_level(
+                            sampled_sketches.iter(),
+                            sketch_v,
+                            min_level,
+                            max_level,
+                            params,
+                            Arc::clone(&hasher),
+                        );
                         *histogram.entry(best_level).or_insert(0) += 1;
                         session.give((k.clone(), best_level));
                         cnt += 1;
@@ -289,4 +327,82 @@ where
     );
 
     (best_left, best_right)
+}
+
+pub fn adaptive_local_solve<K, D, S, H, P>(
+    left: Arc<ChunkedDataset<K, D>>,
+    right: Arc<ChunkedDataset<K, D>>,
+    left_sketches: &HashMap<K, S>,
+    right_sketches: &HashMap<K, S>,
+    left_pools: &HashMap<K, DKTPool>,
+    right_pools: &HashMap<K, DKTPool>,
+    hasher: Arc<DKTCollection<H>>,
+    sketch_predicate: &SketchPredicate<S>,
+    sim_pred: &P,
+    filter: Arc<AtomicBloomFilter<K>>,
+    max_level: usize,
+    worker: usize,
+    matrix: MatrixDescription,
+) -> u64
+where
+    K: Hash + Route + Eq + Debug + Copy + Into<u64>,
+    D: SketchEstimate,
+    S: BitBasedSketch + 'static,
+    H: LSHFunction<Input = D, Output = u32> + Send + Clone + Sync + 'static,
+    P: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
+{
+    let params = AdaptiveParams::default();
+    let (worker_row, worker_col) = matrix.row_major_to_pair(worker as u64);
+    let mut bucket = AdaptiveBucket::default();
+    let left_levels: HashMap<K, usize> = left.iter_chunk(worker_row as usize).map(|(k, _)| {
+        let level = estimate_best_level(
+            left_sketches.values(),
+            &left_sketches[k],
+            1,
+            max_level,
+            params,
+            Arc::clone(&hasher),
+        );
+        (*k, level)
+    }).collect();
+    let right_levels: HashMap<K, usize> = right.iter_chunk(worker_col as usize).map(|(k, _)| {
+        let level = estimate_best_level(
+            right_sketches.values(),
+            &right_sketches[k],
+            1,
+            max_level,
+            params,
+            Arc::clone(&hasher),
+        );
+        (*k, level)
+    }).collect();
+
+    let mut cnt = 0;
+    for rep in 0..hasher.repetitions() {
+        for (k, _) in left.iter_chunk(worker_row as usize) {
+            let level = left_levels[k];
+            if hasher.repetitions_at(level) < rep {
+                bucket.push_left(level as u8, hasher.hash(&left_pools[k], rep), *k);
+            }
+        }
+        for (k, _) in right.iter_chunk(worker_row as usize) {
+            let level = right_levels[k];
+            if hasher.repetitions_at(level) < rep {
+                bucket.push_right(level as u8, hasher.hash(&right_pools[k], rep), *k);
+            }
+        }
+
+        bucket.for_prefixes(|l, r|{
+            if sketch_predicate.eval(&left_sketches[l], &right_sketches[r])
+            {
+                if !filter.test_and_insert(&(*l, *r)) {
+                    if sim_pred(&left[&l], &right[&r]) {
+                        cnt += 1;
+                    }
+                }
+            }
+        });
+    }
+
+    cnt
 }

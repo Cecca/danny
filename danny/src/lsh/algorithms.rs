@@ -713,3 +713,220 @@ where
         0
     }
 }
+
+/// A simple take on the adaptive parameter algorithm.
+pub fn simple_adaptive<D, F, H, S, V, B, R>(
+    left_path: &str,
+    right_path: &str,
+    range: f64,
+    max_k: usize,
+    hash_function_builder: B,
+    sketcher: S,
+    sketch_predicate: SketchPredicate<V>,
+    sim_pred: F,
+    rng: &mut R,
+    config: &Config,
+    experiment: &mut Experiment,
+) -> usize
+where
+    for<'de> D: ReadBinaryFile + Deserialize<'de> + ExchangeData + Debug + SketchEstimate,
+    F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
+    H: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
+    S: Sketcher<Input = D, Output = V> + Send + Sync + Clone + 'static,
+    V: SketchData + Debug,
+    R: Rng + SeedableRng + Send + Sync + Clone + 'static,
+    B: Fn(usize, &mut R) -> H + Sized + Send + Sync + Clone + 'static,
+{
+    let network = NetworkGauge::start();
+    let timely_builder = config.get_timely_builder();
+    // This channel is used to get the results
+    let (output_send_ch, recv) = channel();
+    let output_send_ch = Arc::new(Mutex::new(output_send_ch));
+
+    let (send_exec_summary, recv_exec_summary) = channel();
+    let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
+
+    let hasher = Arc::new(DKTCollection::new(
+        max_k,
+        max_k,
+        range,
+        hash_function_builder,
+        rng,
+    ));
+
+    let rng = rng.clone();
+
+    debug!(
+        "Left dataset has {} points, right has {}",
+        D::num_elements(left_path.into()),
+        D::num_elements(right_path.into())
+    );
+    let (global_left, global_right) = load_vectors::<D>(left_path, right_path, &config);
+
+    let bloom_filter = Arc::new(AtomicBloomFilter::<ElementId>::new(
+        config.get_bloom_bits(),
+        config.get_bloom_k(),
+        rng.clone(),
+    ));
+    let adaptive_params = AdaptiveParams::default();
+
+    timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
+        let global_left = Arc::clone(&global_left);
+        let global_right = Arc::clone(&global_right);
+        let bloom_filter = Arc::clone(&bloom_filter);
+        let hasher = Arc::clone(&hasher);
+        let mut rng = rng.clone();
+        let execution_summary = init_event_logging(&worker);
+        let output_send_ch = output_send_ch
+            .lock()
+            .expect("Cannot get lock on output channel")
+            .clone();
+        let sim_pred = sim_pred.clone();
+        let sketch_predicate = sketch_predicate.clone();
+        let sketcher = sketcher.clone();
+        let sketcher = Arc::new(sketcher);
+        let worker_index = worker.index() as u64;
+        let matrix = MatrixDescription::for_workers(worker.peers());
+        let (worker_row, worker_col) = matrix.row_major_to_pair(worker_index);
+
+        let probe = worker.dataflow::<u32, _, _>(move |scope| {
+            let mut probe = ProbeHandle::<u32>::new();
+            let global_left = Arc::clone(&global_left);
+            let global_right = Arc::clone(&global_right);
+            let sketch_predicate = sketch_predicate.clone();
+            let sim_pred = sim_pred.clone();
+
+            let left = simple_source(
+                scope,
+                Arc::clone(&global_left),
+                Arc::clone(&sketcher),
+                Arc::clone(&hasher),
+                Some(probe.clone()),
+                worker_index,
+                matrix,
+                MatrixDirection::Rows,
+            );
+            let right = simple_source(
+                scope,
+                Arc::clone(&global_right),
+                Arc::clone(&sketcher),
+                Arc::clone(&hasher),
+                Some(probe.clone()),
+                worker_index,
+                matrix,
+                MatrixDirection::Columns,
+            );
+
+            left.binary_frontier(&right, PipelinePact, PipelinePact, "bucket", move |_, _| {
+                let sketch_predicate = sketch_predicate.clone();
+                let sim_pred = sim_pred.clone();
+                let mut notificator = FrontierNotificator::new();
+                let mut left_pools = HashMap::new();
+                let mut right_pools = HashMap::new();
+                let mut left_sketches = HashMap::new();
+                let mut right_sketches = HashMap::new();
+                move |left_in, right_in, output| {
+                    left_in.for_each(|t, data| {
+                        let pools = left_pools
+                            .entry(t.time().clone())
+                            .or_insert_with(HashMap::new);
+                        let sketches = left_sketches
+                            .entry(t.time().clone())
+                            .or_insert_with(HashMap::new);
+                        for (k, (p, s)) in data.replace(Vec::new()).drain(..) {
+                            pools.insert(k, p);
+                            sketches.insert(k, s);
+                        }
+                        notificator.notify_at(t.retain());
+                    });
+                    right_in.for_each(|t, data| {
+                        let pools = right_pools
+                            .entry(t.time().clone())
+                            .or_insert_with(HashMap::new);
+                        let sketches = right_sketches
+                            .entry(t.time().clone())
+                            .or_insert_with(HashMap::new);
+                        for (k, (p, s)) in data.replace(Vec::new()).drain(..) {
+                            pools.insert(k, p);
+                            sketches.insert(k, s);
+                        }
+                        notificator.notify_at(t.retain());
+                    });
+                    notificator.for_each(&[left_in.frontier(), &right_in.frontier()], |t, _| {
+                        if let Some(left_pools) = left_pools.remove(&t) {
+                            let right_pools = right_pools.remove(&t).expect("missing right pool");
+                            let left_sketches =
+                                left_sketches.remove(&t).expect("missing right sketches");
+                            let right_sketches =
+                                right_sketches.remove(&t).expect("missing right sketches");
+                            let cnt = adaptive_local_solve(
+                                Arc::clone(&global_left),
+                                Arc::clone(&global_right),
+                                &left_sketches,
+                                &right_sketches,
+                                &left_pools,
+                                &right_pools,
+                                Arc::clone(&hasher),
+                                &sketch_predicate,
+                                &sim_pred,
+                                Arc::clone(&bloom_filter),
+                                max_k,
+                                worker_index as usize,
+                                matrix,
+                            );
+                            output.session(&t).give(cnt);
+                        }
+                    });
+                }
+            })
+            .stream_sum()
+            .exchange(|_| 0) // Bring all the counts to the first worker
+            .inspect_time(|t, cnt| println!("count at {}: {}", t, cnt))
+            .probe_with(&mut probe)
+            .capture_into(output_send_ch);
+
+            probe
+        });
+
+        worker.step_while(|| !probe.done());
+
+        collect_execution_summaries(execution_summary, send_exec_summary.clone(), &mut worker);
+    })
+    .expect("Problems with the dataflow");
+
+    let network_summaries = network.map(|n| n.measure().collect_from_workers(&config));
+
+    if config.is_master() {
+        let mut exec_summaries = Vec::new();
+        for summary in recv_exec_summary.iter() {
+            if let TimelyEvent::Messages(_, msgs) = summary {
+                exec_summaries.extend(msgs);
+            }
+        }
+        for summary in exec_summaries.iter() {
+            summary.add_to_experiment(experiment);
+        }
+        if network_summaries.is_some() {
+            network_summaries
+                .unwrap()
+                .iter()
+                .for_each(|n| n.report(experiment));
+        }
+        // From `recv` we get an entry for each timestamp, containing a one-element vector with the
+        // count of output pairs for a given timestamp. We sum across all the timestamps, so we need to
+        // remove the duplicates
+        let count: u64 = recv
+            .extract()
+            .iter()
+            .map(|pair: &(u32, Vec<u64>)| {
+                let cnt = pair.1.clone().iter().sum::<u64>();
+                println!("Time {}, count {}", pair.0, cnt);
+                cnt
+            })
+            .sum();
+
+        count as usize
+    } else {
+        0
+    }
+}
