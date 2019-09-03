@@ -11,6 +11,7 @@ use danny::io::*;
 use danny::logging::*;
 use danny::lsh::algorithms::distributed_lsh;
 use danny::lsh::algorithms::simple_fixed;
+use danny::lsh::algorithms::simple_adaptive;
 use danny::operators::*;
 use danny_base::lsh::*;
 use danny_base::measure::*;
@@ -27,57 +28,85 @@ where
     let mut rng = config.get_random_generator(0);
     match args.measure.as_ref() {
         "cosine" => {
-            let k = args.k.expect("K is needed on the command line");
-            let k = match k {
-                ParamK::Fixed(k) => k,
-                ParamK::Adaptive(_, _) => panic!(),
-            };
             let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
             let threshold = args.threshold;
             let sketch_bits = args.sketch_bits.expect("Sketches are mandatory");
             let sketcher = SV::from_cosine(dim, &mut rng);
             let sketch_predicate =
                 SketchPredicate::cosine(sketch_bits, threshold, config.get_sketch_epsilon());
+            let k = args.k.expect("K is needed on the command line");
+            match k {
+                ParamK::Fixed(k) => 
+                    simple_fixed::<UnitNormVector, _, _, _, _, _, _>(
+                        &args.left_path,
+                        &args.right_path,
+                        threshold,
+                        k,
+                        Hyperplane::builder(dim),
+                        sketcher,
+                        sketch_predicate,
+                        move |a, b| InnerProduct::cosine(a, b) >= threshold,
+                        &mut rng,
+                        &config,
+                        experiment,
+                    )
+                ,
+                ParamK::Adaptive(_, max_k) => 
+                    simple_adaptive::<UnitNormVector, _, _, _, _, _, _>(
+                        &args.left_path,
+                        &args.right_path,
+                        threshold,
+                        max_k,
+                        Hyperplane::builder(dim),
+                        sketcher,
+                        sketch_predicate,
+                        move |a, b| InnerProduct::cosine(a, b) >= threshold,
+                        &mut rng,
+                        &config,
+                        experiment,
+                    )
+                ,
+            }
             // distributed_lsh::<UnitNormVector, _, _, _, _, _, _>(
-            simple_fixed::<UnitNormVector, _, _, _, _, _, _>(
-                &args.left_path,
-                &args.right_path,
-                threshold,
-                k,
-                Hyperplane::builder(dim),
-                sketcher,
-                sketch_predicate,
-                move |a, b| InnerProduct::cosine(a, b) >= threshold,
-                &mut rng,
-                &config,
-                experiment,
-            )
         }
         "jaccard" => {
             let k = args.k.expect("K is needed on the command line");
-            let k = match k {
-                ParamK::Fixed(k) => k,
-                ParamK::Adaptive(_, _) => panic!(),
-            };
             let threshold = args.threshold;
             let sketch_bits = args.sketch_bits.expect("Sketch bits are mandatory");
             let sketcher = SV::from_jaccard(&mut rng);
             let sketch_predicate =
                 SketchPredicate::jaccard(sketch_bits, threshold, config.get_sketch_epsilon());
+            match k {
+                ParamK::Fixed(k) => 
+                    simple_fixed::<BagOfWords, _, _, _, _, _, _>(
+                        &args.left_path,
+                        &args.right_path,
+                        threshold,
+                        k,
+                        OneBitMinHash::builder(),
+                        sketcher,
+                        sketch_predicate,
+                        move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
+                        &mut rng,
+                        &config,
+                        experiment,
+                    ),
+                ParamK::Adaptive(_, max_k) => 
+                    simple_adaptive::<BagOfWords, _, _, _, _, _, _>(
+                        &args.left_path,
+                        &args.right_path,
+                        threshold,
+                        max_k,
+                        OneBitMinHash::builder(),
+                        sketcher,
+                        sketch_predicate,
+                        move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
+                        &mut rng,
+                        &config,
+                        experiment,
+                    ),
+            }
             // distributed_lsh::<BagOfWords, _, _, _, _, _, _>(
-            simple_fixed::<BagOfWords, _, _, _, _, _, _>(
-                &args.left_path,
-                &args.right_path,
-                threshold,
-                k,
-                OneBitMinHash::builder(),
-                sketcher,
-                sketch_predicate,
-                move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
-                &mut rng,
-                &config,
-                experiment,
-            )
         }
         _ => unimplemented!("Unknown measure {}", args.measure),
     }
