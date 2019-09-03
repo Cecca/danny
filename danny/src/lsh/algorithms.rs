@@ -571,6 +571,7 @@ where
             let mut probe = ProbeHandle::<u32>::new();
             let global_left = Arc::clone(&global_left);
             let global_right = Arc::clone(&global_right);
+            let logger = scope.danny_logger();
 
             let left = simple_source(
                 scope,
@@ -636,6 +637,12 @@ where
                             let repetitions = hasher.repetitions();
                             let mut cnt = 0;
                             for rep in 0..repetitions {
+                                let _pg = ProfileGuard::new(
+                                    logger.clone(),
+                                    rep,
+                                    0,
+                                    "repetition",
+                                );
                                 let start = Instant::now();
                                 let mut bucket = Bucket::default();
                                 for (k, _) in global_left.iter_chunk(worker_row as usize) {
@@ -644,6 +651,8 @@ where
                                 for (k, _) in global_right.iter_chunk(worker_col as usize) {
                                     bucket.push_right(hasher.hash(&right_pools[k], rep), *k);
                                 }
+                                let mut sketch_discarded = 0;
+                                let mut duplicates_discarded = 0;
                                 bucket.for_all(|l, r| {
                                     if sketch_predicate.eval(&left_sketches[l], &right_sketches[r])
                                     {
@@ -651,11 +660,17 @@ where
                                             if sim_pred(&global_left[&l], &global_right[&r]) {
                                                 cnt += 1;
                                             }
+                                        } else {
+                                            duplicates_discarded += 1;
                                         }
+                                    } else {
+                                        sketch_discarded += 1;
                                     }
                                 });
                                 let end = Instant::now();
                                 info!("Repetition {} ended in {:?}", rep, end - start);
+                                log_event!(logger, LogEvent::SketchDiscarded(rep, sketch_discarded));
+                                log_event!(logger, LogEvent::DuplicatesDiscarded(rep, duplicates_discarded));
                             }
                             output.session(&t).give(cnt);
                         }
@@ -770,6 +785,7 @@ where
     ));
 
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
+        let logger = worker.danny_logger();
         let global_left = Arc::clone(&global_left);
         let global_right = Arc::clone(&global_right);
         let bloom_filter = Arc::clone(&bloom_filter);
@@ -871,6 +887,7 @@ where
                                 max_k,
                                 worker_index as usize,
                                 matrix,
+                                logger.clone(),
                             );
                             output.session(&t).give(cnt);
                         }

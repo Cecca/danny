@@ -3,21 +3,23 @@ use crate::dataset::*;
 use crate::logging::*;
 
 use crate::operators::*;
-use danny_base::bucket::*;
 use danny_base::bloom::*;
+use danny_base::bucket::*;
 use danny_base::lsh::*;
 use danny_base::sketch::*;
 
 use rand::Rng;
-use std::time::Instant;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
+use std::time::Instant;
 use timely::dataflow::channels::pact::Pipeline;
+use timely::dataflow::operators::capture::event::Event as TimelyEvent;
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
+use timely::logging::Logger;
 use timely::progress::Timestamp;
 use timely::ExchangeData;
 
@@ -344,6 +346,7 @@ pub fn adaptive_local_solve<K, D, S, H, P>(
     max_level: usize,
     worker: usize,
     matrix: MatrixDescription,
+    logger: Option<Logger<LogEvent>>,
 ) -> u64
 where
     K: Hash + Route + Eq + Debug + Copy + Into<u64>,
@@ -354,39 +357,64 @@ where
 {
     let params = AdaptiveParams::default();
     let (worker_row, worker_col) = matrix.row_major_to_pair(worker as u64);
+    let pg = ProfileGuard::new(
+        logger.clone(),
+        0,
+        0,
+        "best_level_computation",
+    );
     info!("Computing left best levels");
     let mut left_hist = std::collections::BTreeMap::new();
-    let left_levels: HashMap<K, usize> = left.iter_chunk(worker_row as usize).map(|(k, _)| {
-        let level = estimate_best_level(
-            left_sketches.values().take(100),
-            left_sketches.get(k).expect("missing left sketch"),
-            1,
-            max_level,
-            params,
-            Arc::clone(&hasher),
-        );
-        *left_hist.entry(level).or_insert(0) += 1;
-        (*k, level)
-    }).collect();
+    let left_levels: HashMap<K, usize> = left
+        .iter_chunk(worker_row as usize)
+        .map(|(k, _)| {
+            let level = estimate_best_level(
+                left_sketches.values().take(100),
+                left_sketches.get(k).expect("missing left sketch"),
+                1,
+                max_level,
+                params,
+                Arc::clone(&hasher),
+            );
+            *left_hist.entry(level).or_insert(0) += 1;
+            (*k, level)
+        })
+        .collect();
     info!("Computing right best levels");
     let mut right_hist = std::collections::BTreeMap::new();
-    let right_levels: HashMap<K, usize> = right.iter_chunk(worker_col as usize).map(|(k, _)| {
-        let level = estimate_best_level(
-            right_sketches.values().take(100),
-            right_sketches.get(k).expect("missing right sketch"),
-            1,
-            max_level,
-            params,
-            Arc::clone(&hasher),
-        );
-        *right_hist.entry(level).or_insert(0) += 1;
-        (*k, level)
-    }).collect();
+    let right_levels: HashMap<K, usize> = right
+        .iter_chunk(worker_col as usize)
+        .map(|(k, _)| {
+            let level = estimate_best_level(
+                right_sketches.values().take(100),
+                right_sketches.get(k).expect("missing right sketch"),
+                1,
+                max_level,
+                params,
+                Arc::clone(&hasher),
+            );
+            *right_hist.entry(level).or_insert(0) += 1;
+            (*k, level)
+        })
+        .collect();
     info!("Left histogram of levels {:?}", left_hist);
     info!("Left histogram of levels {:?}", left_hist);
+    drop(pg);
+    for (level, count) in left_hist {
+        log_event!(logger, LogEvent::AdaptiveLevelHistogram(level, count));
+    }
+    for (level, count) in right_hist {
+        log_event!(logger, LogEvent::AdaptiveLevelHistogram(level, count));
+    }
 
     let mut cnt = 0;
     for rep in 0..hasher.repetitions() {
+        let _pg = ProfileGuard::new(
+            logger.clone(),
+            rep,
+            0,
+            "repetition",
+        );
         let mut bucket = AdaptiveBucket::default();
         info!("Starting repetition {}", rep);
         let start = Instant::now();
@@ -394,7 +422,11 @@ where
         for (k, _) in left.iter_chunk(worker_row as usize) {
             let level = *left_levels.get(k).expect("missing level for left point");
             if rep < hasher.repetitions_at(level) {
-                bucket.push_left(level as u8, hasher.hash(&left_pools.get(k).expect("missing key in left pool"), rep), *k);
+                bucket.push_left(
+                    level as u8,
+                    hasher.hash(&left_pools.get(k).expect("missing key in left pool"), rep),
+                    *k,
+                );
                 left_active += 1;
             }
         }
@@ -402,22 +434,36 @@ where
         for (k, _) in right.iter_chunk(worker_col as usize) {
             let level = *right_levels.get(k).expect("missing level for right point");
             if rep < hasher.repetitions_at(level) {
-                bucket.push_right(level as u8, hasher.hash(&right_pools.get(k).expect("missing key in right pool"), rep), *k);
+                bucket.push_right(
+                    level as u8,
+                    hasher.hash(&right_pools.get(k).expect("missing key in right pool"), rep),
+                    *k,
+                );
                 right_active += 1;
             }
         }
-        info!("Points active at repetition {}: {} x {}", rep, left_active, right_active);
+        info!(
+            "Points active at repetition {}: {} x {}",
+            rep, left_active, right_active
+        );
 
-        bucket.for_prefixes(|l, r|{
-            if sketch_predicate.eval(&left_sketches[l], &right_sketches[r])
-            {
+        let mut sketch_discarded = 0;
+        let mut duplicates_discarded = 0;
+        bucket.for_prefixes(|l, r| {
+            if sketch_predicate.eval(&left_sketches[l], &right_sketches[r]) {
                 if !filter.test_and_insert(&(*l, *r)) {
                     if sim_pred(&left[&l], &right[&r]) {
                         cnt += 1;
                     }
+                } else {
+                    duplicates_discarded += 1;
                 }
+            } else {
+                sketch_discarded += 1;
             }
         });
+        log_event!(logger, LogEvent::SketchDiscarded(rep, sketch_discarded));
+        log_event!(logger, LogEvent::DuplicatesDiscarded(rep, duplicates_discarded));
         let end = Instant::now();
         info!("Repetition {} completed in {:?}", rep, end - start);
     }
