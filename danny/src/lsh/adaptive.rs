@@ -358,7 +358,7 @@ where
     let mut left_hist = std::collections::BTreeMap::new();
     let left_levels: HashMap<K, usize> = left.iter_chunk(worker_row as usize).map(|(k, _)| {
         let level = estimate_best_level(
-            left_sketches.values(),
+            left_sketches.values().take(10000),
             left_sketches.get(k).expect("missing left sketch"),
             1,
             max_level,
@@ -372,7 +372,7 @@ where
     let mut right_hist = std::collections::BTreeMap::new();
     let right_levels: HashMap<K, usize> = right.iter_chunk(worker_col as usize).map(|(k, _)| {
         let level = estimate_best_level(
-            right_sketches.values(),
+            right_sketches.values().take(10000),
             right_sketches.get(k).expect("missing right sketch"),
             1,
             max_level,
