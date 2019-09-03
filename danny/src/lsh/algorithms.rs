@@ -874,6 +874,7 @@ where
                             );
                             output.session(&t).give(cnt);
                         }
+                        info!("Completed local adaptive work");
                     });
                 }
             })
@@ -886,15 +887,22 @@ where
             probe
         });
 
+        info!("Start stepping");
         worker.step_while(|| !probe.done());
+        info!("End stepping");
 
+        info!("Collecting execution summaries");
         collect_execution_summaries(execution_summary, send_exec_summary.clone(), &mut worker);
+        info!("Collected execution summaries");
     })
     .expect("Problems with the dataflow");
 
+    info!("Collecting netowrk summaries");
     let network_summaries = network.map(|n| n.measure().collect_from_workers(&config));
+    info!("Collected netowrk summaries");
 
     if config.is_master() {
+        info!("Reporting results");
         let mut exec_summaries = Vec::new();
         for summary in recv_exec_summary.iter() {
             if let TimelyEvent::Messages(_, msgs) = summary {
@@ -910,6 +918,7 @@ where
                 .iter()
                 .for_each(|n| n.report(experiment));
         }
+        info!("collecting output size");
         // From `recv` we get an entry for each timestamp, containing a one-element vector with the
         // count of output pairs for a given timestamp. We sum across all the timestamps, so we need to
         // remove the duplicates
