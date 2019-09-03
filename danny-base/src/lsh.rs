@@ -147,7 +147,7 @@ where
     }
 
     pub fn repetitions_at(&self, level: usize) -> usize {
-        self.repetitions_at_level[&level]
+        *self.repetitions_at_level.get(&level).unwrap_or_else(|| panic!("missing level {}", level))
     }
 
     pub fn min_level(&self) -> usize {

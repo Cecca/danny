@@ -9,6 +9,7 @@ use danny_base::lsh::*;
 use danny_base::sketch::*;
 
 use rand::Rng;
+use std::time::Instant;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -353,44 +354,59 @@ where
 {
     let params = AdaptiveParams::default();
     let (worker_row, worker_col) = matrix.row_major_to_pair(worker as u64);
-    let mut bucket = AdaptiveBucket::default();
+    info!("Computing left best levels");
+    let mut left_hist = std::collections::BTreeMap::new();
     let left_levels: HashMap<K, usize> = left.iter_chunk(worker_row as usize).map(|(k, _)| {
         let level = estimate_best_level(
             left_sketches.values(),
-            &left_sketches[k],
+            left_sketches.get(k).expect("missing left sketch"),
             1,
             max_level,
             params,
             Arc::clone(&hasher),
         );
+        *left_hist.entry(level).or_insert(0) += 1;
         (*k, level)
     }).collect();
+    info!("Computing right best levels");
+    let mut right_hist = std::collections::BTreeMap::new();
     let right_levels: HashMap<K, usize> = right.iter_chunk(worker_col as usize).map(|(k, _)| {
         let level = estimate_best_level(
             right_sketches.values(),
-            &right_sketches[k],
+            right_sketches.get(k).expect("missing right sketch"),
             1,
             max_level,
             params,
             Arc::clone(&hasher),
         );
+        *right_hist.entry(level).or_insert(0) += 1;
         (*k, level)
     }).collect();
+    info!("Left histogram of levels {:?}", left_hist);
+    info!("Left histogram of levels {:?}", left_hist);
 
     let mut cnt = 0;
     for rep in 0..hasher.repetitions() {
+        let mut bucket = AdaptiveBucket::default();
+        info!("Starting repetition {}", rep);
+        let start = Instant::now();
+        let mut left_active = 0;
         for (k, _) in left.iter_chunk(worker_row as usize) {
             let level = left_levels[k];
-            if hasher.repetitions_at(level) < rep {
+            if rep < hasher.repetitions_at(level) {
                 bucket.push_left(level as u8, hasher.hash(&left_pools[k], rep), *k);
+                left_active += 1;
             }
         }
+        let mut right_active = 0;
         for (k, _) in right.iter_chunk(worker_row as usize) {
             let level = right_levels[k];
-            if hasher.repetitions_at(level) < rep {
+            if rep < hasher.repetitions_at(level) {
                 bucket.push_right(level as u8, hasher.hash(&right_pools[k], rep), *k);
+                right_active += 1;
             }
         }
+        info!("Points active at repetition {}: {} x {}", rep, left_active, right_active);
 
         bucket.for_prefixes(|l, r|{
             if sketch_predicate.eval(&left_sketches[l], &right_sketches[r])
@@ -402,6 +418,8 @@ where
                 }
             }
         });
+        let end = Instant::now();
+        info!("Repetition {} completed in {:?}", rep, end - start);
     }
 
     cnt

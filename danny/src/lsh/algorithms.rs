@@ -747,7 +747,7 @@ where
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
     let hasher = Arc::new(DKTCollection::new(
-        max_k,
+        1,
         max_k,
         range,
         hash_function_builder,
@@ -768,7 +768,6 @@ where
         config.get_bloom_k(),
         rng.clone(),
     ));
-    let adaptive_params = AdaptiveParams::default();
 
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
         let global_left = Arc::clone(&global_left);
@@ -787,7 +786,6 @@ where
         let sketcher = Arc::new(sketcher);
         let worker_index = worker.index() as u64;
         let matrix = MatrixDescription::for_workers(worker.peers());
-        let (worker_row, worker_col) = matrix.row_major_to_pair(worker_index);
 
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
             let mut probe = ProbeHandle::<u32>::new();
