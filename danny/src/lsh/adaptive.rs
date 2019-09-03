@@ -392,17 +392,17 @@ where
         let start = Instant::now();
         let mut left_active = 0;
         for (k, _) in left.iter_chunk(worker_row as usize) {
-            let level = left_levels[k];
+            let level = *left_levels.get(k).expect("missing level for left point");
             if rep < hasher.repetitions_at(level) {
-                bucket.push_left(level as u8, hasher.hash(&left_pools[k], rep), *k);
+                bucket.push_left(level as u8, hasher.hash(&left_pools.get(k).expect("missing key in left pool"), rep), *k);
                 left_active += 1;
             }
         }
         let mut right_active = 0;
-        for (k, _) in right.iter_chunk(worker_row as usize) {
-            let level = right_levels[k];
+        for (k, _) in right.iter_chunk(worker_col as usize) {
+            let level = *right_levels.get(k).expect("missing level for right point");
             if rep < hasher.repetitions_at(level) {
-                bucket.push_right(level as u8, hasher.hash(&right_pools[k], rep), *k);
+                bucket.push_right(level as u8, hasher.hash(&right_pools.get(k).expect("missing key in right pool"), rep), *k);
                 right_active += 1;
             }
         }
