@@ -245,7 +245,10 @@ pub fn collect_execution_summaries<A>(
     A: timely::communication::Allocate,
 {
     let (mut input, probe) = worker.dataflow::<u32, _, _>(move |scope| {
-        let send = send.lock().expect("cannot acquire lock on send channel").clone();
+        let send = send
+            .lock()
+            .expect("cannot acquire lock on send channel")
+            .clone();
         let (input, stream) = scope.new_input::<FrozenExecutionSummary>();
         let mut probe = ProbeHandle::new();
         stream
@@ -255,7 +258,10 @@ pub fn collect_execution_summaries<A>(
 
         (input, probe)
     });
-    let execution_summary = execution_summary.lock().expect("cannot acquire lock on the execution summary").freeze();
+    let execution_summary = execution_summary
+        .lock()
+        .expect("cannot acquire lock on the execution summary")
+        .freeze();
     input.send(execution_summary);
     input.advance_to(1);
     worker.step_while(|| probe.less_than(&1));
@@ -297,14 +303,19 @@ pub struct ProfileGuard {
 }
 
 impl ProfileGuard {
-    pub fn new(logger: Option<Logger<LogEvent>>, step: usize, depth: u8, name: &str) -> Self {
-        Self {
-            logger: logger.unwrap(),
+    pub fn new(
+        logger: Option<Logger<LogEvent>>,
+        step: usize,
+        depth: u8,
+        name: &str,
+    ) -> Option<Self> {
+        logger.map(|logger| Self {
+            logger: logger,
             step,
             depth,
             name: name.to_owned(),
             start: Instant::now(),
-        }
+        })
     }
 }
 

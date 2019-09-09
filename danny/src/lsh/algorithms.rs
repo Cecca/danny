@@ -894,6 +894,7 @@ where
                                 params,
                                 &mut rng,
                             );
+                            info!("Done local work");
                             output.session(&t).give(cnt);
                         }
                     });
