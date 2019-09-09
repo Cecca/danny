@@ -376,6 +376,16 @@ where
         "Sampling probability left {} and right {}",
         prob_left, prob_right
     );
+    let sample_left: Vec<S> = left_sketches
+        .values()
+        .filter(|_| rng.gen_bool(prob_left))
+        .cloned()
+        .collect();
+    let sample_right: Vec<S> = right_sketches
+        .values()
+        .filter(|_| rng.gen_bool(prob_right))
+        .cloned()
+        .collect();
     let (worker_row, worker_col) = matrix.row_major_to_pair(worker as u64);
     let pg = ProfileGuard::new(logger.clone(), 0, 0, "best_level_computation");
     info!("Computing left best levels");
@@ -384,7 +394,7 @@ where
         .iter_chunk(worker_row as usize)
         .map(|(k, _)| {
             let level = estimate_best_level(
-                right_sketches.values().filter(|_| rng.gen_bool(prob_right)),
+                sample_left.iter(),
                 left_sketches.get(k).expect("missing left sketch"),
                 1,
                 max_level,
@@ -401,7 +411,7 @@ where
         .iter_chunk(worker_col as usize)
         .map(|(k, _)| {
             let level = estimate_best_level(
-                left_sketches.values().filter(|_| rng.gen_bool(prob_left)),
+                sample_right.iter(),
                 right_sketches.get(k).expect("missing right sketch"),
                 1,
                 max_level,
