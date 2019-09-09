@@ -63,6 +63,18 @@ impl AdaptiveParams {
         }
     }
 
+    pub fn probability_and_weight(&self, n: usize) -> (f64, f64) {
+        let prob = self.sampling_factor / (n as f64).sqrt();
+        let prob = if prob > 1.0 {
+            warn!("Capping the sampling probability to 1");
+            1.0
+        } else {
+            prob
+        };
+        let weight = 1.0 / prob;
+        (prob, weight)
+    }
+
     pub fn with_weight(&self, weight: f64) -> Self {
         Self {
             weight,
@@ -332,7 +344,7 @@ where
     (best_left, best_right)
 }
 
-pub fn adaptive_local_solve<K, D, S, H, P>(
+pub fn adaptive_local_solve<K, D, S, H, P, R>(
     left: Arc<ChunkedDataset<K, D>>,
     right: Arc<ChunkedDataset<K, D>>,
     left_sketches: &HashMap<K, S>,
@@ -347,6 +359,8 @@ pub fn adaptive_local_solve<K, D, S, H, P>(
     worker: usize,
     matrix: MatrixDescription,
     logger: Option<Logger<LogEvent>>,
+    params: AdaptiveParams,
+    rng: &mut R,
 ) -> u64
 where
     K: Hash + Route + Eq + Debug + Copy + Into<u64>,
@@ -354,26 +368,27 @@ where
     S: BitBasedSketch + 'static,
     H: LSHFunction<Input = D, Output = u32> + Send + Clone + Sync + 'static,
     P: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
+    R: Rng + 'static,
 {
-    let params = AdaptiveParams::default();
-    let (worker_row, worker_col) = matrix.row_major_to_pair(worker as u64);
-    let pg = ProfileGuard::new(
-        logger.clone(),
-        0,
-        0,
-        "best_level_computation",
+    let (prob_left, weight_left) = params.probability_and_weight(left.global_n);
+    let (prob_right, weight_right) = params.probability_and_weight(right.global_n);
+    info!(
+        "Sampling probability left {} and right {}",
+        prob_left, prob_right
     );
+    let (worker_row, worker_col) = matrix.row_major_to_pair(worker as u64);
+    let pg = ProfileGuard::new(logger.clone(), 0, 0, "best_level_computation");
     info!("Computing left best levels");
     let mut left_hist = std::collections::BTreeMap::new();
     let left_levels: HashMap<K, usize> = left
         .iter_chunk(worker_row as usize)
         .map(|(k, _)| {
             let level = estimate_best_level(
-                left_sketches.values().take(100),
+                right_sketches.values().filter(|_| rng.gen_bool(prob_right)),
                 left_sketches.get(k).expect("missing left sketch"),
                 1,
                 max_level,
-                params,
+                params.with_weight(weight_right),
                 Arc::clone(&hasher),
             );
             *left_hist.entry(level).or_insert(0) += 1;
@@ -386,11 +401,11 @@ where
         .iter_chunk(worker_col as usize)
         .map(|(k, _)| {
             let level = estimate_best_level(
-                right_sketches.values().take(100),
+                left_sketches.values().filter(|_| rng.gen_bool(prob_left)),
                 right_sketches.get(k).expect("missing right sketch"),
                 1,
                 max_level,
-                params,
+                params.with_weight(weight_left),
                 Arc::clone(&hasher),
             );
             *right_hist.entry(level).or_insert(0) += 1;
@@ -409,12 +424,7 @@ where
 
     let mut cnt = 0;
     for rep in 0..hasher.repetitions() {
-        let _pg = ProfileGuard::new(
-            logger.clone(),
-            rep,
-            0,
-            "repetition",
-        );
+        let _pg = ProfileGuard::new(logger.clone(), rep, 0, "repetition");
         let mut bucket = AdaptiveBucket::default();
         info!("Starting repetition {}", rep);
         let start = Instant::now();
@@ -463,7 +473,10 @@ where
             }
         });
         log_event!(logger, LogEvent::SketchDiscarded(rep, sketch_discarded));
-        log_event!(logger, LogEvent::DuplicatesDiscarded(rep, duplicates_discarded));
+        log_event!(
+            logger,
+            LogEvent::DuplicatesDiscarded(rep, duplicates_discarded)
+        );
         let end = Instant::now();
         info!("Repetition {} completed in {:?}", rep, end - start);
     }

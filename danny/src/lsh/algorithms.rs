@@ -637,12 +637,7 @@ where
                             let repetitions = hasher.repetitions();
                             let mut cnt = 0;
                             for rep in 0..repetitions {
-                                let _pg = ProfileGuard::new(
-                                    logger.clone(),
-                                    rep,
-                                    0,
-                                    "repetition",
-                                );
+                                let _pg = ProfileGuard::new(logger.clone(), rep, 0, "repetition");
                                 let start = Instant::now();
                                 let mut bucket = Bucket::default();
                                 for (k, _) in global_left.iter_chunk(worker_row as usize) {
@@ -669,8 +664,14 @@ where
                                 });
                                 let end = Instant::now();
                                 info!("Repetition {} ended in {:?}", rep, end - start);
-                                log_event!(logger, LogEvent::SketchDiscarded(rep, sketch_discarded));
-                                log_event!(logger, LogEvent::DuplicatesDiscarded(rep, duplicates_discarded));
+                                log_event!(
+                                    logger,
+                                    LogEvent::SketchDiscarded(rep, sketch_discarded)
+                                );
+                                log_event!(
+                                    logger,
+                                    LogEvent::DuplicatesDiscarded(rep, duplicates_discarded)
+                                );
                             }
                             output.session(&t).give(cnt);
                         }
@@ -783,6 +784,7 @@ where
         config.get_bloom_k(),
         rng.clone(),
     ));
+    let params = AdaptiveParams::from_config(config);
 
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
         let logger = worker.danny_logger();
@@ -832,6 +834,7 @@ where
             );
 
             left.binary_frontier(&right, PipelinePact, PipelinePact, "bucket", move |_, _| {
+                let mut rng = rng.clone();
                 let sketch_predicate = sketch_predicate.clone();
                 let sim_pred = sim_pred.clone();
                 let mut notificator = FrontierNotificator::new();
@@ -888,6 +891,8 @@ where
                                 worker_index as usize,
                                 matrix,
                                 logger.clone(),
+                                params,
+                                &mut rng,
                             );
                             output.session(&t).give(cnt);
                         }
