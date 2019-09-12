@@ -289,6 +289,20 @@ impl ParamK {
     }
 }
 
+pub enum Rounds {
+    One,
+    Multi,
+}
+
+impl Rounds {
+    pub fn report(&self) -> String {
+        match self {
+            Rounds::One => "one-round".to_owned(),
+            Rounds::Multi => "multi-round".to_owned(),
+        }
+    }
+}
+
 pub struct CmdlineConfig {
     pub measure: String,
     pub threshold: f64,
@@ -297,7 +311,7 @@ pub struct CmdlineConfig {
     pub algorithm: String,
     pub k: Option<ParamK>,
     pub sketch_bits: Option<usize>,
-    pub one_round: bool,
+    pub rounds: Rounds,
 }
 
 impl CmdlineConfig {
@@ -312,7 +326,7 @@ impl CmdlineConfig {
             (@arg ADAPTIVE_K: --("adaptive-k") +takes_value "The max number of concatenations of the hash function in the adaptive algorithm: auto sets it. Overridden by -k")
             (@arg THRESHOLD: -r --range +required +takes_value "The similarity threshold")
             (@arg BITS: --("sketch-bits") +takes_value "The number of bits to use for sketching")
-            (@arg ONE_ROUND: --("one-round") "Perform the one-round algorithm (default false)")
+            (@arg ROUNDS: --rounds +takes_value "One or multi round? (default multi)")
             (@arg LEFT: +required "Path to the left hand side of the join")
             (@arg RIGHT: +required "Path to the right hand side of the join")
         )
@@ -339,7 +353,14 @@ impl CmdlineConfig {
             .value_of("ALGORITHM")
             .unwrap_or("all-2-all")
             .to_owned();
-        let one_round = matches.is_present("ONE_ROUND");
+        let rounds = matches
+            .value_of("ROUNDS")
+            .map(|s| match s.as_ref() {
+                "one" => Rounds::One,
+                "multi" => Rounds::Multi,
+                _ => panic!("Unsupported rounds specification `{}`", s),
+            })
+            .unwrap_or(Rounds::Multi);
         let k = matches
             .value_of("K")
             .map(|k_str| {
@@ -384,7 +405,7 @@ impl CmdlineConfig {
             algorithm,
             k,
             sketch_bits,
-            one_round,
+            rounds,
         }
     }
 

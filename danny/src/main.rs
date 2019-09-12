@@ -35,8 +35,8 @@ where
             let sketch_predicate =
                 SketchPredicate::cosine(sketch_bits, threshold, config.get_sketch_epsilon());
             let k = args.k.expect("K is needed on the command line");
-            if args.one_round {
-                match k {
+            match args.rounds {
+                Rounds::One => match k {
                     ParamK::Fixed(k) => simple_fixed::<UnitNormVector, _, _, _, _, _, _>(
                         &args.left_path,
                         &args.right_path,
@@ -65,9 +65,8 @@ where
                             experiment,
                         )
                     }
-                }
-            } else {
-                distributed_lsh::<UnitNormVector, _, _, _, _, _, _>(
+                },
+                Rounds::Multi => distributed_lsh::<UnitNormVector, _, _, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,
                     threshold,
@@ -79,7 +78,7 @@ where
                     &mut rng,
                     &config,
                     experiment,
-                )
+                ),
             }
         }
         "jaccard" => {
@@ -89,8 +88,8 @@ where
             let sketcher = SV::from_jaccard(&mut rng);
             let sketch_predicate =
                 SketchPredicate::jaccard(sketch_bits, threshold, config.get_sketch_epsilon());
-            if args.one_round {
-                match k {
+            match args.rounds {
+                Rounds::One => match k {
                     ParamK::Fixed(k) => simple_fixed::<BagOfWords, _, _, _, _, _, _>(
                         &args.left_path,
                         &args.right_path,
@@ -117,9 +116,8 @@ where
                         &config,
                         experiment,
                     ),
-                }
-            } else {
-                distributed_lsh::<BagOfWords, _, _, _, _, _, _>(
+                },
+                Rounds::Multi => distributed_lsh::<BagOfWords, _, _, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,
                     threshold,
@@ -131,7 +129,7 @@ where
                     &mut rng,
                     &config,
                     experiment,
-                )
+                ),
             }
         }
         _ => unimplemented!("Unknown measure {}", args.measure),
