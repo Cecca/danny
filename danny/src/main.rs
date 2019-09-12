@@ -152,12 +152,12 @@ fn main() {
 
     let count = match args.algorithm.as_ref() {
         "lsh" => match args.sketch_bits {
+            Some(0) | None => run_lsh::<Sketch0>(&args, &config, &mut experiment),
             Some(64) => run_lsh::<Sketch64>(&args, &config, &mut experiment),
             Some(128) => run_lsh::<Sketch128>(&args, &config, &mut experiment),
             Some(256) => run_lsh::<Sketch256>(&args, &config, &mut experiment),
             Some(512) => run_lsh::<Sketch512>(&args, &config, &mut experiment),
             Some(bits) => panic!("Unsupported number of sketch bits: {}", bits),
-            None => panic!("you should supply the number of sketch bits"),
         },
         "all-2-all" => match args.measure.as_ref() {
             "cosine" => baseline::all_pairs_parallel::<UnitNormVector, _>(

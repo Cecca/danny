@@ -6,6 +6,7 @@ use packed_simd::u64x8;
 use rand::Rng;
 use statrs::distribution::Binomial;
 use statrs::distribution::Discrete;
+use std::marker::PhantomData;
 
 pub trait Sketcher {
     type Input;
@@ -32,6 +33,59 @@ pub trait FromCosine: Sized {
         + Clone
         + 'static;
     fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self::SketcherType;
+}
+
+/// A 0-bits sketch
+#[derive(Debug, Clone, Copy, Abomonation, Hash, Eq, PartialEq)]
+pub struct Sketch0;
+
+impl BitBasedSketch for Sketch0 {
+    fn different_bits(&self, _other: &Self) -> u32 {
+        0
+    }
+    fn same_bits(&self, _other: &Self) -> u32 {
+        0
+    }
+    fn num_bits(&self) -> usize {
+        0
+    }
+}
+
+#[derive(Clone)]
+pub struct Sketcher0<T, F> {
+    _mark_a: PhantomData<T>,
+    _mark_b: PhantomData<F>,
+}
+
+impl FromCosine for Sketch0 {
+    type SketcherType = Sketcher0<UnitNormVector, Hyperplane>;
+    fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self::SketcherType {
+        Sketcher0 {
+            _mark_a: PhantomData::<UnitNormVector>,
+            _mark_b: PhantomData::<Hyperplane>,
+        }
+    }
+}
+
+impl FromJaccard for Sketch0 {
+    type SketcherType = Sketcher0<BagOfWords, OneBitMinHash>;
+    fn from_jaccard<R: Rng>(rng: &mut R) -> Self::SketcherType {
+        Sketcher0 {
+            _mark_a: PhantomData::<BagOfWords>,
+            _mark_b: PhantomData::<OneBitMinHash>,
+        }
+    }
+}
+
+impl<T, F> Sketcher for Sketcher0<T, F>
+where
+    F: LSHFunction<Input = T, Output = u32>,
+{
+    type Input = T;
+    type Output = Sketch0;
+    fn sketch(&self, v: &Self::Input) -> Self::Output {
+        Sketch0
+    }
 }
 
 #[derive(Debug, Clone, Copy, Abomonation, Hash, Eq, PartialEq)]
