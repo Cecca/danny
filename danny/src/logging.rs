@@ -101,10 +101,31 @@ pub struct NetworkDiff {
     pub transmitted: usize,
 }
 
+impl std::fmt::Display for NetworkDiff {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "tx: {} rx: {}",
+            self.transmitted.to_space_string(),
+            self.received.to_space_string()
+        )
+    }
+}
+
 #[derive(Abomonation, Clone)]
 pub struct NetworkSummary {
     pub hostname: String,
     pub interfaces: Vec<(String, NetworkDiff)>,
+}
+
+impl std::fmt::Display for NetworkSummary {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: ", self.hostname)?;
+        for (iface, ndiff) in self.interfaces.iter() {
+            write!(f, "[{} {}] ", iface, ndiff)?;
+        }
+        Ok(())
+    }
 }
 
 impl NetworkSummary {
@@ -155,6 +176,9 @@ impl NetworkSummary {
         if config.is_master() {
             for summary in recv.iter() {
                 if let TimelyEvent::Messages(_, msgs) = summary {
+                    for summary in msgs.iter() {
+                        info!("{}", summary);
+                    }
                     res.extend(msgs);
                 }
             }
