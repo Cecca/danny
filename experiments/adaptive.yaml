@@ -7,18 +7,18 @@ environment:
   DANNY_SKETCH_EPSILON: 0.01
 experiments:
 
+## one round algorithm below
+
   - name: Glove adaptive
     tags:
       - cosine
       - adaptive
     environment:
-      DANNY_COST_BALANCE: [0.5, 0.99]
+      DANNY_COST_BALANCE: 0.5
       DANNY_SEED:
         - 13124534
-        - 120975
-        - 50945012
     parameters:
-      --rounds: ["one", "multi"]
+      --rounds: "one"
       --algorithm: lsh
       --range: [0.5,0.7,0.9]
       --measure: cosine
@@ -32,13 +32,11 @@ experiments:
       - jaccard
       - adaptive
     environment:
-      DANNY_COST_BALANCE: [0.5, 0.99]
+      DANNY_COST_BALANCE: 0.5
       DANNY_SEED:
         - 13124534
-        - 120975
-        - 50945012
     parameters:
-      --rounds: ["one", "multi"]
+      --rounds: "one"
       --algorithm: lsh
       --range: [0.5,0.7,0.9]
       --measure: jaccard
@@ -49,34 +47,17 @@ experiments:
       - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
       - ["{{ dataset('Livejournal') }}", "{{ dataset('Livejournal') }}"]
 
-  - name: Wikipedia
-    tags:
-      - jaccard
-      - fixed
-      - wiki
-    environment:
-      DANNY_SEED:
-        - 13124534
-    parameters:
-      --rounds: ["one", "multi"]
-      --algorithm: lsh
-      --range: [0.5,0.7,0.9]
-      --measure: jaccard
-      --sketch-bits: [0,64,128,256,512]
-      --adaptive-k: "11,20"
-    arguments:
-      - ["{{ dataset('wiki-10k') }}", "{{ dataset('wiki-10k') }}"]
-
   - name: GNews
     tags:
       - cosine
       - fixed
       - gnews
     environment:
+      DANNY_COST_BALANCE: 0.5
       DANNY_SEED:
         - 13124534
     parameters:
-      --rounds: ["one", "multi"]
+      --rounds: "one"
       --algorithm: lsh
       --range: [0.5,0.7,0.9]
       --measure: cosine
@@ -85,3 +66,61 @@ experiments:
     arguments:
       - ["{{ dataset('GNews') }}", "{{ dataset('GNews') }}"]
 
+## multi round algorithm below
+
+  - name: Glove adaptive
+    tags:
+      - cosine
+      - adaptive
+    environment:
+      DANNY_COST_BALANCE: 0.99
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --rounds: "multi"
+      --algorithm: lsh
+      --range: [0.5,0.7,0.9]
+      --measure: cosine
+      --sketch-bits: [0,64,128,256,512]
+      --adaptive-k: 12,18
+    arguments:
+      - ["{{ dataset('Glove-27-200') }}", "{{ dataset('Glove-27-200') }}"]
+
+  - name: Bag of Words adaptive
+    tags:
+      - jaccard
+      - adaptive
+    environment:
+      DANNY_COST_BALANCE: 0.99
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --rounds: "multi"
+      --algorithm: lsh
+      --range: [0.5,0.7,0.9]
+      --measure: jaccard
+      --adaptive-k: 10,17
+      --sketch-bits: [0,64,128,256,512]
+    arguments:
+      - ["{{ dataset('AOL') }}", "{{ dataset('AOL') }}"]
+      - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
+      - ["{{ dataset('Livejournal') }}", "{{ dataset('Livejournal') }}"]
+
+  - name: GNews
+    tags:
+      - cosine
+      - fixed
+      - gnews
+    environment:
+      DANNY_COST_BALANCE: 0.99
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --rounds: "multi"
+      --algorithm: lsh
+      --range: [0.5,0.7,0.9]
+      --measure: cosine
+      --sketch-bits: [0,64,128,256,512]
+      --adaptive-k: "11,20"
+    arguments:
+      - ["{{ dataset('GNews') }}", "{{ dataset('GNews') }}"]
