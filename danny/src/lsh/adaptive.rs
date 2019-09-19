@@ -347,10 +347,8 @@ where
 pub fn adaptive_local_solve<K, D, S, H, P, R>(
     left: Arc<ChunkedDataset<K, D>>,
     right: Arc<ChunkedDataset<K, D>>,
-    left_sketches: &HashMap<K, S>,
-    right_sketches: &HashMap<K, S>,
-    left_pools: &HashMap<K, DKTPool>,
-    right_pools: &HashMap<K, DKTPool>,
+    mut left_data: Vec<(K, DKTPool, S)>,
+    mut right_data: Vec<(K, DKTPool, S)>,
     hasher: Arc<DKTCollection<H>>,
     sketch_predicate: &SketchPredicate<S>,
     sim_pred: &P,
@@ -376,50 +374,49 @@ where
         "Sampling probability left {} and right {}",
         prob_left, prob_right
     );
-    let sample_left: Vec<S> = left_sketches
-        .values()
+    let sample_left: Vec<S> = left_data
+        .iter()
         .filter(|_| rng.gen_bool(prob_left))
-        .cloned()
+        .map(|triplet| triplet.2.clone())
         .collect();
-    let sample_right: Vec<S> = right_sketches
-        .values()
+    let sample_right: Vec<S> = right_data
+        .iter()
         .filter(|_| rng.gen_bool(prob_right))
-        .cloned()
+        .map(|triplet| triplet.2.clone())
         .collect();
-    let (worker_row, worker_col) = matrix.row_major_to_pair(worker as u64);
     let pg = ProfileGuard::new(logger.clone(), 0, 0, "best_level_computation");
     info!("Computing left best levels");
     let mut left_hist = std::collections::BTreeMap::new();
-    let left_levels: HashMap<K, usize> = left
-        .iter_chunk(worker_row as usize)
-        .map(|(k, _)| {
+    let left_data: Vec<(K, DKTPool, S, u8)> = left_data
+        .drain(..)
+        .map(|(k, pool, sketch)| {
             let level = estimate_best_level(
                 sample_left.iter(),
-                left_sketches.get(k).expect("missing left sketch"),
+                &sketch,
                 1,
                 max_level,
                 params.with_weight(weight_right),
                 Arc::clone(&hasher),
             );
             *left_hist.entry(level).or_insert(0) += 1;
-            (*k, level)
+            (k, pool, sketch, level as u8)
         })
         .collect();
     info!("Computing right best levels");
     let mut right_hist = std::collections::BTreeMap::new();
-    let right_levels: HashMap<K, usize> = right
-        .iter_chunk(worker_col as usize)
-        .map(|(k, _)| {
+    let right_data: Vec<(K, DKTPool, S, u8)> = right_data
+        .drain(..)
+        .map(|(k, pool, sketch)| {
             let level = estimate_best_level(
                 sample_right.iter(),
-                right_sketches.get(k).expect("missing right sketch"),
+                &sketch,
                 1,
                 max_level,
                 params.with_weight(weight_left),
                 Arc::clone(&hasher),
             );
             *right_hist.entry(level).or_insert(0) += 1;
-            (*k, level)
+            (k, pool, sketch, level as u8)
         })
         .collect();
     info!("Left histogram of levels {:?}", left_hist);
@@ -438,26 +435,16 @@ where
         info!("Starting repetition {}", rep);
         let start = Instant::now();
         let mut left_active = 0;
-        for (k, sketch) in left_sketches.iter() {
-            let level = *left_levels.get(k).expect("missing level for left point");
-            if rep < hasher.repetitions_at(level) {
-                bucket.push_left(
-                    level as u8,
-                    hasher.hash(&left_pools.get(k).expect("missing key in left pool"), rep),
-                    (*k, *sketch),
-                );
+        for (k, pool, sketch, level) in left_data.iter() {
+            if rep < hasher.repetitions_at(*level as usize) {
+                bucket.push_left(*level, hasher.hash(pool, rep), (*k, *sketch));
                 left_active += 1;
             }
         }
         let mut right_active = 0;
-        for (k, sketch) in right_sketches.iter() {
-            let level = *right_levels.get(k).expect("missing level for right point");
-            if rep < hasher.repetitions_at(level) {
-                bucket.push_right(
-                    level as u8,
-                    hasher.hash(&right_pools.get(k).expect("missing key in right pool"), rep),
-                    (*k, *sketch),
-                );
+        for (k, pool, sketch, level) in right_data.iter() {
+            if rep < hasher.repetitions_at(*level as usize) {
+                bucket.push_right(*level, hasher.hash(pool, rep), (*k, *sketch));
                 right_active += 1;
             }
         }

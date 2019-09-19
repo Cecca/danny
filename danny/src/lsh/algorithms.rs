@@ -597,59 +597,41 @@ where
 
             left.binary_frontier(&right, PipelinePact, PipelinePact, "bucket", move |_, _| {
                 let mut notificator = FrontierNotificator::new();
-                let mut left_pools = HashMap::new();
-                let mut right_pools = HashMap::new();
-                let mut left_sketches = HashMap::new();
-                let mut right_sketches = HashMap::new();
+                let mut left_data = HashMap::new();
+                let mut right_data = HashMap::new();
                 move |left_in, right_in, output| {
                     left_in.for_each(|t, data| {
-                        let pools = left_pools
-                            .entry(t.time().clone())
-                            .or_insert_with(HashMap::new);
-                        let sketches = left_sketches
-                            .entry(t.time().clone())
-                            .or_insert_with(HashMap::new);
+                        let local_data = left_data.entry(t.time().clone()).or_insert_with(|| {
+                            Vec::with_capacity(global_left.chunk_len(worker_row as usize))
+                        });
                         for (k, (p, s)) in data.replace(Vec::new()).drain(..) {
-                            pools.insert(k, p);
-                            sketches.insert(k, s);
+                            local_data.push((k, p, s));
                         }
                         notificator.notify_at(t.retain());
                     });
                     right_in.for_each(|t, data| {
-                        let pools = right_pools
-                            .entry(t.time().clone())
-                            .or_insert_with(HashMap::new);
-                        let sketches = right_sketches
-                            .entry(t.time().clone())
-                            .or_insert_with(HashMap::new);
+                        let local_data = right_data.entry(t.time().clone()).or_insert_with(|| {
+                            Vec::with_capacity(global_right.chunk_len(worker_col as usize))
+                        });
                         for (k, (p, s)) in data.replace(Vec::new()).drain(..) {
-                            pools.insert(k, p);
-                            sketches.insert(k, s);
+                            local_data.push((k, p, s));
                         }
                         notificator.notify_at(t.retain());
                     });
                     notificator.for_each(&[left_in.frontier(), &right_in.frontier()], |t, _| {
-                        if let Some(left_pools) = left_pools.remove(&t) {
-                            let right_pools = right_pools.remove(&t).expect("missing right pool");
-                            let left_sketches =
-                                left_sketches.remove(&t).expect("missing right sketches");
-                            let right_sketches =
-                                right_sketches.remove(&t).expect("missing right sketches");
+                        if let Some(left_data) = left_data.remove(&t) {
+                            let right_data = right_data.remove(&t).expect("missing right data");
                             let repetitions = hasher.repetitions();
                             let mut cnt = 0;
                             for rep in 0..repetitions {
                                 let _pg = ProfileGuard::new(logger.clone(), rep, 0, "repetition");
                                 let start = Instant::now();
                                 let mut bucket = Bucket::default();
-                                for (k, sketch) in left_sketches.iter() {
-                                    bucket
-                                        .push_left(hasher.hash(&left_pools[k], rep), (*k, *sketch));
+                                for (k, pool, sketch) in left_data.iter() {
+                                    bucket.push_left(hasher.hash(pool, rep), (*k, *sketch));
                                 }
-                                for (k, sketch) in right_sketches.iter() {
-                                    bucket.push_right(
-                                        hasher.hash(&right_pools[k], rep),
-                                        (*k, *sketch),
-                                    );
+                                for (k, pool, sketch) in right_data.iter() {
+                                    bucket.push_right(hasher.hash(pool, rep), (*k, *sketch));
                                 }
                                 let mut sketch_discarded = 0;
                                 let mut duplicates_discarded = 0;
@@ -808,6 +790,7 @@ where
         let sketcher = Arc::new(sketcher);
         let worker_index = worker.index() as u64;
         let matrix = MatrixDescription::for_workers(worker.peers());
+        let (worker_row, worker_col) = matrix.row_major_to_pair(worker_index);
 
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
             let mut probe = ProbeHandle::<u32>::new();
@@ -842,51 +825,35 @@ where
                 let sketch_predicate = sketch_predicate.clone();
                 let sim_pred = sim_pred.clone();
                 let mut notificator = FrontierNotificator::new();
-                let mut left_pools = HashMap::new();
-                let mut right_pools = HashMap::new();
-                let mut left_sketches = HashMap::new();
-                let mut right_sketches = HashMap::new();
+                let mut left_data = HashMap::new();
+                let mut right_data = HashMap::new();
                 move |left_in, right_in, output| {
                     left_in.for_each(|t, data| {
-                        let pools = left_pools
-                            .entry(t.time().clone())
-                            .or_insert_with(HashMap::new);
-                        let sketches = left_sketches
-                            .entry(t.time().clone())
-                            .or_insert_with(HashMap::new);
+                        let local_data = left_data.entry(t.time().clone()).or_insert_with(|| {
+                            Vec::with_capacity(global_left.chunk_len(worker_row as usize))
+                        });
                         for (k, (p, s)) in data.replace(Vec::new()).drain(..) {
-                            pools.insert(k, p);
-                            sketches.insert(k, s);
+                            local_data.push((k, p, s));
                         }
                         notificator.notify_at(t.retain());
                     });
                     right_in.for_each(|t, data| {
-                        let pools = right_pools
-                            .entry(t.time().clone())
-                            .or_insert_with(HashMap::new);
-                        let sketches = right_sketches
-                            .entry(t.time().clone())
-                            .or_insert_with(HashMap::new);
+                        let local_data = right_data.entry(t.time().clone()).or_insert_with(|| {
+                            Vec::with_capacity(global_right.chunk_len(worker_col as usize))
+                        });
                         for (k, (p, s)) in data.replace(Vec::new()).drain(..) {
-                            pools.insert(k, p);
-                            sketches.insert(k, s);
+                            local_data.push((k, p, s));
                         }
                         notificator.notify_at(t.retain());
                     });
                     notificator.for_each(&[left_in.frontier(), &right_in.frontier()], |t, _| {
-                        if let Some(left_pools) = left_pools.remove(&t) {
-                            let right_pools = right_pools.remove(&t).expect("missing right pool");
-                            let left_sketches =
-                                left_sketches.remove(&t).expect("missing right sketches");
-                            let right_sketches =
-                                right_sketches.remove(&t).expect("missing right sketches");
+                        if let Some(left_data) = left_data.remove(&t) {
+                            let right_data = right_data.remove(&t).expect("missing right data");
                             let cnt = adaptive_local_solve(
                                 Arc::clone(&global_left),
                                 Arc::clone(&global_right),
-                                &left_sketches,
-                                &right_sketches,
-                                &left_pools,
-                                &right_pools,
+                                left_data,
+                                right_data,
                                 Arc::clone(&hasher),
                                 &sketch_predicate,
                                 &sim_pred,
