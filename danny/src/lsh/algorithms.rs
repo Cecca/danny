@@ -464,17 +464,18 @@ where
     S::Output: SketchData + Debug,
     F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
 {
+    let logger = scope.danny_logger();
     source(scope, "hashed source", move |capability| {
         let mut cap = Some(capability);
         move |output| {
             if let Some(cap) = cap.take() {
+                let _pg = ProfileGuard::new(logger.clone(), 0, 0, "sketching_hashing");
                 let start = Instant::now();
                 let mut session = output.session(&cap);
                 for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
                     let pool = hash_fns.pool(v);
                     let s = sketcher.sketch(v);
                     let output_element = (k.clone(), (pool.clone(), s.clone()));
-                    // Hand out several copies of the vector to all the appropriate processors
                     match direction {
                         MatrixDirection::Columns => {
                             let col = (k.route() % u64::from(matrix.columns)) as u8;
