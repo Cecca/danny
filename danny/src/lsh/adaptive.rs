@@ -365,7 +365,7 @@ pub fn adaptive_local_solve<K, D, S, H, P, R>(
 where
     K: Hash + Route + Eq + Debug + Copy + Into<u64>,
     D: SketchEstimate,
-    S: BitBasedSketch + 'static,
+    S: BitBasedSketch + Debug + 'static,
     H: LSHFunction<Input = D, Output = u32> + Send + Clone + Sync + 'static,
     P: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
     R: Rng + 'static,
@@ -423,7 +423,6 @@ where
         })
         .collect();
     info!("Left histogram of levels {:?}", left_hist);
-    info!("Left histogram of levels {:?}", left_hist);
     drop(pg);
     for (level, count) in left_hist {
         log_event!(logger, LogEvent::AdaptiveLevelHistogram(level, count));
@@ -439,25 +438,25 @@ where
         info!("Starting repetition {}", rep);
         let start = Instant::now();
         let mut left_active = 0;
-        for (k, _) in left.iter_chunk(worker_row as usize) {
+        for (k, sketch) in left_sketches.iter() {
             let level = *left_levels.get(k).expect("missing level for left point");
             if rep < hasher.repetitions_at(level) {
                 bucket.push_left(
                     level as u8,
                     hasher.hash(&left_pools.get(k).expect("missing key in left pool"), rep),
-                    *k,
+                    (*k, *sketch),
                 );
                 left_active += 1;
             }
         }
         let mut right_active = 0;
-        for (k, _) in right.iter_chunk(worker_col as usize) {
+        for (k, sketch) in right_sketches.iter() {
             let level = *right_levels.get(k).expect("missing level for right point");
             if rep < hasher.repetitions_at(level) {
                 bucket.push_right(
                     level as u8,
                     hasher.hash(&right_pools.get(k).expect("missing key in right pool"), rep),
-                    *k,
+                    (*k, *sketch),
                 );
                 right_active += 1;
             }
@@ -470,9 +469,9 @@ where
         let mut sketch_discarded = 0;
         let mut duplicates_discarded = 0;
         bucket.for_prefixes(|l, r| {
-            if sketch_predicate.eval(&left_sketches[l], &right_sketches[r]) {
-                if !filter.test_and_insert(&(*l, *r)) {
-                    if sim_pred(&left[&l], &right[&r]) {
+            if sketch_predicate.eval(&l.1, &r.1) {
+                if !filter.test_and_insert(&(l.0, r.0)) {
+                    if sim_pred(&left[&l.0], &right[&r.0]) {
                         cnt += 1;
                     }
                 } else {
