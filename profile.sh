@@ -2,7 +2,7 @@
 
 # Replace with the path to FlameGraph on you own machine.
 # FlameGraph can be downloaded from here: https://github.com/brendangregg/FlameGraph
-FLAMEDIR=~/Development/Tryouts/FlameGraph/ 
+FLAMEDIR=~/Work/FlameGraph
 
 # Some utility variables
 EXEC=$(basename $1)
