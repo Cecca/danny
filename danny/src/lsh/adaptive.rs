@@ -386,7 +386,7 @@ where
         .collect();
     let pg = ProfileGuard::new(logger.clone(), 0, 0, "best_level_computation");
     info!("Computing left best levels");
-    let mut left_hist = std::collections::BTreeMap::new();
+    let mut left_hist = vec![0; max_level + 1];
     let left_data: Vec<(K, DKTPool, S, u8)> = left_data
         .drain(..)
         .map(|(k, pool, sketch)| {
@@ -398,12 +398,12 @@ where
                 params.with_weight(weight_right),
                 Arc::clone(&hasher),
             );
-            *left_hist.entry(level).or_insert(0) += 1;
+            left_hist[level] += 1;
             (k, pool, sketch, level as u8)
         })
         .collect();
     info!("Computing right best levels");
-    let mut right_hist = std::collections::BTreeMap::new();
+    let mut right_hist = vec![0; max_level + 1];
     let right_data: Vec<(K, DKTPool, S, u8)> = right_data
         .drain(..)
         .map(|(k, pool, sketch)| {
@@ -415,17 +415,21 @@ where
                 params.with_weight(weight_left),
                 Arc::clone(&hasher),
             );
-            *right_hist.entry(level).or_insert(0) += 1;
+            right_hist[level] += 1;
             (k, pool, sketch, level as u8)
         })
         .collect();
     info!("Left histogram of levels {:?}", left_hist);
     drop(pg);
-    for (level, count) in left_hist {
-        log_event!(logger, LogEvent::AdaptiveLevelHistogram(level, count));
+    for (level, count) in left_hist.drain(..).enumerate() {
+        if count > 0 {
+            log_event!(logger, LogEvent::AdaptiveLevelHistogram(level, count));
+        }
     }
-    for (level, count) in right_hist {
-        log_event!(logger, LogEvent::AdaptiveLevelHistogram(level, count));
+    for (level, count) in right_hist.drain(..).enumerate() {
+        if count > 0 {
+            log_event!(logger, LogEvent::AdaptiveLevelHistogram(level, count));
+        }
     }
 
     let mut cnt = 0;
