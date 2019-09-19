@@ -216,6 +216,6 @@ fn main() {
             "result",
             row!("output_size" => count, "total_time_ms" => total_time, "recall" => recall, "speedup" => speedup),
         );
-        experiment.save();
+        experiment.save_csv();
     }
 }

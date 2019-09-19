@@ -10,3 +10,4 @@ results/
 **/*.swp
 *.svg
 .Rproj.user
+*.csv
