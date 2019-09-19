@@ -641,19 +641,22 @@ where
                                 let _pg = ProfileGuard::new(logger.clone(), rep, 0, "repetition");
                                 let start = Instant::now();
                                 let mut bucket = Bucket::default();
-                                for (k, _) in global_left.iter_chunk(worker_row as usize) {
-                                    bucket.push_left(hasher.hash(&left_pools[k], rep), *k);
+                                for (k, sketch) in left_sketches.iter() {
+                                    bucket
+                                        .push_left(hasher.hash(&left_pools[k], rep), (*k, *sketch));
                                 }
-                                for (k, _) in global_right.iter_chunk(worker_col as usize) {
-                                    bucket.push_right(hasher.hash(&right_pools[k], rep), *k);
+                                for (k, sketch) in right_sketches.iter() {
+                                    bucket.push_right(
+                                        hasher.hash(&right_pools[k], rep),
+                                        (*k, *sketch),
+                                    );
                                 }
                                 let mut sketch_discarded = 0;
                                 let mut duplicates_discarded = 0;
                                 bucket.for_all(|l, r| {
-                                    if sketch_predicate.eval(&left_sketches[l], &right_sketches[r])
-                                    {
-                                        if !bloom_filter.test_and_insert(&(*l, *r)) {
-                                            if sim_pred(&global_left[&l], &global_right[&r]) {
+                                    if sketch_predicate.eval(&l.1, &r.1) {
+                                        if !bloom_filter.test_and_insert(&(l.0, r.0)) {
+                                            if sim_pred(&global_left[&l.0], &global_right[&r.0]) {
                                                 cnt += 1;
                                             }
                                         } else {
