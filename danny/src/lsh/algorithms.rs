@@ -859,8 +859,6 @@ where
                                 &sim_pred,
                                 Arc::clone(&bloom_filter),
                                 max_k,
-                                worker_index as usize,
-                                matrix,
                                 logger.clone(),
                                 params,
                                 &mut rng,

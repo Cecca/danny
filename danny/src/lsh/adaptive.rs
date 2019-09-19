@@ -354,8 +354,6 @@ pub fn adaptive_local_solve<K, D, S, H, P, R>(
     sim_pred: &P,
     filter: Arc<AtomicBloomFilter<K>>,
     max_level: usize,
-    worker: usize,
-    matrix: MatrixDescription,
     logger: Option<Logger<LogEvent>>,
     params: AdaptiveParams,
     rng: &mut R,
