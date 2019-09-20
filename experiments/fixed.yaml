@@ -16,8 +16,6 @@ experiments:
     environment:
       DANNY_SEED:
         - 13124534
-        - 1235
-        - 49176895
     parameters:
       --rounds: ["one", "multi"]
       --algorithm: lsh
@@ -31,12 +29,29 @@ experiments:
   - name: Bag of Words (fixed)
     tags:
       - jaccard
+      - orkut
       - fixed
     environment:
       DANNY_SEED:
         - 13124534
-        - 1235
-        - 49176895
+    parameters:
+      --rounds: ["one", "multi"]
+      --algorithm: lsh
+      --range: [0.5,0.7,0.9]
+      --measure: jaccard
+      --sketch-bits: [0,64,128,256,512]
+      -k: [11,13,15]
+    arguments:
+      - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
+
+  - name: Bag of Words (fixed)
+    tags:
+      - aol
+      - jaccard
+      - fixed
+    environment:
+      DANNY_SEED:
+        - 13124534
     parameters:
       --rounds: ["one", "multi"]
       --algorithm: lsh
@@ -46,7 +61,23 @@ experiments:
       -k: [11,13,15]
     arguments:
       - ["{{ dataset('AOL') }}", "{{ dataset('AOL') }}"]
-      - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
+
+  - name: Bag of Words (fixed)
+    tags:
+      - jaccard
+      - livejournal
+      - fixed
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --rounds: ["one", "multi"]
+      --algorithm: lsh
+      --range: [0.5,0.7,0.9]
+      --measure: jaccard
+      --sketch-bits: [0,64,128,256,512]
+      -k: [11,13,15]
+    arguments:
       - ["{{ dataset('Livejournal') }}", "{{ dataset('Livejournal') }}"]
 
   - name: GNews
