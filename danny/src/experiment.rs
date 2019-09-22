@@ -36,7 +36,6 @@ impl Experiment {
         let algo_suffix = cmdline.rounds.report();
         let experiment = Experiment::new()
             .tag("threads_per_worker", config.get_threads())
-            .tag("hosts", config.get_hosts().clone())
             .tag("num_hosts", config.get_num_hosts())
             .tag("total_threads", config.get_total_workers())
             .tag("seed", config.get_seed())
