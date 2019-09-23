@@ -113,6 +113,8 @@ experiments:
 
   - name: Glove adaptive
     tags:
+      - glove
+      - multiround
       - cosine
       - adaptive
     environment:
