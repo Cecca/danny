@@ -11,6 +11,7 @@ experiments:
 
   - name: Glove adaptive
     tags:
+      - glove
       - cosine
       - adaptive
     environment:
