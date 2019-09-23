@@ -14,7 +14,8 @@ experiments:
       - cosine
       - adaptive
     environment:
-      DANNY_COST_BALANCE: 0.5
+      DANNY_COST_BALANCE: 0.99
+      DANNY_SAMPLING_FACTOR: 5
       DANNY_SEED:
         - 13124534
     parameters:
@@ -33,7 +34,8 @@ experiments:
       - adaptive
       - aol
     environment:
-      DANNY_COST_BALANCE: 0.5
+      DANNY_COST_BALANCE: 0.99
+      DANNY_SAMPLING_FACTOR: 5
       DANNY_SEED:
         - 13124534
     parameters:
@@ -52,7 +54,8 @@ experiments:
       - adaptive
       - orkut
     environment:
-      DANNY_COST_BALANCE: 0.5
+      DANNY_COST_BALANCE: 0.99
+      DANNY_SAMPLING_FACTOR: 5
       DANNY_SEED:
         - 13124534
     parameters:
@@ -71,7 +74,8 @@ experiments:
       - adaptive
       - livejournal
     environment:
-      DANNY_COST_BALANCE: 0.5
+      DANNY_COST_BALANCE: 0.99
+      DANNY_SAMPLING_FACTOR: 5
       DANNY_SEED:
         - 13124534
     parameters:
@@ -90,7 +94,8 @@ experiments:
       - fixed
       - gnews
     environment:
-      DANNY_COST_BALANCE: 0.5
+      DANNY_COST_BALANCE: 0.99
+      DANNY_SAMPLING_FACTOR: 5
       DANNY_SEED:
         - 13124534
     parameters:
