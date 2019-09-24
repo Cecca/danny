@@ -455,9 +455,11 @@ where
             rep, left_active, right_active
         );
 
+        let mut examined_pairs = 0;
         let mut sketch_discarded = 0;
         let mut duplicates_discarded = 0;
         bucket.for_prefixes(|l, r| {
+            examined_pairs += 1;
             if sketch_predicate.eval(&l.1, &r.1) {
                 if !filter.test_and_insert(&(l.0, r.0)) {
                     if sim_pred(&left[&l.0], &right[&r.0]) {
@@ -475,6 +477,7 @@ where
             logger,
             LogEvent::DuplicatesDiscarded(rep, duplicates_discarded)
         );
+        log_event!(logger, LogEvent::GeneratedPairs(rep, examined_pairs));
         let end = Instant::now();
         info!("Repetition {} completed in {:?}", rep, end - start);
     }
