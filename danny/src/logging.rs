@@ -506,7 +506,14 @@ macro_rules! append_step_counter {
 
 impl FrozenExecutionSummary {
     pub fn add_to_experiment(&self, experiment: &mut Experiment) {
-        for (step, _rec_hashes) in self.received_hashes.iter() {
+        let mut steps = std::collections::HashSet::new();
+        steps.extend(self.received_hashes.iter().map(|p| p.0));
+        steps.extend(self.sketch_discarded.iter().map(|p| p.0));
+        steps.extend(self.distinct_pairs.iter().map(|p| p.0));
+        steps.extend(self.duplicates_discarded.iter().map(|p| p.0));
+        steps.extend(self.generated_pairs.iter().map(|p| p.0));
+        steps.extend(self.generated_hashes.iter().map(|p| p.0));
+        for step in steps.iter() {
             append_step_counter!(self, experiment, step, received_hashes);
             append_step_counter!(self, experiment, step, sketch_discarded);
             append_step_counter!(self, experiment, step, distinct_pairs);
