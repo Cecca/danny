@@ -39,6 +39,11 @@ impl PrefixHash for u32 {
         (self ^ other) & MASKS_32[l as usize] == 0
     }
 
+    #[inline]
+    fn prefix_eq(&self, other: &Self, n: usize) -> bool {
+        (self & MASKS_32[n]) == (other & MASKS_32[n])
+    }
+
     fn prefix(&self, n: usize) -> Self::PrefixType {
         assert!(n < 32);
         self & MASKS_32[n]
