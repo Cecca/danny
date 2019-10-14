@@ -521,6 +521,7 @@ where
         hash_table.push((0u32, r_id, pool, sketch));
     }
     let start = Instant::now();
+    let mut actual_max_level = 0;
     let left_data: Vec<(K, DKTPool, S, usize)> = left_data
         .drain(..)
         .map(|(l_id, pool, l_sketch)| {
@@ -532,13 +533,20 @@ where
                 params.with_weight(weight_right),
                 Arc::clone(&hasher),
             );
+            actual_max_level = std::cmp::max(level, actual_max_level);
             (l_id, pool, l_sketch, level)
         })
         .collect();
     let end = Instant::now();
     info!("Estimation of best levels {:?}", end - start);
+    let actual_repetitions = hasher.repetitions_at(actual_max_level);
+    info!(
+        "Doing {} ({} max) repetitions",
+        actual_repetitions,
+        hasher.repetitions()
+    );
     let mut cnt = 0;
-    for repetition in 0..hasher.repetitions() {
+    for repetition in 0..actual_repetitions {
         let start = Instant::now();
         let mut examined_pairs = 0;
         let mut sketch_discarded = 0;
