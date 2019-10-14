@@ -2,6 +2,7 @@ use crate::config::*;
 use crate::dataset::*;
 use crate::logging::*;
 
+use crate::danny_base::prefix_hash::PrefixHash;
 use crate::operators::*;
 use danny_base::bloom::*;
 use danny_base::bucket::*;
@@ -482,5 +483,116 @@ where
         info!("Repetition {} completed in {:?}", rep, end - start);
     }
 
+    cnt
+}
+
+pub fn adaptive_local_solve_srr<K, D, S, H, P, R>(
+    left: Arc<ChunkedDataset<K, D>>,
+    right: Arc<ChunkedDataset<K, D>>,
+    mut left_data: Vec<(K, DKTPool, S)>,
+    mut right_data: Vec<(K, DKTPool, S)>,
+    hasher: Arc<DKTCollection<H>>,
+    sketch_predicate: &SketchPredicate<S>,
+    sim_pred: &P,
+    filter: Arc<AtomicBloomFilter<K>>,
+    max_level: usize,
+    logger: Option<Logger<LogEvent>>,
+    params: AdaptiveParams,
+    rng: &mut R,
+) -> u64
+where
+    K: Hash + Route + Eq + Debug + Copy + Into<u64>,
+    D: SketchEstimate,
+    S: BitBasedSketch + Debug + 'static,
+    H: LSHFunction<Input = D, Output = u32> + Send + Clone + Sync + 'static,
+    P: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
+    R: Rng + 'static,
+{
+    let (prob_right, weight_right) = params.probability_and_weight(right.global_n);
+    info!("Sampling probability right {}", prob_right);
+    let sample_right: Vec<S> = right_data
+        .iter()
+        .filter(|_| rng.gen_bool(prob_right))
+        .map(|triplet| triplet.2.clone())
+        .collect();
+    // This table will be reused by all repetitions
+    let mut hash_table = Vec::with_capacity(right_data.len());
+    for (r_id, pool, sketch) in right_data.drain(..) {
+        hash_table.push((0u32, r_id, pool, sketch));
+    }
+    let start = Instant::now();
+    let left_data: Vec<(K, DKTPool, S, usize)> = left_data
+        .drain(..)
+        .map(|(l_id, pool, l_sketch)| {
+            let level = estimate_best_level(
+                sample_right.iter(),
+                &l_sketch,
+                1,
+                max_level,
+                params.with_weight(weight_right),
+                Arc::clone(&hasher),
+            );
+            (l_id, pool, l_sketch, level)
+        })
+        .collect();
+    let end = Instant::now();
+    info!("Estimation of best levels {:?}", end - start);
+    let mut cnt = 0;
+    for repetition in 0..hasher.repetitions() {
+        let start = Instant::now();
+        let mut examined_pairs = 0;
+        let mut sketch_discarded = 0;
+        let mut duplicates_discarded = 0;
+        // Compute hashes and sort them for this repetition
+        let start_hashing = Instant::now();
+        for tuple in hash_table.iter_mut() {
+            tuple.0 = hasher.hash(&tuple.2, repetition);
+        }
+        let end_hashing = Instant::now();
+        hash_table.sort_by(|l, r| l.0.lex_cmp(&r.0));
+        info!("Hashing time {:?}", end_hashing - start_hashing);
+        for (l_id, pool, l_sketch, level) in left_data.iter() {
+            if repetition < hasher.repetitions_at(*level) {
+                let h = hasher.hash(pool, repetition);
+                if let Some(idx) = hash_table
+                    .binary_search_by(|probe| probe.0.lex_cmp_partial(&h, *level))
+                    .ok()
+                {
+                    let before = hash_table[0..idx]
+                        .iter()
+                        .rev()
+                        .take_while(|probe| probe.0.prefix_eq(&h, *level));
+                    let after = hash_table[idx..]
+                        .iter()
+                        .take_while(|probe| probe.0.prefix_eq(&h, *level));
+                    for (_hash, r_id, _pool, r_sketch) in before.chain(after) {
+                        examined_pairs += 1;
+                        if sketch_predicate.eval(&l_sketch, &r_sketch) {
+                            if !filter.test_and_insert(&(*l_id, *r_id)) {
+                                if sim_pred(&left[&l_id], &right[&r_id]) {
+                                    cnt += 1;
+                                }
+                            } else {
+                                duplicates_discarded += 1;
+                            }
+                        } else {
+                            sketch_discarded += 1;
+                        }
+                    }
+                }
+            }
+        }
+        log_event!(
+            logger,
+            LogEvent::SketchDiscarded(repetition, sketch_discarded)
+        );
+        log_event!(
+            logger,
+            LogEvent::DuplicatesDiscarded(repetition, duplicates_discarded)
+        );
+        log_event!(logger, LogEvent::GeneratedPairs(repetition, examined_pairs));
+        let end = Instant::now();
+        info!("Repetition {} completed in {:?}", repetition, end - start);
+    }
     cnt
 }

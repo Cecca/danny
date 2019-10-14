@@ -852,7 +852,7 @@ where
                     notificator.for_each(&[left_in.frontier(), &right_in.frontier()], |t, _| {
                         if let Some(left_data) = left_data.remove(&t) {
                             let right_data = right_data.remove(&t).expect("missing right data");
-                            let cnt = adaptive_local_solve(
+                            let cnt = adaptive_local_solve_srr(
                                 Arc::clone(&global_left),
                                 Arc::clone(&global_right),
                                 left_data,
