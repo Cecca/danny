@@ -1,5 +1,10 @@
+extern crate bzip2;
+
 use crate::config::*;
 use crate::version;
+use bzip2::read::BzDecoder;
+use bzip2::write::BzEncoder;
+use bzip2::Compression;
 use chrono::prelude::*;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -107,19 +112,20 @@ impl Experiment {
     fn get_header_and_writer<'a, I>(
         table_name: &str,
         header_names: Option<I>,
-    ) -> (Vec<String>, BufWriter<File>)
+    ) -> (Vec<String>, BzEncoder<File>)
     where
         I: Iterator<Item = &'a String>,
     {
         // Test if the csv file exists
         let mut path = PathBuf::new();
         path.set_file_name(table_name);
-        path.set_extension("csv");
+        path.set_extension("csv.bz2");
         if path.exists() {
             // read the header
             let header: Vec<String> = {
                 let f = File::open(&path).expect("Error opening csv file");
-                let reader = BufReader::new(f);
+                let reader = BzDecoder::new(f);
+                let reader = BufReader::new(reader);
                 reader
                     .lines()
                     .next()
@@ -133,11 +139,12 @@ impl Experiment {
                 .append(true)
                 .open(path)
                 .expect("Error opening file");
-            let writer = BufWriter::new(file);
+            let writer = BzEncoder::new(file, Compression::Best);
+            // let writer = BufWriter::new(file);
             (header, writer)
         } else {
             // write the header
-            let mut file = OpenOptions::new()
+            let file = OpenOptions::new()
                 .create(true)
                 .write(true)
                 .open(path)
@@ -147,7 +154,10 @@ impl Experiment {
                 .cloned()
                 .collect();
             let header = tmp.join(",");
-            writeln!(file, "{}", header).expect("error writing header");
+            let mut writer = BzEncoder::new(file, Compression::Best);
+            writeln!(writer, "{}", header).expect("error writing header");
+            writer.flush().expect("error flushing file");
+            drop(writer);
             Self::get_header_and_writer::<I>(table_name, None)
         }
     }
@@ -177,6 +187,8 @@ impl Experiment {
                 }
                 writeln!(writer, "").expect("error writing newline");
             }
+            writer.flush().expect("error flushing file");
+            drop(writer);
         }
     }
 }
