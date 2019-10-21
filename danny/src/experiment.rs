@@ -72,6 +72,19 @@ impl Experiment {
         }
     }
 
+    pub fn from_env(config: &Config) -> Experiment {
+        Experiment::new()
+            .tag("threads_per_worker", config.get_threads())
+            .tag("hosts", config.get_hosts().clone())
+            .tag("num_hosts", config.get_num_hosts())
+            .tag("total_threads", config.get_total_workers())
+            .tag("seed", config.get_seed())
+            .tag("sketch_epsilon", config.get_sketch_epsilon())
+            .tag("cost_balance", config.get_cost_balance())
+            .tag("git_revision", version::short_sha())
+            .tag("git_commit_date", version::commit_date())
+    }
+
     pub fn tag<T>(mut self, name: &str, value: T) -> Self
     where
         T: Into<Value>,

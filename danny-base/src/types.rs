@@ -4,6 +4,7 @@ use abomonation::Abomonation;
 use rand::distributions::{Distribution, Exp, Normal, Uniform};
 use rand::Rng;
 use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -112,6 +113,13 @@ impl BagOfWords {
 
     pub fn words(&self) -> &Vec<u32> {
         &self.words
+    }
+
+    pub fn remap_tokens(&mut self, m: &HashMap<u32, u32>) {
+        for token in &mut self.words {
+            *token = m[token];
+        }
+        self.words.sort();
     }
 
     pub fn len(&self) -> usize {
