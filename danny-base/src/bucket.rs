@@ -7,7 +7,7 @@ use std::fmt::Debug;
 /// ones can be returned, in order to reuse the memory
 pub struct BucketPool<H, K>
 where
-    H: Ord + Debug + std::fmt::Binary,
+    H: Ord + Debug,
     K: Debug,
 {
     pool: Vec<Bucket<H, K>>,
@@ -15,7 +15,7 @@ where
 
 impl<H, K> BucketPool<H, K>
 where
-    H: Ord + Debug + std::fmt::Binary,
+    H: Ord + Debug,
     K: Debug,
 {
     pub fn get(&mut self) -> Bucket<H, K> {
@@ -29,7 +29,7 @@ where
 
 impl<H, K> Default for BucketPool<H, K>
 where
-    H: Ord + Debug + std::fmt::Binary,
+    H: Ord + Debug,
     K: Debug,
 {
     fn default() -> Self {
@@ -39,7 +39,7 @@ where
 
 pub struct Bucket<H, K>
 where
-    H: Ord + Debug + std::fmt::Binary,
+    H: Ord + Debug,
     K: Debug,
 {
     pub left: Vec<(H, K)>,
@@ -48,7 +48,7 @@ where
 
 impl<H, K> Bucket<H, K>
 where
-    H: Ord + Debug + std::fmt::Binary,
+    H: Ord + Debug,
     K: Debug,
 {
     pub fn new() -> Self {
@@ -126,7 +126,7 @@ where
 
 impl<H, K> Bucket<H, (K, u8)>
 where
-    H: Ord + PrefixHash + Debug + std::fmt::Binary,
+    H: Ord + PrefixHash + Debug,
     K: Debug,
 {
     /// This method can be applied just to buckets such that information about the
@@ -170,7 +170,7 @@ where
 
 impl<H, K> Default for Bucket<H, K>
 where
-    H: Ord + Debug + std::fmt::Binary,
+    H: Ord + Debug,
     K: Debug,
 {
     fn default() -> Self {
@@ -180,7 +180,7 @@ where
 
 pub struct AdaptiveBucket<H, K>
 where
-    H: PrefixHash + Ord + Debug + std::fmt::Binary,
+    H: PrefixHash + Ord + Debug,
     K: Debug,
 {
     left: HashMap<u8, Vec<(H, K)>>,
@@ -189,7 +189,7 @@ where
 
 impl<H, K> Default for AdaptiveBucket<H, K>
 where
-    H: PrefixHash + Ord + Debug + std::fmt::Binary,
+    H: PrefixHash + Ord + Debug,
     K: Debug,
 {
     fn default() -> Self {
@@ -202,7 +202,7 @@ where
 
 impl<H, K> AdaptiveBucket<H, K>
 where
-    H: PrefixHash + Ord + Debug + std::fmt::Binary,
+    H: PrefixHash + Ord + Debug,
     K: Debug,
 {
     pub fn is_empty(&self) -> bool {
