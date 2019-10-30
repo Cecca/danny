@@ -484,6 +484,33 @@ for r in [0.5,0.7,0.9]:
     derived_datasets.append(d)
 
 derived_datasets.append(DerivedDataset(
+    'Glove-sample-20000',
+    'Glove-sample-20000.bin',
+    DATASETS['Glove-27-200'],
+    preprocess_diverse_expansion
+))
+derived_datasets.append(DerivedDataset(
+    'AOL-sample-20000',
+    'AOL-sample-20000.bin',
+    DATASETS['AOL'],
+    preprocess_diverse_expansion
+))
+derived_datasets.append(DerivedDataset(
+    'Orkut-sample-20000',
+    'Orkut-sample-20000.bin',
+    DATASETS['Orkut'],
+    preprocess_diverse_expansion
+))
+derived_datasets.append(DerivedDataset(
+    'Livejournal-sample-20000', 
+    'Livejournal-sample-20000.bin',
+    DATASETS['Livejournal'],
+    preprocess_diverse_expansion
+))
+
+
+
+derived_datasets.append(DerivedDataset(
     'Livejournal-diverse-exp-{}-3M'.format(0.5),
     'Livejournal-diverse-exp-{}-3000000.bin'.format(0.5),
     DATASETS['Livejournal'],
@@ -545,32 +572,6 @@ derived_datasets.append(DerivedDataset(
 #     DATASETS['Glove-27-200'],
 #     preprocess_diverse_expansion
 # ))
-
-derived_datasets.append(DerivedDataset(
-    'Glove-sample-20000',
-    'Glove-sample-20000.bin',
-    DATASETS['Glove-27-200'],
-    preprocess_diverse_expansion
-))
-derived_datasets.append(DerivedDataset(
-    'AOL-sample-20000',
-    'AOL-sample-20000.bin',
-    DATASETS['AOL'],
-    preprocess_diverse_expansion
-))
-derived_datasets.append(DerivedDataset(
-    'Orkut-sample-20000',
-    'Orkut-sample-20000.bin',
-    DATASETS['Orkut'],
-    preprocess_diverse_expansion
-))
-derived_datasets.append(DerivedDataset(
-    'Livejournal-sample-20000', 
-    'Livejournal-sample-20000.bin',
-    DATASETS['Livejournal'],
-    preprocess_diverse_expansion
-))
-
 
 for d in derived_datasets:
     DATASETS[d.name] = d
