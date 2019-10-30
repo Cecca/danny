@@ -383,6 +383,23 @@ def preprocess_diverse_expansion(base_path, filepath):
         ]
     )
 
+def sample_dataset(base_path, filepath):
+    datatype = "cosine" if "glove" in base_path else "jaccard"
+    tokens = pre.split("-")
+    size = tokens[-1]
+    subprocess.run(
+        [
+            "sampledata",
+            "--size",
+            str(size),
+            "--measure",
+            measure,
+            base_path,
+            filepath,
+        ]
+    )
+
+
 
 DATASETS = {
     "Glove-6B-100": Dataset(
@@ -526,6 +543,31 @@ derived_datasets.append(DerivedDataset(
     'Glove-27-diverse-extreme-{}'.format(0.5),
     'Glove-27-diverse-extreme-{}-300000.bin'.format(0.5),
     DATASETS['Glove-27-200'],
+    preprocess_diverse_expansion
+))
+
+derived_datasets.append(DerivedDataset(
+    'Glove-sample-20000',
+    'Glove-sample-20000.bin',
+    DATASETS['Glove-27-200'],
+    preprocess_diverse_expansion
+))
+derived_datasets.append(DerivedDataset(
+    'AOL-sample-20000',
+    'AOL-sample-20000.bin',
+    DATASETS['AOL'],
+    preprocess_diverse_expansion
+))
+derived_datasets.append(DerivedDataset(
+    'Orkut-sample-20000',
+    'Orkut-sample-20000.bin',
+    DATASETS['Orkut'],
+    preprocess_diverse_expansion
+))
+derived_datasets.append(DerivedDataset(
+    'Livejournal-sample-20000', 
+    'Livejournal-sample-20000.bin',
+    DATASETS['Livejournal'],
     preprocess_diverse_expansion
 ))
 
