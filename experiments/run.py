@@ -384,7 +384,7 @@ def preprocess_diverse_expansion(base_path, filepath):
     )
 
 def sample_dataset(base_path, filepath):
-    datatype = "cosine" if "glove" in base_path else "jaccard"
+    measure = "cosine" if "glove" in base_path else "jaccard"
     tokens = filepath.split("-")
     size = tokens[-1]
     subprocess.run(
