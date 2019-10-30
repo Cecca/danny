@@ -487,25 +487,25 @@ derived_datasets.append(DerivedDataset(
     'Glove-sample-20000',
     'Glove-sample-20000.bin',
     DATASETS['Glove-27-200'],
-    preprocess_diverse_expansion
+    sample_dataset
 ))
 derived_datasets.append(DerivedDataset(
     'AOL-sample-20000',
     'AOL-sample-20000.bin',
     DATASETS['AOL'],
-    preprocess_diverse_expansion
+    sample_dataset
 ))
 derived_datasets.append(DerivedDataset(
     'Orkut-sample-20000',
     'Orkut-sample-20000.bin',
     DATASETS['Orkut'],
-    preprocess_diverse_expansion
+    sample_dataset
 ))
 derived_datasets.append(DerivedDataset(
     'Livejournal-sample-20000', 
     'Livejournal-sample-20000.bin',
     DATASETS['Livejournal'],
-    preprocess_diverse_expansion
+    sample_dataset
 ))
 
 
