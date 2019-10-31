@@ -49,8 +49,9 @@ where
         D::num_chunks(path.to_path_buf())
     };
     info!("Sampled dataset with {} elements", data.len());
-    WriteBinaryFile::write_binary(output.to_path_buf(), chunks, data.iter());
-    info!("Written the output file");
+    // Renumbering happens here!
+    WriteBinaryFile::write_binary(output.to_path_buf(), chunks, data.into_iter().map(|p| p.1));
+    info!("Written the output file (with renumbering of IDs)");
 }
 
 fn main() {
