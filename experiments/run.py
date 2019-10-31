@@ -485,26 +485,26 @@ for r in [0.5,0.7,0.9]:
     derived_datasets.append(d)
 
 derived_datasets.append(DerivedDataset(
-    'Glove-sample-20000',
-    'Glove-sample-20000.bin',
+    'Glove-sample-200000',
+    'Glove-sample-200000.bin',
     DATASETS['Glove-27-200'],
     sample_dataset
 ))
 derived_datasets.append(DerivedDataset(
-    'AOL-sample-20000',
-    'AOL-sample-20000.bin',
+    'AOL-sample-200000',
+    'AOL-sample-200000.bin',
     DATASETS['AOL'],
     sample_dataset
 ))
 derived_datasets.append(DerivedDataset(
-    'Orkut-sample-20000',
-    'Orkut-sample-20000.bin',
+    'Orkut-sample-200000',
+    'Orkut-sample-200000.bin',
     DATASETS['Orkut'],
     sample_dataset
 ))
 derived_datasets.append(DerivedDataset(
-    'Livejournal-sample-20000', 
-    'Livejournal-sample-20000.bin',
+    'Livejournal-sample-200000', 
+    'Livejournal-sample-200000.bin',
     DATASETS['Livejournal'],
     sample_dataset
 ))
