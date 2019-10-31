@@ -13,6 +13,7 @@ experiments:
       - glove
       - cosine
       - fixed
+      - ours
     environment:
       DANNY_SEED:
         - 13124534
@@ -29,13 +30,13 @@ experiments:
   - name: Glove Hu et al
     tags:
       - glove
+      - hu
       - cosine
       - fixed
     environment:
       DANNY_SEED:
         - 13124534
-    parameters:
-      --algorithm: hu-et-al
+    parameters: --algorithm: hu-et-al
       --range: 0.5
       --measure: cosine
       -k: [7,9,11,13,15,17]
@@ -45,6 +46,7 @@ experiments:
   - name: Livejournal fixed
     tags:
       - livejournal
+      - ours
     environment:
       DANNY_SEED:
         - 13124534
@@ -61,6 +63,7 @@ experiments:
   - name: Livejournal Hu et al
     tags:
       - livejournal
+      - hu
     environment:
       DANNY_SEED:
         - 13124534
@@ -75,6 +78,7 @@ experiments:
   - name: Orkut fixed
     tags:
       - orkut
+      - ours
     environment:
       DANNY_SEED:
         - 13124534
@@ -91,6 +95,7 @@ experiments:
   - name: Orkut Hu et al
     tags:
       - orkut
+      - hu
     environment:
       DANNY_SEED:
         - 13124534
@@ -105,6 +110,7 @@ experiments:
   - name: AOL fixed
     tags:
       - aol
+      - ours
     environment:
       DANNY_SEED:
         - 13124534
