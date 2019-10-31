@@ -36,7 +36,8 @@ experiments:
     environment:
       DANNY_SEED:
         - 13124534
-    parameters: --algorithm: hu-et-al
+    parameters: 
+      --algorithm: hu-et-al
       --range: 0.5
       --measure: cosine
       -k: [7,9,11,13,15,17]
