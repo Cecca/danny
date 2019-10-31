@@ -18,12 +18,12 @@ experiments:
       DANNY_SEED:
         - 13124534
     parameters:
-      --rounds: "one"
+      --rounds: "multi"
       --algorithm: lsh
       --range: 0.5
       --measure: cosine
       --sketch-bits: 128
-      -k: [3,5]
+      -k: [3,5,7,9,11,13,15,17]
     arguments:
       - ["{{ dataset('Glove-sample-200000') }}", "{{ dataset('Glove-sample-200000') }}"]
 
@@ -40,7 +40,7 @@ experiments:
       --algorithm: hu-et-al
       --range: 0.5
       --measure: cosine
-      -k: [3,5]
+      -k: [3,5,7,9,11,13,15,17]
     arguments:
       - ["{{ dataset('Glove-sample-200000') }}", "{{ dataset('Glove-sample-200000') }}"]
 
@@ -52,12 +52,12 @@ experiments:
       DANNY_SEED:
         - 13124534
     parameters:
-      --rounds: "one"
+      --rounds: "multi"
       --algorithm: lsh
       --range: 0.5
       --measure: jaccard
       --sketch-bits: 128
-      -k: [3,5]
+      -k: [3,5,7,9,11,13,15,17]
     arguments:
       - ["{{ dataset('Livejournal-sample-200000') }}", "{{ dataset('Livejournal-sample-200000') }}"]
 
@@ -72,7 +72,7 @@ experiments:
       --algorithm: hu-et-al
       --range: 0.5
       --measure: jaccard
-      -k: [3,5]
+      -k: [3,5,7,9,11,13,15,17]
     arguments:
       - ["{{ dataset('Livejournal-sample-200000') }}", "{{ dataset('Livejournal-sample-200000') }}"]
 
@@ -84,12 +84,12 @@ experiments:
       DANNY_SEED:
         - 13124534
     parameters:
-      --rounds: "one"
+      --rounds: "multi"
       --algorithm: lsh
       --range: 0.5
       --measure: jaccard
       --sketch-bits: 128
-      -k: [3,5]
+      -k: [3,5,7,9,11,13,15,17]
     arguments:
       - ["{{ dataset('Orkut-sample-200000') }}", "{{ dataset('Orkut-sample-200000') }}"]
 
@@ -104,7 +104,7 @@ experiments:
       --algorithm: hu-et-al
       --range: 0.5
       --measure: jaccard
-      -k: [3,5]
+      -k: [3,5,7,9,11,13,15,17]
     arguments:
       - ["{{ dataset('Orkut-sample-200000') }}", "{{ dataset('Orkut-sample-200000') }}"]
 
@@ -116,12 +116,12 @@ experiments:
       DANNY_SEED:
         - 13124534
     parameters:
-      --rounds: "one"
+      --rounds: "multi"
       --algorithm: lsh
       --range: 0.5
       --measure: jaccard
       --sketch-bits: 128
-      -k: [3,5]
+      -k: [3,5,7,9,11,13,15,17]
     arguments:
       - ["{{ dataset('AOL-sample-200000') }}", "{{ dataset('AOL-sample-200000') }}"]
 
@@ -135,7 +135,7 @@ experiments:
       --algorithm: hu-et-al
       --range: 0.5
       --measure: jaccard
-      -k: [3,5]
+      -k: [3,5,7,9,11,13,15,17]
     arguments:
       - ["{{ dataset('AOL-sample-200000') }}", "{{ dataset('AOL-sample-200000') }}"]
 
