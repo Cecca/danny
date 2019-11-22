@@ -996,14 +996,10 @@ where
                 MatrixDirection::Columns,
             );
             left_hashes
-                .bucket_pred(
-                    &right_hashes,
-                    move |l, r| sim_pred(&l.1, &r.1),
-                    |_, _| true,
-                    |x| x.1,
-                )
-                .count()
+                .bucket_pred_count(&right_hashes, move |l, r| sim_pred(&l.1, &r.1))
+                .inspect(|cnt| info!("Count before exchange {}", cnt))
                 .exchange(|_| 0) // Bring all the counts to the first worker
+                .inspect(|cnt| info!("Count after exchange {}", cnt))
                 .probe_with(&mut probe)
                 .capture_into(output_send_ch);
 
@@ -1015,9 +1011,13 @@ where
         // worker.step_while(|| probe.less_than(&(repetitions as u32)));
         worker.step_while(|| probe.with_frontier(|f| !f.is_empty()));
 
+        info!("Finished stepping");
+
         collect_execution_summaries(execution_summary, send_exec_summary.clone(), &mut worker);
     })
     .expect("Problems with the dataflow");
+
+    info!("Collecting summaries");
 
     let network_summaries = network.map(|n| n.measure().collect_from_workers(&config));
 

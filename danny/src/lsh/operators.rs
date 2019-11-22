@@ -44,6 +44,10 @@ where
         PD: FnMut(&K, &K) -> bool + 'static,
         R: Fn(K) -> O + 'static,
         O: ExchangeData;
+
+    fn bucket_pred_count<P>(&self, right: &Stream<G, (H, K)>, pre: P) -> Stream<G, usize>
+    where
+        P: FnMut(&K, &K) -> bool + 'static;
 }
 
 impl<G, T, H, K> BucketStream<G, T, H, K> for Stream<G, (H, K)>
@@ -174,6 +178,118 @@ where
                                 end - start,
                                 proc_mem!(),
                                 time.time()
+                            );
+                        }
+                    }
+
+                    // Cleanup exhausted buckets, returning buckets to the pool,
+                    // so to reuse the allocated memory in the future
+                    let cleanup_times: Vec<Capability<T>> = buckets
+                        .iter()
+                        .filter(|(_, b)| b.is_empty())
+                        .map(|p| p.0)
+                        .cloned()
+                        .collect();
+                    for t in cleanup_times.iter() {
+                        let bucket = buckets.remove(t).unwrap();
+                        // put it back into the pool
+                        pool.give_back(bucket);
+                    }
+                }
+            },
+        )
+    }
+
+    #[allow(clippy::explicit_counter_loop)]
+    fn bucket_pred_count<P>(&self, right: &Stream<G, (H, K)>, mut pred: P) -> Stream<G, usize>
+    where
+        P: FnMut(&K, &K) -> bool + 'static,
+    {
+        let mut buckets = HashMap::new();
+        let mut pool = BucketPool::default();
+        let logger = self.scope().danny_logger();
+
+        self.binary_frontier(
+            &right,
+            ExchangePact::new(|pair: &(H, K)| pair.0.route()),
+            ExchangePact::new(|pair: &(H, K)| pair.0.route()),
+            "bucket",
+            move |_, _| {
+                move |left_in, right_in, output| {
+                    left_in.for_each(|t, d| {
+                        let _pg = ProfileGuard::new(
+                            logger.clone(),
+                            t.time().to_step_id(),
+                            1,
+                            "bucket_receive",
+                        );
+                        debug!(
+                            "Received batch of left messages for time {:?}:\n\t{:?}",
+                            t.time(),
+                            d.iter()
+                        );
+                        let mut data = d.replace(Vec::new());
+                        log_event!(
+                            logger,
+                            LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
+                        );
+                        let rep_entry = buckets.entry(t.retain()).or_insert_with(|| pool.get());
+                        for (h, k) in data.drain(..) {
+                            rep_entry.push_left(h, k);
+                        }
+                    });
+                    right_in.for_each(|t, d| {
+                        let _pg = ProfileGuard::new(
+                            logger.clone(),
+                            t.time().to_step_id(),
+                            1,
+                            "bucket_receive",
+                        );
+                        debug!(
+                            "Received batch of right messages for time {:?}:\n\t{:?}",
+                            t.time(),
+                            d.iter()
+                        );
+                        let mut data = d.replace(Vec::new());
+                        log_event!(
+                            logger,
+                            LogEvent::ReceivedHashes(t.time().to_step_id(), data.len())
+                        );
+                        let rep_entry = buckets.entry(t.retain()).or_insert_with(|| pool.get());
+                        for (h, k) in data.drain(..) {
+                            rep_entry.push_right(h, k);
+                        }
+                    });
+                    let frontiers = &[left_in.frontier(), right_in.frontier()];
+                    for (time, buckets) in buckets.iter_mut() {
+                        if frontiers.iter().all(|f| !f.less_equal(time)) {
+                            let _pg = ProfileGuard::new(
+                                logger.clone(),
+                                time.time().to_step_id(),
+                                1,
+                                "candidate_verification",
+                            );
+                            let mut session = output.session(time);
+                            let mut cnt = 0;
+                            let mut total_pairs = 0;
+                            let start = Instant::now();
+                            if !buckets.is_one_side_empty() {
+                                buckets.for_all(|l, r| {
+                                    total_pairs += 1;
+                                    if pred(l, r) {
+                                        cnt += 1;
+                                    }
+                                });
+                            }
+                            buckets.clear();
+                            let end = Instant::now();
+                            session.give(cnt);
+                            info!(
+                                "Candidates {}: Passing predicate: {} // in {:?} ({})",
+                                total_pairs,
+                                cnt,
+                                end - start,
+                                proc_mem!()
                             );
                         }
                     }
