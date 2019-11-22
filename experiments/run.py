@@ -383,6 +383,24 @@ def preprocess_diverse_expansion(base_path, filepath):
         ]
     )
 
+def sample_dataset(base_path, filepath):
+    measure = "cosine" if "glove" in base_path else "jaccard"
+    pre, ext = os.path.splitext(filepath)
+    tokens = pre.split("-")
+    size = tokens[-1]
+    subprocess.run(
+        [
+            "sampledata",
+            "--size",
+            str(size),
+            "--measure",
+            measure,
+            base_path,
+            filepath,
+        ]
+    )
+
+
 
 DATASETS = {
     "Glove-6B-100": Dataset(
@@ -467,6 +485,33 @@ for r in [0.5,0.7,0.9]:
     derived_datasets.append(d)
 
 derived_datasets.append(DerivedDataset(
+    'Glove-sample-200000',
+    'Glove-sample-200000.bin',
+    DATASETS['Glove-27-200'],
+    sample_dataset
+))
+derived_datasets.append(DerivedDataset(
+    'AOL-sample-200000',
+    'AOL-sample-200000.bin',
+    DATASETS['AOL'],
+    sample_dataset
+))
+derived_datasets.append(DerivedDataset(
+    'Orkut-sample-200000',
+    'Orkut-sample-200000.bin',
+    DATASETS['Orkut'],
+    sample_dataset
+))
+derived_datasets.append(DerivedDataset(
+    'Livejournal-sample-200000', 
+    'Livejournal-sample-200000.bin',
+    DATASETS['Livejournal'],
+    sample_dataset
+))
+
+
+
+derived_datasets.append(DerivedDataset(
     'Livejournal-diverse-exp-{}-3M'.format(0.5),
     'Livejournal-diverse-exp-{}-3000000.bin'.format(0.5),
     DATASETS['Livejournal'],
@@ -498,37 +543,36 @@ derived_datasets.append(DerivedDataset(
 ))
 
 
-derived_datasets.append(DerivedDataset(
-    'Livejournal-diverse-extreme-{}'.format(0.5),
-    'Livejournal-diverse-extreme-{}-300000.bin'.format(0.5),
-    DATASETS['Livejournal'],
-    preprocess_diverse_expansion
-))
-derived_datasets.append(DerivedDataset(
-    'Orkut-diverse-extreme-{}'.format(0.5),
-    'Orkut-diverse-extreme-{}-300000.bin'.format(0.5),
-    DATASETS['Orkut'],
-    preprocess_diverse_expansion
-))
-derived_datasets.append(DerivedDataset(
-    'AOL-diverse-extreme-{}'.format(0.5),
-    'AOL-diverse-extreme-{}-300000.bin'.format(0.5),
-    DATASETS['AOL'],
-    preprocess_diverse_expansion
-))
-derived_datasets.append(DerivedDataset(
-    'wiki-10k-diverse-extreme-{}'.format(0.5),
-    'wiki-10k-diverse-extreme-{}-300000.bin'.format(0.5),
-    DATASETS['wiki-10k'],
-    preprocess_diverse_expansion
-))
-derived_datasets.append(DerivedDataset(
-    'Glove-27-diverse-extreme-{}'.format(0.5),
-    'Glove-27-diverse-extreme-{}-300000.bin'.format(0.5),
-    DATASETS['Glove-27-200'],
-    preprocess_diverse_expansion
-))
-
+# derived_datasets.append(DerivedDataset(
+#     'Livejournal-diverse-extreme-{}'.format(0.5),
+#     'Livejournal-diverse-extreme-{}-300000.bin'.format(0.5),
+#     DATASETS['Livejournal'],
+#     preprocess_diverse_expansion
+# ))
+# derived_datasets.append(DerivedDataset(
+#     'Orkut-diverse-extreme-{}'.format(0.5),
+#     'Orkut-diverse-extreme-{}-300000.bin'.format(0.5),
+#     DATASETS['Orkut'],
+#     preprocess_diverse_expansion
+# ))
+# derived_datasets.append(DerivedDataset(
+#     'AOL-diverse-extreme-{}'.format(0.5),
+#     'AOL-diverse-extreme-{}-300000.bin'.format(0.5),
+#     DATASETS['AOL'],
+#     preprocess_diverse_expansion
+# ))
+#derived_datasets.append(DerivedDataset(
+#    'wiki-10k-diverse-extreme-{}'.format(0.5),
+#    'wiki-10k-diverse-extreme-{}-300000.bin'.format(0.5),
+#    DATASETS['wiki-10k'],
+#    preprocess_diverse_expansion
+#))
+# derived_datasets.append(DerivedDataset(
+#     'Glove-27-diverse-extreme-{}'.format(0.5),
+#     'Glove-27-diverse-extreme-{}-300000.bin'.format(0.5),
+#     DATASETS['Glove-27-200'],
+#     preprocess_diverse_expansion
+# ))
 
 for d in derived_datasets:
     DATASETS[d.name] = d

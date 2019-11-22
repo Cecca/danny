@@ -11,3 +11,4 @@ results/
 *.svg
 .Rproj.user
 *.csv
+*.csv.bz2

@@ -10,6 +10,7 @@ use danny::experiment::Experiment;
 use danny::io::*;
 use danny::logging::*;
 use danny::lsh::algorithms::distributed_lsh;
+use danny::lsh::algorithms::hu_baseline;
 use danny::lsh::algorithms::simple_adaptive;
 use danny::lsh::algorithms::simple_fixed;
 use danny::operators::*;
@@ -156,6 +157,46 @@ fn main() {
             Some(256) => run_lsh::<Sketch256>(&args, &config, &mut experiment),
             Some(512) => run_lsh::<Sketch512>(&args, &config, &mut experiment),
             Some(bits) => panic!("Unsupported number of sketch bits: {}", bits),
+        },
+        "hu-et-al" => match args.measure.as_ref() {
+            "cosine" => {
+                let mut rng = config.get_random_generator(0);
+                let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
+                let k = match args.k.expect("k is needed on the command line") {
+                    ParamK::Fixed(k) => k,
+                    _ => unimplemented!(),
+                };
+                hu_baseline::<UnitNormVector, _, _, _, _>(
+                    &args.left_path,
+                    &args.right_path,
+                    threshold,
+                    k,
+                    Hyperplane::builder(dim),
+                    move |a, b| UnitNormVector::cosine(a, b) >= threshold,
+                    &mut rng,
+                    &config,
+                    &mut experiment,
+                )
+            }
+            "jaccard" => {
+                let mut rng = config.get_random_generator(0);
+                let k = match args.k.expect("k is needed on the command line") {
+                    ParamK::Fixed(k) => k,
+                    _ => unimplemented!(),
+                };
+                hu_baseline::<BagOfWords, _, _, _, _>(
+                    &args.left_path,
+                    &args.right_path,
+                    threshold,
+                    k,
+                    OneBitMinHash::builder(),
+                    move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
+                    &mut rng,
+                    &config,
+                    &mut experiment,
+                )
+            }
+            _ => unimplemented!(),
         },
         "all-2-all" => match args.measure.as_ref() {
             "cosine" => baseline::all_pairs_parallel::<UnitNormVector, _>(

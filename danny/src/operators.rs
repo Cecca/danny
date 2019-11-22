@@ -182,6 +182,15 @@ impl<D> Route for (u32, D) {
     }
 }
 
+impl Route for (usize, u32) {
+    #[inline(always)]
+    fn route(&self) -> u64 {
+        (self.0 as u64)
+            .wrapping_mul(31u64)
+            .wrapping_add(u64::from(self.1))
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum MatrixDirection {
     Columns,
@@ -381,7 +390,9 @@ where
                 for (time, cnt) in sums.iter_mut() {
                     if !input.frontier().less_equal(time) {
                         info!("sending sum for time");
-                        output.session(time).give(cnt.take().expect("the count is None!"));
+                        output
+                            .session(time)
+                            .give(cnt.take().expect("the count is None!"));
                         info!("sent sum for time");
                     }
                 }
