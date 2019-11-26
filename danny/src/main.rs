@@ -13,6 +13,7 @@ use danny::lsh::algorithms::distributed_lsh;
 use danny::lsh::algorithms::hu_baseline;
 use danny::lsh::algorithms::simple_adaptive;
 use danny::lsh::algorithms::simple_fixed;
+use danny::lsh::algorithms::two_round_lsh;
 use danny::operators::*;
 use danny_base::lsh::*;
 use danny_base::measure::*;
@@ -157,6 +158,34 @@ fn main() {
             Some(256) => run_lsh::<Sketch256>(&args, &config, &mut experiment),
             Some(512) => run_lsh::<Sketch512>(&args, &config, &mut experiment),
             Some(bits) => panic!("Unsupported number of sketch bits: {}", bits),
+        },
+        "two-round-lsh" => match args.measure.as_ref() {
+            "cosine" => {
+                let mut rng = config.get_random_generator(0);
+                let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
+                let k = match args.k.expect("k is needed on the command line") {
+                    ParamK::Fixed(k) => k,
+                    _ => unimplemented!(),
+                };
+                let k2 = match args.k2.expect("k2 is needed on the command line") {
+                    ParamK::Fixed(k) => k,
+                    _ => unimplemented!(),
+                };
+                two_round_lsh::<UnitNormVector, _, _, _, _>(
+                    &args.left_path,
+                    &args.right_path,
+                    threshold,
+                    k,
+                    k2,
+                    Hyperplane::builder(dim),
+                    Hyperplane::builder(dim),
+                    move |a, b| UnitNormVector::cosine(a, b) >= threshold,
+                    &mut rng,
+                    &config,
+                    &mut experiment,
+                )
+            },
+            _ => unimplemented!(),
         },
         "hu-et-al" => match args.measure.as_ref() {
             "cosine" => {

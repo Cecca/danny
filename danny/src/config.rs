@@ -322,6 +322,7 @@ pub struct CmdlineConfig {
     pub right_path: String,
     pub algorithm: String,
     pub k: Option<ParamK>,
+    pub k2: Option<ParamK>,
     pub sketch_bits: Option<usize>,
     pub rounds: Rounds,
 }
@@ -335,6 +336,7 @@ impl CmdlineConfig {
             (@arg ALGORITHM: -a --algorithm +takes_value "The algorithm to be used: (fixed-lsh, all-2-all)")
             (@arg MEASURE: -m --measure +required +takes_value "The similarity measure to be used")
             (@arg K: -k +takes_value "The number of concatenations of the hash function")
+            (@arg L: -l +takes_value "The number of concatenations of the internal hash function")
             (@arg ADAPTIVE_K: --("adaptive-k") +takes_value "The max number of concatenations of the hash function in the adaptive algorithm: auto sets it. Overridden by -k")
             (@arg THRESHOLD: -r --range +required +takes_value "The similarity threshold")
             (@arg BITS: --("sketch-bits") +takes_value "The number of bits to use for sketching")
@@ -373,6 +375,14 @@ impl CmdlineConfig {
                 _ => panic!("Unsupported rounds specification `{}`", s),
             })
             .unwrap_or(Rounds::Multi);
+        let k2 = matches
+        .value_of("L")
+        .map(|k_str| {
+            let _k = k_str
+                .parse::<usize>()
+                .expect("L should be an unsigned integer");
+            ParamK::Fixed(_k)
+        });
         let k = matches
             .value_of("K")
             .map(|k_str| {
@@ -416,6 +426,7 @@ impl CmdlineConfig {
             right_path,
             algorithm,
             k,
+            k2, 
             sketch_bits,
             rounds,
         }
