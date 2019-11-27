@@ -11,7 +11,6 @@ use danny::io::*;
 use danny::logging::*;
 use danny::lsh::algorithms::distributed_lsh;
 use danny::lsh::algorithms::hu_baseline;
-use danny::lsh::algorithms::simple_adaptive;
 use danny::lsh::algorithms::simple_fixed;
 use danny::lsh::algorithms::two_round_lsh;
 use danny::operators::*;
@@ -38,8 +37,7 @@ where
                 SketchPredicate::cosine(sketch_bits, threshold, config.get_sketch_epsilon());
             let k = args.k.expect("K is needed on the command line");
             match args.rounds {
-                Rounds::One => match k {
-                    ParamK::Fixed(k) => simple_fixed::<UnitNormVector, _, _, _, _, _, _>(
+                Rounds::One => simple_fixed::<UnitNormVector, _, _, _, _, _, _>(
                         &args.left_path,
                         &args.right_path,
                         threshold,
@@ -52,22 +50,6 @@ where
                         &config,
                         experiment,
                     ),
-                    ParamK::Adaptive(_, max_k) => {
-                        simple_adaptive::<UnitNormVector, _, _, _, _, _, _>(
-                            &args.left_path,
-                            &args.right_path,
-                            threshold,
-                            max_k,
-                            Hyperplane::builder(dim),
-                            sketcher,
-                            sketch_predicate,
-                            move |a, b| InnerProduct::cosine(a, b) >= threshold,
-                            &mut rng,
-                            &config,
-                            experiment,
-                        )
-                    }
-                },
                 Rounds::Multi => distributed_lsh::<UnitNormVector, _, _, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,
@@ -91,8 +73,7 @@ where
             let sketch_predicate =
                 SketchPredicate::jaccard(sketch_bits, threshold, config.get_sketch_epsilon());
             match args.rounds {
-                Rounds::One => match k {
-                    ParamK::Fixed(k) => simple_fixed::<BagOfWords, _, _, _, _, _, _>(
+                Rounds::One => simple_fixed::<BagOfWords, _, _, _, _, _, _>(
                         &args.left_path,
                         &args.right_path,
                         threshold,
@@ -105,20 +86,6 @@ where
                         &config,
                         experiment,
                     ),
-                    ParamK::Adaptive(_, max_k) => simple_adaptive::<BagOfWords, _, _, _, _, _, _>(
-                        &args.left_path,
-                        &args.right_path,
-                        threshold,
-                        max_k,
-                        OneBitMinHash::builder(),
-                        sketcher,
-                        sketch_predicate,
-                        move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
-                        &mut rng,
-                        &config,
-                        experiment,
-                    ),
-                },
                 Rounds::Multi => distributed_lsh::<BagOfWords, _, _, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,
@@ -163,14 +130,8 @@ fn main() {
             "cosine" => {
                 let mut rng = config.get_random_generator(0);
                 let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
-                let k = match args.k.expect("k is needed on the command line") {
-                    ParamK::Fixed(k) => k,
-                    _ => unimplemented!(),
-                };
-                let k2 = match args.k2.expect("k2 is needed on the command line") {
-                    ParamK::Fixed(k) => k,
-                    _ => unimplemented!(),
-                };
+                let k = args.k.expect("k is needed on the command line");
+                let k2 = args.k2.expect("k2 is needed on the command line");
                 two_round_lsh::<UnitNormVector, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,
@@ -191,10 +152,7 @@ fn main() {
             "cosine" => {
                 let mut rng = config.get_random_generator(0);
                 let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
-                let k = match args.k.expect("k is needed on the command line") {
-                    ParamK::Fixed(k) => k,
-                    _ => unimplemented!(),
-                };
+                let k = args.k.expect("k is needed on the command line");
                 hu_baseline::<UnitNormVector, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,
@@ -209,10 +167,7 @@ fn main() {
             }
             "jaccard" => {
                 let mut rng = config.get_random_generator(0);
-                let k = match args.k.expect("k is needed on the command line") {
-                    ParamK::Fixed(k) => k,
-                    _ => unimplemented!(),
-                };
+                let k = args.k.expect("k is needed on the command line");
                 hu_baseline::<BagOfWords, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,
