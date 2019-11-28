@@ -451,19 +451,22 @@ where
                                     debug!("In repetition {}", rep);
                                     bucket.for_all_buckets(|x: &[(H, (DKTPool, S, K))], y: &[(H, (DKTPool, S, K))]| {
                                         let mut bucket = Bucket::default();
-                                        // split up to buckets and do all to all within buckets.
+
                                         for (_, (pool, s, v)) in x.iter() {
                                             bucket.push_left(hasher.hash(pool, rep), (s, v))
                                         }
                                         for (_, (pool, s, v)) in y.iter() {
                                             bucket.push_right(hasher.hash(pool, rep), (s, v))
                                         }
-                                        // TODO add sketches and duplicate counting
                                         bucket.for_all(|l, r| {
                                             total += 1;
-                                            if (sketch_pred(l.0, r.0)) {
-                                                if pred(l.1, r.1) {
-                                                    cnt += 1;
+                                            if sketch_pred(l.0, r.0) {
+                                                if distinct_pred(l.1, r.1) {
+                                                    if pred(l.1, r.1) {
+                                                        cnt += 1;
+                                                    }
+                                                } else {
+                                                    bloom_cnt += 1;
                                                 }
                                             } else {
                                                 sketch_cnt += 1;
@@ -679,10 +682,6 @@ where
                         let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
                         let s = sketcher.sketch(v);
                         session.give(((current_repetition, h), (hash_fns2.pool(v), s.clone(), (k.clone(), v.clone()))));
-                        // for inner_rep in 0..repetitions_inner {
-                        //     let h2 = hash_fns2.hash(&bit_pools_intern[k], inner_rep as usize);
-                        //     session.give(((current_repetition, h), ((inner_rep, h2), (k.clone(), v.clone()))));
-                        // }
                     }
                 }
                 done = true;

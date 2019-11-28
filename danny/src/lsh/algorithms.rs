@@ -771,6 +771,12 @@ where
     let hasher_intern = DKTCollection::new(k2, k2, range, hash_function_builder_2, rng);
     let hasher_intern = Arc::new(hasher_intern);
 
+    let bloom_filter = Arc::new(AtomicBloomFilter::<ElementId>::new(
+        config.get_bloom_bits(),
+        config.get_bloom_k(),
+        rng.clone(),
+    ));
+
     let rng = rng.clone();
 
     debug!(
@@ -785,6 +791,7 @@ where
         let global_right = Arc::clone(&global_right);
         let hasher = Arc::clone(&hasher);
         let hasher_intern = Arc::clone(&hasher_intern);
+        let bloom_filter = Arc::clone(&bloom_filter);
         let mut rng = rng.clone();
         let execution_summary = init_event_logging(&worker);
         let output_send_ch = output_send_ch
@@ -826,7 +833,7 @@ where
                     Arc::clone(&hasher_intern),
                     move |l, r| sim_pred(&l.1, &r.1),
                     move |l, r| sketch_pred.eval(l, r),
-                    |_, _| true,
+                    move |l, r| !bloom_filter.test_and_insert(&(l.0, r.0)),
                     |x| x.1,
                 )
                 .exchange(|_| 0) // Bring all the counts to the first worker
