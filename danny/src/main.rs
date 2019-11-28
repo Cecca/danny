@@ -132,7 +132,8 @@ fn main() {
                 let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
                 let k = args.k.expect("k is needed on the command line");
                 let k2 = args.k2.expect("k2 is needed on the command line");
-                two_round_lsh::<UnitNormVector, _, _, _, _>(
+
+                two_round_lsh::<UnitNormVector, _, _, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,
                     threshold,
@@ -140,6 +141,8 @@ fn main() {
                     k2,
                     Hyperplane::builder(dim),
                     Hyperplane::builder(dim),
+                    Sketch128::from_cosine(dim, &mut rng),
+                    SketchPredicate::cosine(128, threshold, config.get_sketch_epsilon()),
                     move |a, b| UnitNormVector::cosine(a, b) >= threshold,
                     &mut rng,
                     &config,

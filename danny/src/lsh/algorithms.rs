@@ -731,7 +731,7 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn two_round_lsh<D, F, H, B, R>(
+pub fn two_round_lsh<D, F, H, B, R, S, V>(
     left_path: &str,
     right_path: &str,
     range: f64,
@@ -739,6 +739,8 @@ pub fn two_round_lsh<D, F, H, B, R>(
     k2: usize,
     hash_function_builder: B,
     hash_function_builder_2: B,
+    sketcher: S,
+    sketch_pred: SketchPredicate<V>,
     sim_pred: F,
     rng: &mut R,
     config: &Config,
@@ -748,6 +750,8 @@ where
     for<'de> D: ReadBinaryFile + Deserialize<'de> + ExchangeData + Debug + SketchEstimate,
     F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
     H: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
+    S: Sketcher<Input = D, Output = V> + Send + Sync + Clone + 'static,
+    V: SketchData + Debug,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
     B: Fn(usize, &mut R) -> H + Sized + Send + Sync + Clone + 'static,
 {
@@ -788,6 +792,11 @@ where
             .expect("Cannot get lock on output channel")
             .clone();
         let sim_pred = sim_pred.clone();
+        let sketch_pred = sketch_pred.clone();
+
+        let sketcher = sketcher.clone();
+        let sketcher = Arc::new(sketcher);
+
 
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
             let mut probe = ProbeHandle::new();
@@ -796,6 +805,7 @@ where
             let left_hashes = source_hashed_two_round(
                 scope,
                 Arc::clone(&global_left),
+                Arc::clone(&sketcher),
                 Arc::clone(&hasher),
                 Arc::clone(&hasher_intern),
                 matrix,
@@ -804,6 +814,7 @@ where
             let right_hashes = source_hashed_two_round(
                 scope,
                 Arc::clone(&global_right),
+                Arc::clone(&sketcher),
                 Arc::clone(&hasher),
                 Arc::clone(&hasher_intern),
                 matrix,
@@ -814,6 +825,7 @@ where
                     &right_hashes,
                     Arc::clone(&hasher_intern),
                     move |l, r| sim_pred(&l.1, &r.1),
+                    move |l, r| sketch_pred.eval(l, r),
                     |_, _| true,
                     |x| x.1,
                 )
