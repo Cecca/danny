@@ -71,7 +71,7 @@ where
             sketch_pred: SP, 
             distinct_pre: PD,
             result: R,
-        ) -> Stream<G, (O, O)>
+        ) -> Stream<G, usize>
         where
             P: FnMut(&K, &K) -> bool + 'static,
             PD: FnMut(&K, &K) -> bool + 'static,
@@ -364,7 +364,7 @@ where
         mut sketch_pred: SP, 
         mut distinct_pred: PD,
         result: R,
-    ) -> Stream<G, (O, O)>
+    ) -> Stream<G, usize>
     where
         P: FnMut(&K, &K) -> bool + 'static,
         PD: FnMut(&K, &K) -> bool + 'static,
@@ -499,6 +499,7 @@ where
                                 proc_mem!(),
                                 time.time()
                             );
+                            session.give(cnt);
                         }
                     }
 

@@ -829,7 +829,6 @@ where
                     |_, _| true,
                     |x| x.1,
                 )
-                .count()
                 .exchange(|_| 0) // Bring all the counts to the first worker
                 .probe_with(&mut probe)
                 .capture_into(output_send_ch);

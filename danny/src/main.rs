@@ -263,6 +263,8 @@ fn main() {
         _ => unimplemented!("Unknown algorithm {}", args.algorithm),
     };
 
+    info!("Final count: {}", count);
+
     let end = std::time::Instant::now();
     let total_time_d = end - start;
     let total_time = total_time_d.as_secs() * 1000 + u64::from(total_time_d.subsec_millis());
