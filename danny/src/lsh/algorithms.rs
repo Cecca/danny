@@ -812,7 +812,7 @@ where
             left_hashes
                 .bucket_pred_lsh(
                     &right_hashes,
-                    hasher_intern.repetitions(),
+                    Arc::clone(&hasher_intern),
                     move |l, r| sim_pred(&l.1, &r.1),
                     |_, _| true,
                     |x| x.1,

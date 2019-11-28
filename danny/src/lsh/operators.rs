@@ -61,10 +61,10 @@ where
     H: Data + Route + Debug + Send + Sync + Abomonation + Clone + Eq + Hash + Ord,
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
-    fn bucket_pred_lsh<P, PD, R, O>(
+    fn bucket_pred_lsh<P, PD, R, O, F, D>(
             &self,
-            right: &Stream<G, (H, (H, K))>,
-            repetitions: usize,
+            right: &Stream<G, (H, (DKTPool, K))>,
+            hasher: Arc<DKTCollection<F>>,
             pre: P,
             distinct_pre: PD,
             result: R,
@@ -73,6 +73,7 @@ where
             P: FnMut(&K, &K) -> bool + 'static,
             PD: FnMut(&K, &K) -> bool + 'static,
             R: Fn(K) -> O + 'static,
+            F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
             O: ExchangeData;
 }
 
@@ -301,6 +302,7 @@ where
                             let mut cnt = 0;
                             let mut total_pairs = 0;
                             let start = Instant::now();
+                            info!("Left: {}, right: {}", buckets.len_left(), buckets.len_right());
                             if !buckets.is_one_side_empty() {
                                 buckets.for_all(|l, r| {
                                     total_pairs += 1;
@@ -341,7 +343,7 @@ where
     }
 }
 
-impl<G, T, H, K> BucketTwoStream<G, T, H, K> for Stream<G, (H, (H, K))>
+impl<G, T, H, K> BucketTwoStream<G, T, H, K> for Stream<G, (H, (DKTPool, K))>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + ToStepId,
@@ -349,10 +351,10 @@ where
     K: Data + Debug + Send + Sync + Abomonation + Clone,
 {
     #[allow(clippy::explicit_counter_loop)]
-    fn bucket_pred_lsh<P, PD, R, O>(
+    fn bucket_pred_lsh<P, PD, R, O, F, D>(
         &self,
-        right: &Stream<G, (H, (H, K))>,
-        repetitions: usize,
+        right: &Stream<G, (H, (DKTPool, K))>,
+        hasher: Arc<DKTCollection<F>>,
         mut pred: P,
         mut distinct_pred: PD,
         result: R,
@@ -361,6 +363,7 @@ where
         P: FnMut(&K, &K) -> bool + 'static,
         PD: FnMut(&K, &K) -> bool + 'static,
         R: Fn(K) -> O + 'static,
+        F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
         O: ExchangeData,
     {
         let mut buckets = HashMap::new();
@@ -369,8 +372,8 @@ where
 
         self.binary_frontier(
             &right,
-            ExchangePact::new(|pair: &(H, (H, K))| pair.0.route()),
-            ExchangePact::new(|pair: &(H, (H, K))| pair.0.route()),
+            ExchangePact::new(|pair: &(H, (DKTPool, K))| pair.0.route()),
+            ExchangePact::new(|pair: &(H, (DKTPool, K))| pair.0.route()),
             "bucket",
             move |_, _| {
                 move |left_in, right_in, output| {
@@ -428,25 +431,30 @@ where
                                 "candidate_emission",
                             );
                             let mut session = output.session(time);
+                            let mut total = 0;
                             let mut cnt = 0;
                             let mut sketch_cnt = 0;
                             let mut bloom_cnt = 0;
+                            let repetitions = hasher.repetitions();
                             let start = Instant::now();
+                            info!("Left: {}, right: {}", bucket.len_left(), bucket.len_right());
                             if !bucket.is_one_side_empty() {                                
                                 debug!("Doing {:?} local repetitions", repetitions);
 
                                 for rep in 0..repetitions {
-                                    bucket.for_all_buckets(|x: &[(H, (H, K))], y: &[(H, (H, K))]| {
+                                    debug!("In repetition {}", rep);
+                                    bucket.for_all_buckets(|x: &[(H, (DKTPool, K))], y: &[(H, (DKTPool, K))]| {
                                         let mut bucket = Bucket::default();
                                         // split up to buckets and do all to all within buckets.
-                                        for (_, (h, v)) in x.iter() {
-                                            bucket.push_left(h, v)
+                                        for (_, (pool, v)) in x.iter() {
+                                            bucket.push_left(hasher.hash(pool, rep), v)
                                         }
-                                        for (_, (h, v)) in y.iter() {
-                                            bucket.push_right(h, v)
+                                        for (_, (pool, v)) in y.iter() {
+                                            bucket.push_right(hasher.hash(pool, rep), v)
                                         }
                                         // TODO add sketches and duplicate counting
                                         bucket.for_all(|l, r| {
+                                            total += 1;
                                             if pred(l, r) {
                                                 cnt += 1;
                                             }
@@ -473,7 +481,7 @@ where
                             );
                             info!(
                                 "Candidates {}: Emitted {} / Discarded {} / Duplicates {} in {:?} ({}) (repetition {:?})",
-                                total_pairs,
+                                total,
                                 cnt,
                                 sketch_cnt,
                                 bloom_cnt,
@@ -611,7 +619,7 @@ pub fn source_hashed_two_round<G, T, K, D, F>(
     hash_fns2: Arc<DKTCollection<F>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-) -> Stream<G, ((usize, u32), ((usize, u32), (K, D)))>
+) -> Stream<G, ((usize, u32), (DKTPool, (K, D)))>
 // ) -> Stream<G, (u32, (K, D))>
 where
     G: Scope<Timestamp = T>,
@@ -655,10 +663,11 @@ where
                     let mut session = output.session(&cap);
                     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
                         let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
-                        for inner_rep in 0..repetitions_inner {
-                            let h2 = hash_fns2.hash(&bit_pools_intern[k], inner_rep as usize);
-                            session.give(((current_repetition, h), ((inner_rep, h2), (k.clone(), v.clone()))));
-                        }
+                        session.give(((current_repetition, h), (hash_fns2.pool(v), (k.clone(), v.clone()))));
+                        // for inner_rep in 0..repetitions_inner {
+                        //     let h2 = hash_fns2.hash(&bit_pools_intern[k], inner_rep as usize);
+                        //     session.give(((current_repetition, h), ((inner_rep, h2), (k.clone(), v.clone()))));
+                        // }
                     }
                 }
                 done = true;
