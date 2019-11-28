@@ -636,6 +636,12 @@ where
 
     let rng = rng.clone();
 
+    let bloom_filter = Arc::new(AtomicBloomFilter::<ElementId>::new(
+        config.get_bloom_bits(),
+        config.get_bloom_k(),
+        rng.clone(),
+    ));
+
     debug!(
         "Left dataset has {} points, right has {}",
         D::num_elements(left_path.into()),
@@ -647,6 +653,7 @@ where
         let global_left = Arc::clone(&global_left);
         let global_right = Arc::clone(&global_right);
         let hasher = Arc::clone(&hasher);
+        let bloom_filter = Arc::clone(&bloom_filter);
         let mut rng = rng.clone();
         let execution_summary = init_event_logging(&worker);
         let output_send_ch = output_send_ch
@@ -674,7 +681,10 @@ where
                 MatrixDirection::Columns,
             );
             left_hashes
-                .bucket_pred_count(&right_hashes, move |l, r| sim_pred(&l.1, &r.1))
+                .bucket_pred_count(&right_hashes, 
+                    move |l, r| !bloom_filter.test_and_insert(&(l.0, r.0)), 
+                    move |l, r| sim_pred(&l.1, &r.1),
+                )
                 .inspect(|cnt| info!("Count before exchange {}", cnt))
                 .exchange(|_| 0) // Bring all the counts to the first worker
                 .inspect(|cnt| info!("Count after exchange {}", cnt))

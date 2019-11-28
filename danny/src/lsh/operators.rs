@@ -46,9 +46,10 @@ where
         R: Fn(K) -> O + 'static,
         O: ExchangeData;
 
-    fn bucket_pred_count<P>(&self, right: &Stream<G, (H, K)>, pre: P) -> Stream<G, usize>
+    fn bucket_pred_count<P,DP>(&self, right: &Stream<G, (H, K)>, pred: P, distinct_pred: DP) -> Stream<G, usize>
     where
-        P: FnMut(&K, &K) -> bool + 'static;
+        P: FnMut(&K, &K) -> bool + 'static,
+        DP: FnMut(&K, &K) -> bool + 'static;
 
 
 }    
@@ -234,9 +235,10 @@ where
     }
 
     #[allow(clippy::explicit_counter_loop)]
-    fn bucket_pred_count<P>(&self, right: &Stream<G, (H, K)>, mut pred: P) -> Stream<G, usize>
+    fn bucket_pred_count<P,DP>(&self, right: &Stream<G, (H, K)>, mut pred: P, mut distinct_pred: DP) -> Stream<G, usize>
     where
         P: FnMut(&K, &K) -> bool + 'static,
+        DP: FnMut(&K, &K) -> bool + 'static
     {
         let mut buckets = HashMap::new();
         let mut pool = BucketPool::default();
@@ -304,14 +306,19 @@ where
                             );
                             let mut session = output.session(time);
                             let mut cnt = 0;
+                            let mut duplicate_cnt = 0;
                             let mut total_pairs = 0;
                             let start = Instant::now();
                             info!("Left: {}, right: {}", buckets.len_left(), buckets.len_right());
                             if !buckets.is_one_side_empty() {
                                 buckets.for_all(|l, r| {
                                     total_pairs += 1;
-                                    if pred(l, r) {
-                                        cnt += 1;
+                                    if distinct_pred(l, r) { 
+                                        if pred(l, r) {
+                                            cnt += 1;
+                                        }
+                                    } else { 
+                                        duplicate_cnt += 1;
                                     }
                                 });
                             }
@@ -319,9 +326,10 @@ where
                             let end = Instant::now();
                             session.give(cnt);
                             info!(
-                                "Candidates {}: Passing predicate: {} // in {:?} ({})",
+                                "Candidates {}: Passing predicate: {}, Duplicates: {} // in {:?} ({})",
                                 total_pairs,
                                 cnt,
+                                duplicate_cnt,
                                 end - start,
                                 proc_mem!()
                             );
