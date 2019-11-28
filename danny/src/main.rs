@@ -105,6 +105,66 @@ where
     }
 }
 
+fn run_two_round_lsh<SV>(args: &CmdlineConfig, config: &Config, experiment: &mut Experiment) -> usize
+where
+    SV: BitBasedSketch + FromCosine + FromJaccard + SketchData + Debug,
+{
+    let mut rng = config.get_random_generator(0);
+    let threshold = args.threshold;
+    let sketch_bits = args.sketch_bits.expect("Sketches are mandatory");
+    let k = args.k.expect("K is needed on the command line");
+    let k2 = args.k2.expect("k2 is needed on the command line");
+
+    match args.measure.as_ref() {
+        "cosine" => {
+            let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
+            let sketcher = SV::from_cosine(dim, &mut rng);
+            let sketch_predicate =
+                SketchPredicate::cosine(sketch_bits, threshold, config.get_sketch_epsilon());
+            two_round_lsh::<UnitNormVector, _, _, _, _, _, _>(
+                        &args.left_path,
+                        &args.right_path,
+                        threshold,
+                        k,
+                        k2,
+                        Hyperplane::builder(dim),
+                        Hyperplane::builder(dim),
+                        sketcher,
+                        sketch_predicate,
+                        move |a, b| InnerProduct::cosine(a, b) >= threshold,
+                        &mut rng,
+                        &config,
+                        experiment,
+                    )
+        }
+        "jaccard" => {
+            let k = args.k.expect("K is needed on the command line");
+            let threshold = args.threshold;
+            let sketch_bits = args.sketch_bits.expect("Sketch bits are mandatory");
+            let sketcher = SV::from_jaccard(&mut rng);
+            let sketch_predicate =
+                SketchPredicate::jaccard(sketch_bits, threshold, config.get_sketch_epsilon());
+            two_round_lsh::<BagOfWords, _, _, _, _, _, _>(
+                        &args.left_path,
+                        &args.right_path,
+                        threshold,
+                        k,
+                        k2, 
+                        OneBitMinHash::builder(),
+                        OneBitMinHash::builder(),
+                        sketcher,
+                        sketch_predicate,
+                        move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
+                        &mut rng,
+                        &config,
+                        experiment,
+                    )
+        }
+        _ => unimplemented!("Unknown measure {}", args.measure)
+    }
+}
+
+
 fn main() {
     let config = Config::get();
     init_logging(&config);
@@ -126,30 +186,13 @@ fn main() {
             Some(512) => run_lsh::<Sketch512>(&args, &config, &mut experiment),
             Some(bits) => panic!("Unsupported number of sketch bits: {}", bits),
         },
-        "two-round-lsh" => match args.measure.as_ref() {
-            "cosine" => {
-                let mut rng = config.get_random_generator(0);
-                let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
-                let k = args.k.expect("k is needed on the command line");
-                let k2 = args.k2.expect("k2 is needed on the command line");
-
-                two_round_lsh::<UnitNormVector, _, _, _, _, _, _>(
-                    &args.left_path,
-                    &args.right_path,
-                    threshold,
-                    k,
-                    k2,
-                    Hyperplane::builder(dim),
-                    Hyperplane::builder(dim),
-                    Sketch128::from_cosine(dim, &mut rng),
-                    SketchPredicate::cosine(128, threshold, config.get_sketch_epsilon()),
-                    move |a, b| UnitNormVector::cosine(a, b) >= threshold,
-                    &mut rng,
-                    &config,
-                    &mut experiment,
-                )
-            },
-            _ => unimplemented!(),
+        "two-round-lsh" => match args.sketch_bits {
+            Some(0) | None => run_two_round_lsh::<Sketch0>(&args, &config, &mut experiment),
+            Some(64) => run_two_round_lsh::<Sketch64>(&args, &config, &mut experiment),
+            Some(128) => run_two_round_lsh::<Sketch128>(&args, &config, &mut experiment),
+            Some(256) => run_two_round_lsh::<Sketch256>(&args, &config, &mut experiment),
+            Some(512) => run_two_round_lsh::<Sketch512>(&args, &config, &mut experiment),
+            Some(bits) => panic!("Unsupported number of sketch bits: {}", bits),
         },
         "hu-et-al" => match args.measure.as_ref() {
             "cosine" => {
