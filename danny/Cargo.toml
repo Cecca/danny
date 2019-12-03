@@ -4,6 +4,24 @@ version = "0.1.0"
 authors = ["Matteo Ceccarello <ceccarel@dei.unipd.it>"]
 edition = "2018"
 
+[features]
+
+default = [
+    "one-round-lsh",
+    "two-round-lsh",
+    "hu-et-al",
+    "all-2-all",
+    "seq-all-2-all",
+    "sketching"
+]
+
+sketching = []
+one-round-lsh = []
+two-round-lsh = []
+hu-et-al = []
+all-2-all = []
+seq-all-2-all = []
+
 [dependencies]
 danny-base = { path = "../danny-base" }
 timely = "0.8"
