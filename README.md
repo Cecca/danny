@@ -78,3 +78,24 @@ cargo run --release --bin danny --
 ```
 
 The trailing `--` is very important: after it you can put the program's arguments, before it are `cargo`'s arguments.
+
+### Conditional compilation
+
+The compilation takes a _long_ time. To reduce this time, during development only some parts of the code can be compiled, using cargo feature gates. In particular the following features are available:
+
+- `one-round-lsh`
+- `two-round-lsh`
+- `hu-et-al`
+- `all-2-all`
+- `seq-all-2-all`
+- `sketching`
+
+By default they are all enabled. To disable them one can pass the `--no-default-features` flag to `cargo`, along with the `--features` flag to actually use the ones that are needed.
+
+For instant, while modifying and testing locally the code for `two-round-lsh` one can use the command:
+
+```
+cargo run --no-default-features --features two-round-lsh --release --bin danny -- -m jaccard --algorithm two-round-lsh -k 4 -l 5 --range 0.75 --sketch-bits 0 $DANNY_DATA_DIR/Livejournal-5000.bin $DANNY_DATA_DIR/Livejournal-5000.bin
+```
+
+This command must be run inside the `danny` subdirectory, otherwise all features are built nonetheless, I don't know why. 
