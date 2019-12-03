@@ -50,19 +50,6 @@ where
                     experiment,
                 ),
                 Rounds::Multi => panic!("Temporarily disabled"),
-                // Rounds::Multi => distributed_lsh::<UnitNormVector, _, _, _, _, _, _>(
-                //     &args.left_path,
-                //     &args.right_path,
-                //     threshold,
-                //     k,
-                //     Hyperplane::builder(dim),
-                //     sketcher,
-                //     sketch_predicate,
-                //     move |a, b| InnerProduct::cosine(a, b) >= threshold,
-                //     &mut rng,
-                //     &config,
-                //     experiment,
-                // ),
             }
         }
         "jaccard" => {
@@ -87,19 +74,6 @@ where
                     experiment,
                 ),
                 Rounds::Multi => panic!("Temporarily disabled"),
-                // Rounds::Multi => distributed_lsh::<BagOfWords, _, _, _, _, _, _>(
-                //     &args.left_path,
-                //     &args.right_path,
-                //     threshold,
-                //     k,
-                //     OneBitMinHash::builder(),
-                //     sketcher,
-                //     sketch_predicate,
-                //     move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
-                //     &mut rng,
-                //     &config,
-                //     experiment,
-                // ),
             }
         }
         _ => unimplemented!("Unknown measure {}", args.measure),
