@@ -672,7 +672,9 @@ where
                 MatrixDirection::Columns,
             );
             left_hashes
-                .bucket_pred_count(&right_hashes, move |l, r| sim_pred(&l.1, &r.1))
+                .bucket_pred_count(&right_hashes, move |l, r| {
+                    !hasher.already_seen(&l.1, &r.1, l.3) && sim_pred(&l.2, &r.2)
+                })
                 .inspect(|cnt| info!("Count before exchange {}", cnt))
                 .exchange(|_| 0) // Bring all the counts to the first worker
                 .inspect(|cnt| info!("Count after exchange {}", cnt))

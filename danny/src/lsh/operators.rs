@@ -306,6 +306,7 @@ where
                             let start = Instant::now();
                             info!("Left: {}, right: {}", buckets.len_left(), buckets.len_right());
                             if !buckets.is_one_side_empty() {
+                                let repetition = time.time().to_step_id();
                                 buckets.for_all(|l, r| {
                                     total_pairs += 1;
                                     if pred(l, r) {
@@ -565,7 +566,7 @@ pub fn source_hashed_one_round<G, T, K, D, F>(
     hash_fns: Arc<TensorCollection<F>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-) -> Stream<G, ((usize, u32), (K, D))>
+) -> Stream<G, ((usize, u32), (K, TensorPool, D, usize))>
 // ) -> Stream<G, (u32, (K, D))>
 where
     G: Scope<Timestamp = T>,
@@ -606,7 +607,7 @@ where
                     let mut session = output.session(&cap);
                     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
                         let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
-                        session.give(((current_repetition, h), (k.clone(), v.clone())));
+                        session.give(((current_repetition, h), (k.clone(), bit_pools[k].clone(), v.clone(), current_repetition)));
                     }
                 }
                 done = true;
