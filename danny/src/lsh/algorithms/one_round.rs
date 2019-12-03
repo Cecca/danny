@@ -2,10 +2,10 @@ use crate::config::*;
 use crate::dataset::ChunkedDataset;
 use crate::experiment::Experiment;
 use crate::io::*;
+use crate::join::Joiner;
 use crate::logging::init_event_logging;
 use crate::logging::*;
 use crate::operators::*;
-use danny_base::bucket::*;
 use danny_base::lsh::*;
 use danny_base::sketch::*;
 use rand::{Rng, SeedableRng};
@@ -191,30 +191,33 @@ where
                             for rep in 0..repetitions {
                                 let _pg = ProfileGuard::new(logger.clone(), rep, 0, "repetition");
                                 let start = Instant::now();
-                                let mut bucket = Bucket::default();
+                                // let mut bucket = Bucket::default();
+                                let mut joiner = Joiner::default();
                                 for (k, pool, sketch) in left_data.iter() {
-                                    bucket.push_left(hasher.hash(pool, rep), (*k, *sketch, pool));
+                                    joiner.push_left(hasher.hash(pool, rep), (*k, *sketch, pool));
                                 }
                                 for (k, pool, sketch) in right_data.iter() {
-                                    bucket.push_right(hasher.hash(pool, rep), (*k, *sketch, pool));
+                                    joiner.push_right(hasher.hash(pool, rep), (*k, *sketch, pool));
                                 }
                                 let mut sketch_discarded = 0;
                                 let mut duplicates_discarded = 0;
                                 let mut examined_pairs = 0;
-                                bucket.for_all(|(lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
-                                    examined_pairs += 1;
-                                    if !hasher.already_seen(l_pool, r_pool, rep) {
-                                        if sketch_predicate.eval(l_sketch, r_sketch) {
-                                            if sim_pred(&global_left[lk], &global_right[rk]) {
-                                                cnt += 1;
+                                joiner.join_map(
+                                    |_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
+                                        examined_pairs += 1;
+                                        if !hasher.already_seen(l_pool, r_pool, rep) {
+                                            if sketch_predicate.eval(l_sketch, r_sketch) {
+                                                if sim_pred(&global_left[lk], &global_right[rk]) {
+                                                    cnt += 1;
+                                                }
+                                            } else {
+                                                sketch_discarded += 1;
                                             }
                                         } else {
-                                            sketch_discarded += 1;
+                                            duplicates_discarded += 1;
                                         }
-                                    } else {
-                                        duplicates_discarded += 1;
-                                    }
-                                });
+                                    },
+                                );
                                 let end = Instant::now();
                                 info!("Repetition {} ended in {:?}", rep, end - start);
                                 log_event!(logger, LogEvent::GeneratedPairs(rep, examined_pairs));
