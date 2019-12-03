@@ -61,7 +61,7 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let hasher = DKTCollection::new(k, range, hash_function_builder, rng);
+    let hasher = TensorCollection::new(k, range, hash_function_builder, rng);
     let hasher = Arc::new(hasher);
 
     let rng = rng.clone();
@@ -180,7 +180,7 @@ fn generate_candidates_global_k<K, D, G, T, F, S, SV, R>(
     _range: f64,
     _k: usize,
     scope: G,
-    hasher: Arc<DKTCollection<F>>,
+    hasher: Arc<TensorCollection<F>>,
     sketcher: S,
     sketch_predicate: SketchPredicate<SV>,
     _filter: Arc<AtomicBloomFilter<K>>,
@@ -330,12 +330,12 @@ fn simple_source<G, K, F, D, S>(
     scope: &G,
     vecs: Arc<ChunkedDataset<K, D>>,
     sketcher: Arc<S>,
-    hash_fns: Arc<DKTCollection<F>>,
+    hash_fns: Arc<TensorCollection<F>>,
     throttle: Option<ProbeHandle<G::Timestamp>>,
     worker: u64,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-) -> Stream<G, (K, (DKTPool, S::Output))>
+) -> Stream<G, (K, (TensorPool, S::Output))>
 where
     G: Scope,
     G::Timestamp: Succ,
@@ -413,7 +413,7 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let hasher = Arc::new(DKTCollection::new(k, range, hash_function_builder, rng));
+    let hasher = Arc::new(TensorCollection::new(k, range, hash_function_builder, rng));
 
     let rng = rng.clone();
 
@@ -629,7 +629,7 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let hasher = DKTCollection::new(k, range, hash_function_builder, rng);
+    let hasher = TensorCollection::new(k, range, hash_function_builder, rng);
     let hasher = Arc::new(hasher);
 
     let rng = rng.clone();

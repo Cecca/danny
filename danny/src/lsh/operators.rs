@@ -313,8 +313,6 @@ where
     }
 }
 
-
-
 struct RepetitionStopWatch {
     start: Option<Instant>,
     counter: usize,
@@ -356,7 +354,7 @@ impl RepetitionStopWatch {
 pub fn source_hashed_one_round<G, T, K, D, F>(
     scope: &G,
     global_vecs: Arc<ChunkedDataset<K, D>>,
-    hash_fns: Arc<DKTCollection<F>>,
+    hash_fns: Arc<TensorCollection<F>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
 ) -> Stream<G, ((usize, u32), (K, D))>
@@ -373,7 +371,7 @@ where
     let repetitions = hash_fns.repetitions();
     let vecs = Arc::clone(&global_vecs);
     let mut stopwatch = RepetitionStopWatch::new("repetition", worker == 0, logger);
-    let mut bit_pools: HashMap<K, DKTPool> = HashMap::new();
+    let mut bit_pools: HashMap<K, TensorPool> = HashMap::new();
     info!("Computing the bit pools");
     let start = Instant::now();
     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
@@ -417,7 +415,7 @@ where
 pub fn source_hashed_sketched<G, T, K, D, F, V>(
     scope: &G,
     global_vecs: Arc<ChunkedDataset<K, D>>,
-    hash_fns: Arc<DKTCollection<F>>,
+    hash_fns: Arc<TensorCollection<F>>,
     sketches: Arc<HashMap<K, V>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
@@ -437,7 +435,7 @@ where
     let mut current_repetition = 0usize;
     let vecs = Arc::clone(&global_vecs);
     let mut stopwatch = RepetitionStopWatch::new("repetition", worker == 0, logger);
-    let mut bit_pools: HashMap<K, DKTPool> = HashMap::new();
+    let mut bit_pools: HashMap<K, TensorPool> = HashMap::new();
     info!("Computing the bit pools");
     let start = Instant::now();
     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
@@ -480,4 +478,3 @@ where
         }
     })
 }
-
