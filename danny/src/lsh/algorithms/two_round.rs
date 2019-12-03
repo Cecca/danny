@@ -5,7 +5,7 @@ use crate::io::*;
 use crate::join::*;
 use crate::logging::init_event_logging;
 use crate::logging::*;
-use crate::lsh::operators::RepetitionStopWatch;
+use crate::lsh::repetition_stopwatch::RepetitionStopWatch;
 use crate::operators::*;
 use danny_base::lsh::*;
 use danny_base::sketch::*;
@@ -155,13 +155,6 @@ where
                         vec![cnt]
                     },
                 )
-                // .bucket_pred_lsh(
-                //     &right_hashes,
-                //     Arc::clone(&hasher),
-                //     Arc::clone(&hasher_intern),
-                //     move |l, r| sim_pred(&l.1, &r.1),
-                //     move |l, r| sketch_pred.eval(l, r),
-                // )
                 .exchange(|_| 0) // Bring all the counts to the first worker
                 .probe_with(&mut probe)
                 .capture_into(output_send_ch);

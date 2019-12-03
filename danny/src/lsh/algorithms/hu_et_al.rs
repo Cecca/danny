@@ -5,7 +5,7 @@ use crate::io::*;
 use crate::join::Join;
 use crate::logging::init_event_logging;
 use crate::logging::*;
-use crate::lsh::operators::*;
+use crate::lsh::repetition_stopwatch::*;
 use crate::operators::*;
 use danny_base::lsh::*;
 use danny_base::sketch::*;
