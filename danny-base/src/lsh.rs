@@ -54,7 +54,6 @@ where
     where
         B: FnMut(usize, &mut R) -> F,
     {
-        let p = F::probability_at_range(range);
         let repetitions = F::repetitions_at_range(range, k);
         let part_repetitions = (repetitions as f64).sqrt().ceil() as usize;
         let k_left = ((k as f64) / 2.0).ceil() as usize;
@@ -79,7 +78,6 @@ where
         let mut right = Vec::new();
         for hasher in self.hashers.iter() {
             let h: u32 = hasher.hash(v);
-            println!("for pool: {:32b}", h);
             let bits_left = (h & self.mask_left) as u16;
             let bits_right = ((h >> self.k_left) & self.mask_right) as u16;
             left.push(bits_left);
@@ -92,7 +90,6 @@ where
     pub fn hash(&self, pool: &TensorPool, repetition: usize) -> u32 {
         let idx_left = repetition / self.hashers.len();
         let idx_right = repetition % self.hashers.len();
-        println!("rep {} left {} right {}", repetition, idx_left, idx_right);
         let left = pool.left[idx_left];
         let right = pool.right[idx_right];
         ((left as u32) << self.k_right) | (right as u32)
