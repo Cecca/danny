@@ -113,6 +113,8 @@ impl<T: Into<u64> + Copy> Debug for AtomicBloomFilter<T> {
 
 #[cfg(test)]
 mod test {
+    extern crate probabilistic_collections;
+
     use super::*;
     use probabilistic_collections::hyperloglog::HyperLogLog;
     use rand::RngCore;
