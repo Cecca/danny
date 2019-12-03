@@ -46,37 +46,30 @@ pub struct DKTCollection<F>
 where
     F: LSHFunction<Output = u32> + Clone,
 {
-    min_k: usize,
-    max_k: usize,
+    k: usize,
+    repetitions: usize,
     num_bits: usize,
     alphas: Vec<u64>,
     betas: Vec<u64>,
     hashers: Vec<Vec<F>>,
-    repetitions_at_level: HashMap<usize, usize>,
 }
 
 impl<F> DKTCollection<F>
 where
     F: LSHFunction<Output = u32> + Clone,
 {
-    pub fn new<B, R: Rng>(
-        min_k: usize,
-        max_k: usize,
-        range: f64,
-        mut builder: B,
-        rng: &mut R,
-    ) -> Self
+    pub fn new<B, R: Rng>(k: usize, range: f64, mut builder: B, rng: &mut R) -> Self
     where
         B: FnMut(usize, &mut R) -> F,
     {
         let p = F::probability_at_range(range);
-        let num_bits = (5.0 * max_k as f64 / p).ceil() as usize;
-        let alphas: Vec<u64> = (0..max_k).map(|_| rng.next_u64()).collect();
-        let betas: Vec<u64> = (0..max_k).map(|_| rng.next_u64()).collect();
+        let num_bits = (5.0 * k as f64 / p).ceil() as usize;
+        let alphas: Vec<u64> = (0..k).map(|_| rng.next_u64()).collect();
+        let betas: Vec<u64> = (0..k).map(|_| rng.next_u64()).collect();
         let mut hashers = Vec::new();
         let full_32 = num_bits / 32;
         let rem_32 = num_bits % 32;
-        for _ in 0..max_k {
+        for _ in 0..k {
             let mut hs = Vec::new();
             for _ in 0..full_32 {
                 hs.push(builder(32, rng));
@@ -86,17 +79,14 @@ where
             }
             hashers.push(hs);
         }
-        let repetitions_at_level: HashMap<usize, usize> = (min_k..=max_k)
-            .map(|l| (l, F::repetitions_at_range(range, l)))
-            .collect();
+        let repetitions = F::repetitions_at_range(range, k);
         Self {
-            min_k,
-            max_k,
+            k,
+            repetitions,
             num_bits,
             alphas,
             betas,
             hashers,
-            repetitions_at_level,
         }
     }
 
@@ -107,7 +97,7 @@ where
             for f in hashers_row {
                 bits.push(f.hash(v));
             }
-            let mut bits = BitVector::from_vec(bits);
+            let bits = BitVector::from_vec(bits);
             all_bits.push(bits);
         }
         DKTPool { bits: all_bits }
@@ -124,7 +114,6 @@ where
     pub fn hash(&self, pool: &DKTPool, repetition: usize) -> u32 {
         let mut h = 0u32;
         for (i, bits) in pool.bits.iter().enumerate() {
-            // if bits[self.get_bit_index(i, repetition)] {
             if bits.get(self.get_bit_index(i, repetition)) {
                 h = (h << 1) | 1;
             } else {
@@ -134,28 +123,8 @@ where
         h
     }
 
-    pub fn is_active(&self, repetition: usize, level: usize) -> bool {
-        repetition
-            < *self
-                .repetitions_at_level
-                .get(&level)
-                .expect("Missing level information in repetitions_at_level")
-    }
-
     pub fn repetitions(&self) -> usize {
-        self.repetitions_at_level[&self.max_k]
-    }
-
-    pub fn repetitions_at(&self, level: usize) -> usize {
-        *self.repetitions_at_level.get(&level).unwrap_or_else(|| panic!("missing level {}", level))
-    }
-
-    pub fn min_level(&self) -> usize {
-        self.min_k
-    }
-
-    pub fn max_level(&self) -> usize {
-        self.max_k
+        self.repetitions
     }
 }
 

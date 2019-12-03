@@ -61,7 +61,7 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let hasher = DKTCollection::new(k, k, range, hash_function_builder, rng);
+    let hasher = DKTCollection::new(k, range, hash_function_builder, rng);
     let hasher = Arc::new(hasher);
 
     let rng = rng.clone();
@@ -104,18 +104,18 @@ where
             let mut probe = ProbeHandle::new();
 
             let candidates = generate_candidates_global_k(
-                    Arc::clone(&global_left),
-                    Arc::clone(&global_right),
-                    range,
-                    k,
-                    scope.clone(),
-                    hasher,
-                    sketcher,
-                    sketch_predicate,
-                    Arc::clone(&bloom_filter_pre_communication),
-                    probe.clone(),
-                    &mut rng
-                );
+                Arc::clone(&global_left),
+                Arc::clone(&global_right),
+                range,
+                k,
+                scope.clone(),
+                hasher,
+                sketcher,
+                sketch_predicate,
+                Arc::clone(&bloom_filter_pre_communication),
+                probe.clone(),
+                &mut rng,
+            );
 
             candidates_filter_count(
                 candidates,
@@ -270,7 +270,6 @@ where
     Arc::new(sketches)
 }
 
-
 fn candidates_filter_count<G, T, K, D, F>(
     candidates: Stream<G, (K, K)>,
     global_left: Arc<ChunkedDataset<K, D>>,
@@ -414,7 +413,7 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let hasher = Arc::new(DKTCollection::new(k, k, range, hash_function_builder, rng));
+    let hasher = Arc::new(DKTCollection::new(k, range, hash_function_builder, rng));
 
     let rng = rng.clone();
 
@@ -601,7 +600,6 @@ where
     }
 }
 
-
 #[allow(clippy::too_many_arguments)]
 pub fn hu_baseline<D, F, H, B, R>(
     left_path: &str,
@@ -631,7 +629,7 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let hasher = DKTCollection::new(k, k, range, hash_function_builder, rng);
+    let hasher = DKTCollection::new(k, range, hash_function_builder, rng);
     let hasher = Arc::new(hasher);
 
     let rng = rng.clone();
