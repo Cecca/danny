@@ -79,7 +79,7 @@ where
 }
 
 /// A simple take on the fixed parameter algorithm.
-pub fn simple_fixed<D, F, H, S, V, B, R>(
+pub fn one_round_lsh<D, F, H, S, V, B, R>(
     left_path: &str,
     right_path: &str,
     range: f64,
