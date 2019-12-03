@@ -619,7 +619,7 @@ where
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
     B: Fn(usize, &mut R) -> H + Sized + Send + Sync + Clone + 'static,
 {
-    let network = NetworkGauge::start(); 
+    let network = NetworkGauge::start();
 
     let timely_builder = config.get_timely_builder();
     // This channel is used to get the results
@@ -753,7 +753,7 @@ where
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
     B: Fn(usize, &mut R) -> H + Sized + Send + Sync + Clone + 'static,
 {
-    let network = NetworkGauge::start(); 
+    let network = NetworkGauge::start();
 
     let timely_builder = config.get_timely_builder();
     // This channel is used to get the results
@@ -763,10 +763,10 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let hasher = DKTCollection::new(k, k, range, hash_function_builder, rng);
+    let hasher = DKTCollection::new(k, range, hash_function_builder, rng);
     let hasher = Arc::new(hasher);
 
-    let hasher_intern = DKTCollection::new(k2, k2, range, hash_function_builder_2, rng);
+    let hasher_intern = DKTCollection::new(k2, range, hash_function_builder_2, rng);
     let hasher_intern = Arc::new(hasher_intern);
 
     let rng = rng.clone();
@@ -794,7 +794,6 @@ where
 
         let sketcher = sketcher.clone();
         let sketcher = Arc::new(sketcher);
-
 
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
             let mut probe = ProbeHandle::new();
@@ -830,7 +829,6 @@ where
                 .exchange(|_| 0) // Bring all the counts to the first worker
                 .probe_with(&mut probe)
                 .capture_into(output_send_ch);
-            
             probe
         });
 
@@ -875,4 +873,3 @@ where
         0
     }
 }
-

@@ -38,18 +38,18 @@ where
             let k = args.k.expect("K is needed on the command line");
             match args.rounds {
                 Rounds::One => simple_fixed::<UnitNormVector, _, _, _, _, _, _>(
-                        &args.left_path,
-                        &args.right_path,
-                        threshold,
-                        k,
-                        Hyperplane::builder(dim),
-                        sketcher,
-                        sketch_predicate,
-                        move |a, b| InnerProduct::cosine(a, b) >= threshold,
-                        &mut rng,
-                        &config,
-                        experiment,
-                    ),
+                    &args.left_path,
+                    &args.right_path,
+                    threshold,
+                    k,
+                    Hyperplane::builder(dim),
+                    sketcher,
+                    sketch_predicate,
+                    move |a, b| InnerProduct::cosine(a, b) >= threshold,
+                    &mut rng,
+                    &config,
+                    experiment,
+                ),
                 Rounds::Multi => distributed_lsh::<UnitNormVector, _, _, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,
@@ -74,18 +74,18 @@ where
                 SketchPredicate::jaccard(sketch_bits, threshold, config.get_sketch_epsilon());
             match args.rounds {
                 Rounds::One => simple_fixed::<BagOfWords, _, _, _, _, _, _>(
-                        &args.left_path,
-                        &args.right_path,
-                        threshold,
-                        k,
-                        OneBitMinHash::builder(),
-                        sketcher,
-                        sketch_predicate,
-                        move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
-                        &mut rng,
-                        &config,
-                        experiment,
-                    ),
+                    &args.left_path,
+                    &args.right_path,
+                    threshold,
+                    k,
+                    OneBitMinHash::builder(),
+                    sketcher,
+                    sketch_predicate,
+                    move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
+                    &mut rng,
+                    &config,
+                    experiment,
+                ),
                 Rounds::Multi => distributed_lsh::<BagOfWords, _, _, _, _, _, _>(
                     &args.left_path,
                     &args.right_path,
@@ -105,7 +105,11 @@ where
     }
 }
 
-fn run_two_round_lsh<SV>(args: &CmdlineConfig, config: &Config, experiment: &mut Experiment) -> usize
+fn run_two_round_lsh<SV>(
+    args: &CmdlineConfig,
+    config: &Config,
+    experiment: &mut Experiment,
+) -> usize
 where
     SV: BitBasedSketch + FromCosine + FromJaccard + SketchData + Debug,
 {
@@ -122,20 +126,20 @@ where
             let sketch_predicate =
                 SketchPredicate::cosine(sketch_bits, threshold, config.get_sketch_epsilon());
             two_round_lsh::<UnitNormVector, _, _, _, _, _, _>(
-                        &args.left_path,
-                        &args.right_path,
-                        threshold,
-                        k,
-                        k2,
-                        Hyperplane::builder(dim),
-                        Hyperplane::builder(dim),
-                        sketcher,
-                        sketch_predicate,
-                        move |a, b| InnerProduct::cosine(a, b) >= threshold,
-                        &mut rng,
-                        &config,
-                        experiment,
-                    )
+                &args.left_path,
+                &args.right_path,
+                threshold,
+                k,
+                k2,
+                Hyperplane::builder(dim),
+                Hyperplane::builder(dim),
+                sketcher,
+                sketch_predicate,
+                move |a, b| InnerProduct::cosine(a, b) >= threshold,
+                &mut rng,
+                &config,
+                experiment,
+            )
         }
         "jaccard" => {
             let k = args.k.expect("K is needed on the command line");
@@ -145,25 +149,24 @@ where
             let sketch_predicate =
                 SketchPredicate::jaccard(sketch_bits, threshold, config.get_sketch_epsilon());
             two_round_lsh::<BagOfWords, _, _, _, _, _, _>(
-                        &args.left_path,
-                        &args.right_path,
-                        threshold,
-                        k,
-                        k2, 
-                        OneBitMinHash::builder(),
-                        OneBitMinHash::builder(),
-                        sketcher,
-                        sketch_predicate,
-                        move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
-                        &mut rng,
-                        &config,
-                        experiment,
-                    )
+                &args.left_path,
+                &args.right_path,
+                threshold,
+                k,
+                k2,
+                OneBitMinHash::builder(),
+                OneBitMinHash::builder(),
+                sketcher,
+                sketch_predicate,
+                move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
+                &mut rng,
+                &config,
+                experiment,
+            )
         }
-        _ => unimplemented!("Unknown measure {}", args.measure)
+        _ => unimplemented!("Unknown measure {}", args.measure),
     }
 }
-
 
 fn main() {
     let config = Config::get();
