@@ -63,8 +63,9 @@ where
 {
     fn bucket_pred_lsh<P, PD, R, O, F, D, SP>(
             &self,
-            right: &Stream<G, (H, (TensorPool, S, K))>,
-            hasher: Arc<TensorCollection<F>>,
+            right: &Stream<G, ((usize, H), (TensorPool, TensorPool, S, K))>,
+            hasher_intern: Arc<TensorCollection<F>>,
+            hasher_extern: Arc<TensorCollection<F>>,
             pre: P,
             sketch_pred: SP, 
             distinct_pre: PD,
@@ -346,7 +347,7 @@ where
     }
 }
 
-impl<G, T, H, K, S> BucketTwoStream<G, T, H, K, S> for Stream<G, (H, (TensorPool, S, K))>
+impl<G, T, H, K, S> BucketTwoStream<G, T, H, K, S> for Stream<G, ((usize, H), (TensorPool, TensorPool, S, K))>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + ToStepId,
@@ -357,8 +358,9 @@ where
     #[allow(clippy::explicit_counter_loop)]
     fn bucket_pred_lsh<P, PD, R, O, F, D, SP>(
         &self,
-        right: &Stream<G, (H, (TensorPool, S, K))>,
-        hasher: Arc<TensorCollection<F>>,
+        right: &Stream<G, ((usize, H), (TensorPool, TensorPool, S, K))>,
+        hasher_extern: Arc<TensorCollection<F>>,
+        hasher_intern: Arc<TensorCollection<F>>,
         mut pred: P,
         mut sketch_pred: SP, 
         mut distinct_pred: PD,
@@ -378,8 +380,8 @@ where
 
         self.binary_frontier(
             &right,
-            ExchangePact::new(|pair: &(H, (TensorPool, S, K))| pair.0.route()),
-            ExchangePact::new(|pair: &(H, (TensorPool, S, K))| pair.0.route()),
+            ExchangePact::new(|pair: &((usize, H), (TensorPool, TensorPool, S, K))| pair.0.route()),
+            ExchangePact::new(|pair: &((usize, H), (TensorPool, TensorPool, S, K))| pair.0.route()),
             "bucket",
             move |_, _| {
                 move |left_in, right_in, output| {
@@ -440,40 +442,41 @@ where
                             let mut total = 0;
                             let mut cnt = 0;
                             let mut sketch_cnt = 0;
-                            let mut bloom_cnt = 0;
-                            let repetitions = hasher.repetitions();
+                            let mut duplicate_cnt = 0;
+                            let repetitions = hasher_intern.repetitions();
                             let start = Instant::now();
                             info!("Left: {}, right: {}", bucket.len_left(), bucket.len_right());
                             if !bucket.is_one_side_empty() {                                
                                 debug!("Doing {:?} local repetitions", repetitions);
                                 for rep in 0..repetitions {
                                     debug!("In repetition {}", rep);
-                                    bucket.for_all_buckets(|x: &[(H, (TensorPool, S, K))], y: &[(H, (TensorPool, S, K))]| {
+                                    bucket.for_all_buckets(|x: &[((usize, H), (TensorPool, TensorPool, S, K))], y: &[((usize, H), (TensorPool, TensorPool, S, K))]| {
                                         let mut bucket = Bucket::default();
                                         // split up to buckets and do all to all within buckets.
-                                        for (_, (pool, s, v)) in x.iter() {
-                                            bucket.push_left(hasher.hash(pool, rep), (s, v))
+                                        for ((outer_rep, _), (outer_pool, inner_pool, s, v)) in x.iter() {
+                                            bucket.push_left(hasher_intern.hash(inner_pool, rep), (s, v, outer_pool, inner_pool, outer_rep))
                                         }
-                                        for (_, (pool, s, v)) in y.iter() {
-                                            bucket.push_right(hasher.hash(pool, rep), (s, v))
+                                        for ((outer_rep, _), (outer_pool, inner_pool, s, v)) in y.iter() {
+                                            bucket.push_right(hasher_intern.hash(inner_pool, rep), (s, v, outer_pool, inner_pool, outer_rep))
                                         }
-                                        // TODO add sketches and duplicate counting
                                         bucket.for_all(|l, r| {
                                             total += 1;
-                                            if sketch_pred(l.0, r.0) {
-                                                if pred(l.1, r.1) {
-                                                    cnt += 1;
+                                            if !hasher_intern.already_seen(&l.3, &r.3, rep) && !hasher_extern.already_seen(&l.2, &r.2, *l.4) {
+                                                if sketch_pred(l.0, r.0) {
+                                                    if pred(l.1, r.1) {
+                                                        cnt += 1;
+                                                    }
+                                                } else {
+                                                    sketch_cnt += 1;
                                                 }
                                             } else {
-                                                sketch_cnt += 1;
+                                                duplicate_cnt += 1;
                                             }
-
                                         });
                                         bucket.clear();
                                     });
                                 }
                             }
-                            let total_pairs = cnt + bloom_cnt + sketch_cnt;
                             bucket.clear();
                             let end = Instant::now();
                             log_event!(
@@ -486,14 +489,14 @@ where
                             );
                             log_event!(
                                 logger,
-                                LogEvent::DuplicatesDiscarded(time.time().to_step_id(), bloom_cnt)
+                                LogEvent::DuplicatesDiscarded(time.time().to_step_id(), duplicate_cnt)
                             );
                             info!(
                                 "Candidates {}: Emitted {} / Discarded {} / Duplicates {} in {:?} ({}) (repetition {:?})",
                                 total,
                                 cnt,
                                 sketch_cnt,
-                                bloom_cnt,
+                                duplicate_cnt,
                                 end - start,
                                 proc_mem!(),
                                 time.time()
@@ -630,7 +633,7 @@ pub fn source_hashed_two_round<G, T, K, D, F, S>(
     hash_fns2: Arc<TensorCollection<F>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-) -> Stream<G, ((usize, u32), (TensorPool, S::Output, (K, D)))>
+) -> Stream<G, ((usize, u32), (TensorPool, TensorPool, S::Output, (K, D)))>
 // ) -> Stream<G, (u32, (K, D))>
 where
     G: Scope<Timestamp = T>,
@@ -677,7 +680,7 @@ where
                     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
                         let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
                         let s = sketcher.sketch(v);
-                        session.give(((current_repetition, h), (hash_fns2.pool(v), s.clone(), (k.clone(), v.clone()))));
+                        session.give(((current_repetition, h), (bit_pools[k].clone(), hash_fns2.pool(v), s.clone(), (k.clone(), v.clone()))));
                         // for inner_rep in 0..repetitions_inner {
                         //     let h2 = hash_fns2.hash(&bit_pools_intern[k], inner_rep as usize);
                         //     session.give(((current_repetition, h), ((inner_rep, h2), (k.clone(), v.clone()))));

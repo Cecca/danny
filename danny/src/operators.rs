@@ -182,12 +182,21 @@ impl<D> Route for (u32, D) {
     }
 }
 
-impl Route for (usize, u32) {
+// impl Route for (usize, u32) {
+//     #[inline(always)]
+//     fn route(&self) -> u64 {
+//         (self.0 as u64)
+//             .wrapping_mul(31u64)
+//             .wrapping_add(u64::from(self.1))
+//     }
+// }
+
+impl<R: Route> Route for (usize, R) {
     #[inline(always)]
     fn route(&self) -> u64 {
         (self.0 as u64)
             .wrapping_mul(31u64)
-            .wrapping_add(u64::from(self.1))
+            .wrapping_add(u64::from(self.1.route()))
     }
 }
 

@@ -730,6 +730,19 @@ where
     }
 }
 
+struct TwoRoundLSHValue<S, K, D>
+where
+    S: SketchData,
+    K: KeyData,
+    D: ExchangeData,
+{
+    outer_pool: TensorPool,
+    inner_pool: TensorPool,
+    sketch: S,
+    key: K,
+    data: D,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn two_round_lsh<D, F, H, B, R, S, V>(
     left_path: &str,
@@ -785,7 +798,7 @@ where
         let global_right = Arc::clone(&global_right);
         let hasher = Arc::clone(&hasher);
         let hasher_intern = Arc::clone(&hasher_intern);
-        let mut rng = rng.clone();
+        let rng = rng.clone();
         let execution_summary = init_event_logging(&worker);
         let output_send_ch = output_send_ch
             .lock()
@@ -822,6 +835,7 @@ where
             left_hashes
                 .bucket_pred_lsh(
                     &right_hashes,
+                    Arc::clone(&hasher),
                     Arc::clone(&hasher_intern),
                     move |l, r| sim_pred(&l.1, &r.1),
                     move |l, r| sketch_pred.eval(l, r),
