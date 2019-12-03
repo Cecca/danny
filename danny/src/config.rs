@@ -286,21 +286,6 @@ impl Config {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum ParamK {
-    Fixed(usize),
-    Adaptive(usize, usize),
-}
-
-impl ParamK {
-    pub fn to_string(&self) -> String {
-        match self {
-            ParamK::Fixed(k) => format!("Fixed({})", k),
-            ParamK::Adaptive(min_k, max_k) => format!("Adaptive({},{})", min_k, max_k),
-        }
-    }
-}
-
 pub enum Rounds {
     One,
     Multi,
@@ -321,7 +306,7 @@ pub struct CmdlineConfig {
     pub left_path: String,
     pub right_path: String,
     pub algorithm: String,
-    pub k: Option<ParamK>,
+    pub k: Option<usize>, 
     pub sketch_bits: Option<usize>,
     pub rounds: Rounds,
 }
@@ -335,7 +320,6 @@ impl CmdlineConfig {
             (@arg ALGORITHM: -a --algorithm +takes_value "The algorithm to be used: (fixed-lsh, all-2-all)")
             (@arg MEASURE: -m --measure +required +takes_value "The similarity measure to be used")
             (@arg K: -k +takes_value "The number of concatenations of the hash function")
-            (@arg ADAPTIVE_K: --("adaptive-k") +takes_value "The max number of concatenations of the hash function in the adaptive algorithm: auto sets it. Overridden by -k")
             (@arg THRESHOLD: -r --range +required +takes_value "The similarity threshold")
             (@arg BITS: --("sketch-bits") +takes_value "The number of bits to use for sketching")
             (@arg ROUNDS: --rounds +takes_value "One or multi round? (default multi)")
@@ -379,30 +363,7 @@ impl CmdlineConfig {
                 let _k = k_str
                     .parse::<usize>()
                     .expect("k should be an unsigned integer");
-                ParamK::Fixed(_k)
-            })
-            .or_else(|| {
-                matches.value_of("ADAPTIVE_K").map(|adaptive_k_str| {
-                    if adaptive_k_str.contains(',') {
-                        let mut tokens = adaptive_k_str.split(',');
-                        let min_k = tokens
-                            .next()
-                            .unwrap()
-                            .parse::<usize>()
-                            .expect("k should be an unsigned integer");
-                        let max_k = tokens
-                            .next()
-                            .unwrap()
-                            .parse::<usize>()
-                            .expect("k should be an unsigned integer");
-                        ParamK::Adaptive(min_k, max_k)
-                    } else {
-                        let _k = adaptive_k_str
-                            .parse::<usize>()
-                            .expect("k should be an unsigned integer");
-                        ParamK::Adaptive(0, _k)
-                    }
-                })
+                _k
             });
         let sketch_bits = matches.value_of("BITS").map(|bits_str| {
             bits_str

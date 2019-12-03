@@ -4,7 +4,6 @@ use crate::experiment::Experiment;
 use crate::io::*;
 use crate::logging::init_event_logging;
 use crate::logging::*;
-use crate::lsh::adaptive::*;
 use crate::lsh::operators::*;
 use crate::operators::*;
 use danny_base::bloom::*;
@@ -35,7 +34,7 @@ pub fn distributed_lsh<D, F, H, S, V, B, R>(
     left_path: &str,
     right_path: &str,
     range: f64,
-    k: ParamK,
+    k: usize,
     hash_function_builder: B,
     sketcher: S,
     sketch_predicate: SketchPredicate<V>,
@@ -62,12 +61,7 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let hasher = match k {
-        ParamK::Fixed(k) => DKTCollection::new(k, k, range, hash_function_builder, rng),
-        ParamK::Adaptive(min_k, max_k) => {
-            DKTCollection::new(min_k, max_k, range, hash_function_builder, rng)
-        }
-    };
+    let hasher = DKTCollection::new(k, range, hash_function_builder, rng);
     let hasher = Arc::new(hasher);
 
     let rng = rng.clone();
@@ -89,7 +83,6 @@ where
         config.get_bloom_k(),
         rng.clone(),
     ));
-    let adaptive_params = AdaptiveParams::from_config(&config);
 
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
         let global_left = Arc::clone(&global_left);
@@ -110,35 +103,19 @@ where
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
             let mut probe = ProbeHandle::new();
 
-            let candidates = match k {
-                ParamK::Adaptive(min_k, max_k) => generate_candidates_adaptive(
-                    Arc::clone(&global_left),
-                    Arc::clone(&global_right),
-                    min_k,
-                    max_k,
-                    adaptive_params,
-                    scope.clone(),
-                    hasher,
-                    sketcher,
-                    sketch_predicate,
-                    Arc::clone(&bloom_filter_pre_communication),
-                    probe.clone(),
-                    &mut rng,
-                ),
-                ParamK::Fixed(k) => generate_candidates_global_k(
-                    Arc::clone(&global_left),
-                    Arc::clone(&global_right),
-                    range,
-                    k,
-                    scope.clone(),
-                    hasher,
-                    sketcher,
-                    sketch_predicate,
-                    Arc::clone(&bloom_filter_pre_communication),
-                    probe.clone(),
-                    &mut rng,
-                ),
-            };
+            let candidates = generate_candidates_global_k(
+                Arc::clone(&global_left),
+                Arc::clone(&global_right),
+                range,
+                k,
+                scope.clone(),
+                hasher,
+                sketcher,
+                sketch_predicate,
+                Arc::clone(&bloom_filter_pre_communication),
+                probe.clone(),
+                &mut rng,
+            );
 
             candidates_filter_count(
                 candidates,
@@ -293,102 +270,6 @@ where
     Arc::new(sketches)
 }
 
-#[allow(clippy::too_many_arguments)]
-fn generate_candidates_adaptive<K, D, G, T, F, S, SV, R>(
-    left: Arc<ChunkedDataset<K, D>>,
-    right: Arc<ChunkedDataset<K, D>>,
-    min_k: usize,
-    _max_k: usize,
-    params: AdaptiveParams,
-    scope: G,
-    hasher: Arc<DKTCollection<F>>,
-    sketcher: S,
-    sketch_predicate: SketchPredicate<SV>,
-    _filter: Arc<AtomicBloomFilter<K>>,
-    probe: ProbeHandle<T>,
-    rng: &mut R,
-) -> Stream<G, (K, K)>
-where
-    K: KeyData + Debug + Into<u64>,
-    D: ExchangeData + Debug + SketchEstimate,
-    G: Scope<Timestamp = T>,
-    T: Timestamp + Succ + ToStepId,
-    F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
-    S: Sketcher<Input = D, Output = SV> + Send + Sync + Clone + 'static,
-    SV: SketchData + Debug,
-    R: Rng + SeedableRng + Send + Sync + Clone + 'static,
-{
-    let peers = scope.peers();
-    let matrix = MatrixDescription::for_workers(peers as usize);
-    let _logger = scope.danny_logger();
-    let worker: u64 = scope.index() as u64;
-    let sketcher = Arc::new(sketcher);
-    let sketches_left = build_sketches(
-        Arc::clone(&left),
-        Arc::clone(&sketcher),
-        worker,
-        matrix,
-        MatrixDirection::Rows,
-    );
-    let sketches_right = build_sketches(
-        Arc::clone(&right),
-        Arc::clone(&sketcher),
-        worker,
-        matrix,
-        MatrixDirection::Columns,
-    );
-
-    let min_level = min_k;
-
-    let (levels_left, levels_right) = find_best_level(
-        scope.clone(),
-        Arc::clone(&left),
-        Arc::clone(&right),
-        params,
-        Arc::clone(&hasher),
-        Arc::clone(&sketches_left),
-        Arc::clone(&sketches_right),
-        matrix,
-        rng.clone(),
-    );
-    let levels_left = levels_left
-        .matrix_distribute(MatrixDirection::Rows, matrix)
-        .map(|triplet| (triplet.1, triplet.2));
-    let levels_right = levels_right
-        .matrix_distribute(MatrixDirection::Columns, matrix)
-        .map(|triplet| (triplet.1, triplet.2));
-
-    let left_hashes = source_hashed_adaptive_sketched(
-        &scope,
-        &levels_left,
-        Arc::clone(&left),
-        Arc::clone(&hasher),
-        Arc::clone(&sketches_left),
-        matrix,
-        MatrixDirection::Rows,
-        probe.clone(),
-    );
-    let right_hashes = source_hashed_adaptive_sketched(
-        &scope,
-        &levels_right,
-        Arc::clone(&right),
-        Arc::clone(&hasher),
-        Arc::clone(&sketches_right),
-        matrix,
-        MatrixDirection::Columns,
-        probe.clone(),
-    );
-    left_hashes
-        .bucket_prefixes(
-            &right_hashes,
-            min_level,
-            move |l, r| sketch_predicate.eval(&l.1, &r.1),
-            // move |l: &(K, SV), r: &(K, SV)| !filter.test_and_insert(&(l.0, r.0)),
-            |_, _| true,
-        )
-        .map(|(l, r)| (l.0, r.0))
-}
-
 fn candidates_filter_count<G, T, K, D, F>(
     candidates: Stream<G, (K, K)>,
     global_left: Arc<ChunkedDataset<K, D>>,
@@ -532,7 +413,7 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let hasher = Arc::new(DKTCollection::new(k, k, range, hash_function_builder, rng));
+    let hasher = Arc::new(DKTCollection::new(k, range, hash_function_builder, rng));
 
     let rng = rng.clone();
 
@@ -719,211 +600,6 @@ where
     }
 }
 
-/// A simple take on the adaptive parameter algorithm.
-pub fn simple_adaptive<D, F, H, S, V, B, R>(
-    left_path: &str,
-    right_path: &str,
-    range: f64,
-    max_k: usize,
-    hash_function_builder: B,
-    sketcher: S,
-    sketch_predicate: SketchPredicate<V>,
-    sim_pred: F,
-    rng: &mut R,
-    config: &Config,
-    experiment: &mut Experiment,
-) -> usize
-where
-    for<'de> D: ReadBinaryFile + Deserialize<'de> + ExchangeData + Debug + SketchEstimate,
-    F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
-    H: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
-    S: Sketcher<Input = D, Output = V> + Send + Sync + Clone + 'static,
-    V: SketchData + Debug,
-    R: Rng + SeedableRng + Send + Sync + Clone + 'static,
-    B: Fn(usize, &mut R) -> H + Sized + Send + Sync + Clone + 'static,
-{
-    let network = NetworkGauge::start();
-    let timely_builder = config.get_timely_builder();
-    // This channel is used to get the results
-    let (output_send_ch, recv) = channel();
-    let output_send_ch = Arc::new(Mutex::new(output_send_ch));
-
-    let (send_exec_summary, recv_exec_summary) = channel();
-    let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
-
-    let hasher = Arc::new(DKTCollection::new(
-        1,
-        max_k,
-        range,
-        hash_function_builder,
-        rng,
-    ));
-
-    let rng = rng.clone();
-
-    debug!(
-        "Left dataset has {} points, right has {}",
-        D::num_elements(left_path.into()),
-        D::num_elements(right_path.into())
-    );
-    let (global_left, global_right) = load_vectors::<D>(left_path, right_path, &config);
-
-    let bloom_filter = Arc::new(AtomicBloomFilter::<ElementId>::new(
-        config.get_bloom_bits(),
-        config.get_bloom_k(),
-        rng.clone(),
-    ));
-    let params = AdaptiveParams::from_config(config);
-
-    timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
-        let logger = worker.danny_logger();
-        let global_left = Arc::clone(&global_left);
-        let global_right = Arc::clone(&global_right);
-        let bloom_filter = Arc::clone(&bloom_filter);
-        let hasher = Arc::clone(&hasher);
-        let mut rng = rng.clone();
-        let execution_summary = init_event_logging(&worker);
-        let output_send_ch = output_send_ch
-            .lock()
-            .expect("Cannot get lock on output channel")
-            .clone();
-        let sim_pred = sim_pred.clone();
-        let sketch_predicate = sketch_predicate.clone();
-        let sketcher = sketcher.clone();
-        let sketcher = Arc::new(sketcher);
-        let worker_index = worker.index() as u64;
-        let matrix = MatrixDescription::for_workers(worker.peers());
-        let (worker_row, worker_col) = matrix.row_major_to_pair(worker_index);
-
-        let probe = worker.dataflow::<u32, _, _>(move |scope| {
-            let mut probe = ProbeHandle::<u32>::new();
-            let global_left = Arc::clone(&global_left);
-            let global_right = Arc::clone(&global_right);
-            let sketch_predicate = sketch_predicate.clone();
-            let sim_pred = sim_pred.clone();
-
-            let left = simple_source(
-                scope,
-                Arc::clone(&global_left),
-                Arc::clone(&sketcher),
-                Arc::clone(&hasher),
-                Some(probe.clone()),
-                worker_index,
-                matrix,
-                MatrixDirection::Rows,
-            );
-            let right = simple_source(
-                scope,
-                Arc::clone(&global_right),
-                Arc::clone(&sketcher),
-                Arc::clone(&hasher),
-                Some(probe.clone()),
-                worker_index,
-                matrix,
-                MatrixDirection::Columns,
-            );
-
-            left.binary_frontier(&right, PipelinePact, PipelinePact, "bucket", move |_, _| {
-                let mut rng = rng.clone();
-                let sketch_predicate = sketch_predicate.clone();
-                let sim_pred = sim_pred.clone();
-                let mut notificator = FrontierNotificator::new();
-                let mut left_data = HashMap::new();
-                let mut right_data = HashMap::new();
-                move |left_in, right_in, output| {
-                    left_in.for_each(|t, data| {
-                        let local_data = left_data.entry(t.time().clone()).or_insert_with(|| {
-                            Vec::with_capacity(global_left.chunk_len(worker_row as usize))
-                        });
-                        for (k, (p, s)) in data.replace(Vec::new()).drain(..) {
-                            local_data.push((k, p, s));
-                        }
-                        notificator.notify_at(t.retain());
-                    });
-                    right_in.for_each(|t, data| {
-                        let local_data = right_data.entry(t.time().clone()).or_insert_with(|| {
-                            Vec::with_capacity(global_right.chunk_len(worker_col as usize))
-                        });
-                        for (k, (p, s)) in data.replace(Vec::new()).drain(..) {
-                            local_data.push((k, p, s));
-                        }
-                        notificator.notify_at(t.retain());
-                    });
-                    notificator.for_each(&[left_in.frontier(), &right_in.frontier()], |t, _| {
-                        if let Some(left_data) = left_data.remove(&t) {
-                            let right_data = right_data.remove(&t).expect("missing right data");
-                            let cnt = adaptive_local_solve_srr(
-                                Arc::clone(&global_left),
-                                Arc::clone(&global_right),
-                                left_data,
-                                right_data,
-                                Arc::clone(&hasher),
-                                &sketch_predicate,
-                                &sim_pred,
-                                Arc::clone(&bloom_filter),
-                                max_k,
-                                logger.clone(),
-                                params,
-                                &mut rng,
-                            );
-                            info!("Done local work");
-                            output.session(&t).give(cnt);
-                        }
-                    });
-                }
-            })
-            .stream_sum()
-            .exchange(|_| 0) // Bring all the counts to the first worker
-            .inspect_time(|t, cnt| println!("count at {}: {}", t, cnt))
-            .probe_with(&mut probe)
-            .capture_into(output_send_ch);
-
-            probe
-        });
-
-        worker.step_while(|| !probe.done());
-
-        collect_execution_summaries(execution_summary, send_exec_summary.clone(), &mut worker);
-    })
-    .expect("Problems with the dataflow");
-
-    let network_summaries = network.map(|n| n.measure().collect_from_workers(&config));
-
-    if config.is_master() {
-        let mut exec_summaries = Vec::new();
-        for summary in recv_exec_summary.iter() {
-            if let TimelyEvent::Messages(_, msgs) = summary {
-                exec_summaries.extend(msgs);
-            }
-        }
-        for summary in exec_summaries.iter() {
-            summary.add_to_experiment(experiment);
-        }
-        if network_summaries.is_some() {
-            network_summaries
-                .unwrap()
-                .iter()
-                .for_each(|n| n.report(experiment));
-        }
-        // From `recv` we get an entry for each timestamp, containing a one-element vector with the
-        // count of output pairs for a given timestamp. We sum across all the timestamps, so we need to
-        // remove the duplicates
-        let count: u64 = recv
-            .extract()
-            .iter()
-            .map(|pair: &(u32, Vec<u64>)| {
-                let cnt = pair.1.clone().iter().sum::<u64>();
-                println!("Time {}, count {}", pair.0, cnt);
-                cnt
-            })
-            .sum();
-
-        count as usize
-    } else {
-        0
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 pub fn hu_baseline<D, F, H, B, R>(
     left_path: &str,
@@ -953,7 +629,7 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let hasher = DKTCollection::new(k, k, range, hash_function_builder, rng);
+    let hasher = DKTCollection::new(k, range, hash_function_builder, rng);
     let hasher = Arc::new(hasher);
 
     let rng = rng.clone();
