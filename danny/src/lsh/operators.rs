@@ -4,7 +4,6 @@ use crate::operators::Route;
 use crate::operators::*;
 use danny_base::bucket::*;
 use danny_base::lsh::*;
-use danny_base::sketch::*;
 
 use abomonation::Abomonation;
 use std::clone::Clone;
@@ -511,7 +510,7 @@ where
 }
 
 
-struct RepetitionStopWatch {
+pub struct RepetitionStopWatch {
     start: Option<Instant>,
     counter: usize,
     name: String,
@@ -610,78 +609,6 @@ where
     })
 }
 
-
-pub fn source_hashed_two_round<G, T, K, D, F, S>(
-    scope: &G,
-    global_vecs: Arc<ChunkedDataset<K, D>>,
-    sketcher: Arc<S>,
-    hash_fns: Arc<TensorCollection<F>>,
-    hash_fns2: Arc<TensorCollection<F>>,
-    matrix: MatrixDescription,
-    direction: MatrixDirection,
-) -> Stream<G, ((usize, u32), (TensorPool, TensorPool, S::Output, (K, D)))>
-// ) -> Stream<G, (u32, (K, D))>
-where
-    G: Scope<Timestamp = T>,
-    T: Timestamp + Succ,
-    D: ExchangeData + Debug,
-    F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
-    S: Sketcher<Input = D> + Clone + 'static,
-    S::Output: SketchData + Debug,
-    K: KeyData + Debug,
-{
-    let worker: u64 = scope.index() as u64;
-    let logger = scope.danny_logger();
-    let repetitions = hash_fns.repetitions();
-    let vecs = Arc::clone(&global_vecs);
-    let mut stopwatch = RepetitionStopWatch::new("repetition", worker == 0, logger);
-    let mut bit_pools: HashMap<K, TensorPool> = HashMap::new();
-    let mut bit_pools_intern: HashMap<K, TensorPool> = HashMap::new();
-    info!("Computing the bit pools");
-    let start = Instant::now();
-    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
-        bit_pools.insert(*k, hash_fns.pool(v));
-        bit_pools_intern.insert(*k, hash_fns2.pool(v));
-    }
-    let end = Instant::now();
-    info!(
-        "Computed the bit pools ({:?}, {})",
-        end - start,
-        proc_mem!()
-    );
-
-    source(scope, "hashed source two round", move |capability| {
-        let mut cap = Some(capability);
-        move |output| {
-            let mut done = false;
-            if let Some(cap) = cap.as_mut() {
-                for current_repetition in 0..repetitions {
-                    stopwatch.maybe_stop();
-                    stopwatch.start();
-                    if worker == 0 {
-                        debug!("Repetition {} (Hu et al. baseline)", current_repetition,);
-                    }
-                    let mut session = output.session(&cap);
-                    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
-                        let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
-                        let s = sketcher.sketch(v);
-                        session.give(((current_repetition, h), (bit_pools[k].clone(), hash_fns2.pool(v), s.clone(), (k.clone(), v.clone()))));
-                        // for inner_rep in 0..repetitions_inner {
-                        //     let h2 = hash_fns2.hash(&bit_pools_intern[k], inner_rep as usize);
-                        //     session.give(((current_repetition, h), ((inner_rep, h2), (k.clone(), v.clone()))));
-                        // }
-                    }
-                }
-                done = true;
-            }
-
-            if done {
-                // Drop the capability to signal that we will send no more data
-                cap = None;
-            }
-        }
-    })
-}
 
 
 pub fn source_hashed_sketched<G, T, K, D, F, V>(

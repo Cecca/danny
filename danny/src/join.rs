@@ -140,6 +140,11 @@ impl<K: Ord, V> Joiner<K, V> {
             }
         });
     }
+
+    pub fn clear(&mut self) {
+        self.left.clear();
+        self.right.clear();
+    }
 }
 
 struct JoinIter<'a, K, V>
