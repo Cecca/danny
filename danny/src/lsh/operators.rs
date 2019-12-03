@@ -555,7 +555,7 @@ pub fn source_hashed_one_round<G, T, K, D, F>(
     hash_fns: Arc<TensorCollection<F>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-) -> Stream<G, ((usize, u32), (K, TensorPool, D, usize))>
+) -> Stream<G, ((usize, u32), (K, TensorPool, D))>
 // ) -> Stream<G, (u32, (K, D))>
 where
     G: Scope<Timestamp = T>,
@@ -596,7 +596,7 @@ where
                     let mut session = output.session(&cap);
                     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
                         let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
-                        session.give(((current_repetition, h), (k.clone(), bit_pools[k].clone(), v.clone(), current_repetition)));
+                        session.give(((current_repetition, h), (k.clone(), bit_pools[k].clone(), v.clone())));
                     }
                 }
                 done = true;

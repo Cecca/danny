@@ -1,6 +1,7 @@
 use crate::config::*;
 use crate::experiment::Experiment;
 use crate::io::*;
+use crate::join::Join;
 use crate::logging::init_event_logging;
 use crate::logging::*;
 use crate::lsh::operators::*;
@@ -87,12 +88,23 @@ where
                 MatrixDirection::Columns,
             );
             left_hashes
-                .bucket_pred_count(&right_hashes, move |l, r| {
-                    !hasher.already_seen(&l.1, &r.1, l.3) && sim_pred(&l.2, &r.2)
-                })
-                .inspect(|cnt| info!("Count before exchange {}", cnt))
+                .join_map_slice(
+                    &right_hashes,
+                    move |(repetition, _hash), left_vals, right_vals| {
+                        let mut cnt = 0usize;
+                        for (_, (_, l_pool, l)) in left_vals {
+                            for (_, (_, r_pool, r)) in right_vals {
+                                if !hasher.already_seen(l_pool, r_pool, *repetition)
+                                    && sim_pred(l, r)
+                                {
+                                    cnt += 1;
+                                }
+                            }
+                        }
+                        vec![cnt]
+                    },
+                )
                 .exchange(|_| 0) // Bring all the counts to the first worker
-                .inspect(|cnt| info!("Count after exchange {}", cnt))
                 .probe_with(&mut probe)
                 .capture_into(output_send_ch);
 
