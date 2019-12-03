@@ -19,6 +19,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::Debug;
 
+#[cfg(feature = "one-round-lsh")]
 fn run_one_round_lsh<SV>(
     args: &CmdlineConfig,
     config: &Config,
@@ -76,6 +77,7 @@ where
     }
 }
 
+#[cfg(feature = "two-round-lsh")]
 fn run_two_round_lsh<SV>(
     args: &CmdlineConfig,
     config: &Config,
