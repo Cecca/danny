@@ -6,7 +6,6 @@ extern crate abomonation;
 extern crate serde;
 #[macro_use]
 extern crate abomonation_derive;
-#[macro_use]
 extern crate lazy_static;
 extern crate rand;
 extern crate rand_xorshift;
@@ -14,9 +13,7 @@ extern crate siphasher;
 extern crate statrs;
 
 pub mod bloom;
-pub mod bucket;
 pub mod lsh;
 pub mod measure;
-pub mod prefix_hash;
 pub mod sketch;
 pub mod types;

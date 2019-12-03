@@ -34,6 +34,7 @@ pub mod baseline;
 pub mod config;
 pub mod dataset;
 pub mod io;
+pub mod join;
 pub mod lsh;
 pub mod operators;
 pub mod version {
