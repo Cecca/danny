@@ -20,6 +20,110 @@ pub trait LSHFunction {
 }
 
 #[derive(Clone, Abomonation, Debug, Hash)]
+pub struct TensorPool {
+    left: Vec<u16>,
+    right: Vec<u16>,
+}
+
+pub struct TensorCollection<F>
+where
+    F: LSHFunction<Output = u32> + Clone,
+{
+    k_left: usize,
+    k_right: usize,
+    mask_left: u32,
+    mask_right: u32,
+    repetitions: usize,
+    hashers: Vec<F>,
+}
+
+impl<F> TensorCollection<F>
+where
+    F: LSHFunction<Output = u32> + Clone,
+{
+    fn get_mask(k: usize) -> u32 {
+        assert!(k <= 16);
+        let mut m = 0u32;
+        for _ in 0..k {
+            m = (m << 1) | 1;
+        }
+        m
+    }
+
+    pub fn new<B, R: Rng>(k: usize, range: f64, mut builder: B, rng: &mut R) -> Self
+    where
+        B: FnMut(usize, &mut R) -> F,
+    {
+        let repetitions = F::repetitions_at_range(range, k);
+        let part_repetitions = (repetitions as f64).sqrt().ceil() as usize;
+        let k_left = ((k as f64) / 2.0).ceil() as usize;
+        let k_right = ((k as f64) / 2.0).floor() as usize;
+        let mut hashers = Vec::new();
+        for _ in 0..part_repetitions {
+            hashers.push(builder(k, rng));
+        }
+
+        Self {
+            k_left,
+            k_right,
+            mask_left: Self::get_mask(k_left),
+            mask_right: Self::get_mask(k_right),
+            repetitions,
+            hashers,
+        }
+    }
+
+    pub fn pool(&self, v: &F::Input) -> TensorPool {
+        let mut left = Vec::new();
+        let mut right = Vec::new();
+        for hasher in self.hashers.iter() {
+            let h: u32 = hasher.hash(v);
+            let bits_left = (h & self.mask_left) as u16;
+            let bits_right = ((h >> self.k_left) & self.mask_right) as u16;
+            left.push(bits_left);
+            right.push(bits_right);
+        }
+
+        TensorPool { left, right }
+    }
+
+    pub fn hash(&self, pool: &TensorPool, repetition: usize) -> u32 {
+        let idx_left = repetition / self.hashers.len();
+        let idx_right = repetition % self.hashers.len();
+        let left = pool.left[idx_left];
+        let right = pool.right[idx_right];
+        ((left as u32) << self.k_right) | (right as u32)
+    }
+
+    /// Tells whether a collision was already seen
+    pub fn already_seen(&self, a: &TensorPool, b: &TensorPool, repetition: usize) -> bool {
+        let idx_left = repetition / self.hashers.len();
+        let idx_right = repetition % self.hashers.len();
+        for i in 0..idx_left {
+            if a.left[i] == b.left[i] {
+                for j in 0..a.right.len() {
+                    if a.right[j] == b.right[j] {
+                        return true;
+                    }
+                }
+            }
+        }
+        if a.left[idx_left] == b.left[idx_left] {
+            for j in 0..idx_right {
+                if a.right[j] == b.right[j] {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    pub fn repetitions(&self) -> usize {
+        self.repetitions
+    }
+}
+
+#[derive(Clone, Abomonation, Debug, Hash)]
 pub struct DKTPool {
     bits: Vec<BitVector>,
 }
@@ -356,5 +460,18 @@ mod tests {
                 expected
             );
         }
+    }
+
+    #[test]
+    fn test_tensor_1() {
+        let mut rng = StdRng::seed_from_u64(1223132);
+        let a = BagOfWords::random(3000, 0.01, &mut rng);
+        let coll = TensorCollection::new(4, 0.5, OneBitMinHash::builder(), &mut rng);
+        let pool = coll.pool(&a);
+        for rep in 0..coll.repetitions() {
+            let h = coll.hash(&pool, rep);
+            println!("{:32b}", h);
+        }
+        // TODO: come up with a way to actually test this
     }
 }

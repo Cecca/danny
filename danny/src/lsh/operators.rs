@@ -53,8 +53,6 @@ where
 
 }    
 
-
-
 pub trait BucketTwoStream<G, T, H, K, S>
 where
     G: Scope<Timestamp = T>,
@@ -65,8 +63,8 @@ where
 {
     fn bucket_pred_lsh<P, PD, R, O, F, D, SP>(
             &self,
-            right: &Stream<G, (H, (DKTPool, S, K))>,
-            hasher: Arc<DKTCollection<F>>,
+            right: &Stream<G, (H, (TensorPool, S, K))>,
+            hasher: Arc<TensorCollection<F>>,
             pre: P,
             sketch_pred: SP, 
             distinct_pre: PD,
@@ -347,7 +345,7 @@ where
     }
 }
 
-impl<G, T, H, K, S> BucketTwoStream<G, T, H, K, S> for Stream<G, (H, (DKTPool, S, K))>
+impl<G, T, H, K, S> BucketTwoStream<G, T, H, K, S> for Stream<G, (H, (TensorPool, S, K))>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + ToStepId,
@@ -358,8 +356,8 @@ where
     #[allow(clippy::explicit_counter_loop)]
     fn bucket_pred_lsh<P, PD, R, O, F, D, SP>(
         &self,
-        right: &Stream<G, (H, (DKTPool, S, K))>,
-        hasher: Arc<DKTCollection<F>>,
+        right: &Stream<G, (H, (TensorPool, S, K))>,
+        hasher: Arc<TensorCollection<F>>,
         mut pred: P,
         mut sketch_pred: SP, 
         mut distinct_pred: PD,
@@ -379,8 +377,8 @@ where
 
         self.binary_frontier(
             &right,
-            ExchangePact::new(|pair: &(H, (DKTPool, S, K))| pair.0.route()),
-            ExchangePact::new(|pair: &(H, (DKTPool, S, K))| pair.0.route()),
+            ExchangePact::new(|pair: &(H, (TensorPool, S, K))| pair.0.route()),
+            ExchangePact::new(|pair: &(H, (TensorPool, S, K))| pair.0.route()),
             "bucket",
             move |_, _| {
                 move |left_in, right_in, output| {
@@ -449,7 +447,7 @@ where
                                 debug!("Doing {:?} local repetitions", repetitions);
                                 for rep in 0..repetitions {
                                     debug!("In repetition {}", rep);
-                                    bucket.for_all_buckets(|x: &[(H, (DKTPool, S, K))], y: &[(H, (DKTPool, S, K))]| {
+                                    bucket.for_all_buckets(|x: &[(H, (TensorPool, S, K))], y: &[(H, (TensorPool, S, K))]| {
                                         let mut bucket = Bucket::default();
                                         // split up to buckets and do all to all within buckets.
                                         for (_, (pool, s, v)) in x.iter() {
@@ -461,7 +459,7 @@ where
                                         // TODO add sketches and duplicate counting
                                         bucket.for_all(|l, r| {
                                             total += 1;
-                                            if (sketch_pred(l.0, r.0)) {
+                                            if sketch_pred(l.0, r.0) {
                                                 if pred(l.1, r.1) {
                                                     cnt += 1;
                                                 }
@@ -564,7 +562,7 @@ impl RepetitionStopWatch {
 pub fn source_hashed_one_round<G, T, K, D, F>(
     scope: &G,
     global_vecs: Arc<ChunkedDataset<K, D>>,
-    hash_fns: Arc<DKTCollection<F>>,
+    hash_fns: Arc<TensorCollection<F>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
 ) -> Stream<G, ((usize, u32), (K, D))>
@@ -581,7 +579,7 @@ where
     let repetitions = hash_fns.repetitions();
     let vecs = Arc::clone(&global_vecs);
     let mut stopwatch = RepetitionStopWatch::new("repetition", worker == 0, logger);
-    let mut bit_pools: HashMap<K, DKTPool> = HashMap::new();
+    let mut bit_pools: HashMap<K, TensorPool> = HashMap::new();
     info!("Computing the bit pools");
     let start = Instant::now();
     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
@@ -627,11 +625,11 @@ pub fn source_hashed_two_round<G, T, K, D, F, S>(
     scope: &G,
     global_vecs: Arc<ChunkedDataset<K, D>>,
     sketcher: Arc<S>,
-    hash_fns: Arc<DKTCollection<F>>,
-    hash_fns2: Arc<DKTCollection<F>>,
+    hash_fns: Arc<TensorCollection<F>>,
+    hash_fns2: Arc<TensorCollection<F>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-) -> Stream<G, ((usize, u32), (DKTPool, S::Output, (K, D)))>
+) -> Stream<G, ((usize, u32), (TensorPool, S::Output, (K, D)))>
 // ) -> Stream<G, (u32, (K, D))>
 where
     G: Scope<Timestamp = T>,
@@ -648,8 +646,8 @@ where
     let repetitions_inner = hash_fns2.repetitions();
     let vecs = Arc::clone(&global_vecs);
     let mut stopwatch = RepetitionStopWatch::new("repetition", worker == 0, logger);
-    let mut bit_pools: HashMap<K, DKTPool> = HashMap::new();
-    let mut bit_pools_intern: HashMap<K, DKTPool> = HashMap::new();
+    let mut bit_pools: HashMap<K, TensorPool> = HashMap::new();
+    let mut bit_pools_intern: HashMap<K, TensorPool> = HashMap::new();
     info!("Computing the bit pools");
     let start = Instant::now();
     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
@@ -700,7 +698,7 @@ where
 pub fn source_hashed_sketched<G, T, K, D, F, V>(
     scope: &G,
     global_vecs: Arc<ChunkedDataset<K, D>>,
-    hash_fns: Arc<DKTCollection<F>>,
+    hash_fns: Arc<TensorCollection<F>>,
     sketches: Arc<HashMap<K, V>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
@@ -720,7 +718,7 @@ where
     let mut current_repetition = 0usize;
     let vecs = Arc::clone(&global_vecs);
     let mut stopwatch = RepetitionStopWatch::new("repetition", worker == 0, logger);
-    let mut bit_pools: HashMap<K, DKTPool> = HashMap::new();
+    let mut bit_pools: HashMap<K, TensorPool> = HashMap::new();
     info!("Computing the bit pools");
     let start = Instant::now();
     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
@@ -763,4 +761,3 @@ where
         }
     })
 }
-
