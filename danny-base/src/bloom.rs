@@ -120,6 +120,7 @@ mod test {
     use rand::RngCore;
     use rand::SeedableRng;
     use rand_xorshift::XorShiftRng;
+    use std::collections::hash_map::DefaultHasher;
     use std::hash::Hash;
     use std::hash::Hasher;
     use std::hash::SipHasher;

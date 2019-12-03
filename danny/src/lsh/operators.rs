@@ -4,7 +4,6 @@ use crate::operators::Route;
 use crate::operators::*;
 use danny_base::bucket::*;
 use danny_base::lsh::*;
-use danny_base::prefix_hash::*;
 use danny_base::sketch::*;
 
 use abomonation::Abomonation;
@@ -14,10 +13,8 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Instant;
-use timely::dataflow::channels::pact::{Exchange as ExchangePact, Pipeline};
-use timely::dataflow::operators::generic::builder_rc::OperatorBuilder;
+use timely::dataflow::channels::pact::{Exchange as ExchangePact};
 use timely::dataflow::operators::generic::source;
-use timely::dataflow::operators::generic::FrontieredInputHandle;
 use timely::dataflow::operators::Capability;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
@@ -61,23 +58,18 @@ where
     K: Data + Debug + Send + Sync + Abomonation + Clone,
     S: SketchData + Debug, 
 {
-    fn bucket_pred_lsh<P, PD, R, O, F, D, SP>(
+    fn bucket_pred_lsh<P, F, D, SP>(
             &self,
             right: &Stream<G, ((usize, H), (TensorPool, TensorPool, S, K))>,
             hasher_intern: Arc<TensorCollection<F>>,
             hasher_extern: Arc<TensorCollection<F>>,
             pre: P,
             sketch_pred: SP, 
-            distinct_pre: PD,
-            result: R,
         ) -> Stream<G, usize>
         where
             P: FnMut(&K, &K) -> bool + 'static,
-            PD: FnMut(&K, &K) -> bool + 'static,
             SP: FnMut(&S, &S) -> bool + 'static,
-            R: Fn(K) -> O + 'static,
-            F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
-            O: ExchangeData;
+            F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static;
 }
 
 impl<G, T, H, K> BucketStream<G, T, H, K> for Stream<G, (H, K)>
@@ -307,7 +299,6 @@ where
                             let start = Instant::now();
                             info!("Left: {}, right: {}", buckets.len_left(), buckets.len_right());
                             if !buckets.is_one_side_empty() {
-                                let repetition = time.time().to_step_id();
                                 buckets.for_all(|l, r| {
                                     total_pairs += 1;
                                     if pred(l, r) {
@@ -356,23 +347,18 @@ where
     S: SketchData + Debug,
 {
     #[allow(clippy::explicit_counter_loop)]
-    fn bucket_pred_lsh<P, PD, R, O, F, D, SP>(
+    fn bucket_pred_lsh<P, F, D, SP>(
         &self,
         right: &Stream<G, ((usize, H), (TensorPool, TensorPool, S, K))>,
         hasher_extern: Arc<TensorCollection<F>>,
         hasher_intern: Arc<TensorCollection<F>>,
         mut pred: P,
         mut sketch_pred: SP, 
-        mut distinct_pred: PD,
-        result: R,
     ) -> Stream<G, usize>
     where
         P: FnMut(&K, &K) -> bool + 'static,
-        PD: FnMut(&K, &K) -> bool + 'static,
         SP: FnMut(&S, &S) -> bool + 'static,
-        R: Fn(K) -> O + 'static,
         F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
-        O: ExchangeData,
     {
         let mut buckets = HashMap::new();
         let mut pool = BucketPool::default();
@@ -647,7 +633,6 @@ where
     let worker: u64 = scope.index() as u64;
     let logger = scope.danny_logger();
     let repetitions = hash_fns.repetitions();
-    let repetitions_inner = hash_fns2.repetitions();
     let vecs = Arc::clone(&global_vecs);
     let mut stopwatch = RepetitionStopWatch::new("repetition", worker == 0, logger);
     let mut bit_pools: HashMap<K, TensorPool> = HashMap::new();

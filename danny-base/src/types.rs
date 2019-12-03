@@ -1,6 +1,5 @@
 use crate::measure::{InnerProduct, Jaccard};
 
-use abomonation::Abomonation;
 use rand::distributions::{Distribution, Exp, Normal, Uniform};
 use rand::Rng;
 use std::collections::BTreeSet;

@@ -3,7 +3,6 @@ use crate::types::*;
 use rand::distributions::{Distribution, Normal, Uniform};
 use rand::Rng;
 use std::clone::Clone;
-use std::collections::HashMap;
 
 pub trait LSHFunction {
     type Input;

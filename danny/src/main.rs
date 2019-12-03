@@ -9,7 +9,6 @@ use danny::config::*;
 use danny::experiment::Experiment;
 use danny::io::*;
 use danny::logging::*;
-use danny::lsh::algorithms::distributed_lsh;
 use danny::lsh::algorithms::hu_baseline;
 use danny::lsh::algorithms::simple_fixed;
 use danny::lsh::algorithms::two_round_lsh;

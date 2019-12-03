@@ -59,7 +59,7 @@ pub struct Sketcher0<T, F> {
 
 impl FromCosine for Sketch0 {
     type SketcherType = Sketcher0<UnitNormVector, Hyperplane>;
-    fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self::SketcherType {
+    fn from_cosine<R: Rng>(_dim: usize, _rng: &mut R) -> Self::SketcherType {
         Sketcher0 {
             _mark_a: PhantomData::<UnitNormVector>,
             _mark_b: PhantomData::<Hyperplane>,
@@ -69,7 +69,7 @@ impl FromCosine for Sketch0 {
 
 impl FromJaccard for Sketch0 {
     type SketcherType = Sketcher0<BagOfWords, OneBitMinHash>;
-    fn from_jaccard<R: Rng>(rng: &mut R) -> Self::SketcherType {
+    fn from_jaccard<R: Rng>(_rng: &mut R) -> Self::SketcherType {
         Sketcher0 {
             _mark_a: PhantomData::<BagOfWords>,
             _mark_b: PhantomData::<OneBitMinHash>,
@@ -83,7 +83,7 @@ where
 {
     type Input = T;
     type Output = Sketch0;
-    fn sketch(&self, v: &Self::Input) -> Self::Output {
+    fn sketch(&self, _v: &Self::Input) -> Self::Output {
         Sketch0
     }
 }

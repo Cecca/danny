@@ -17,20 +17,9 @@ use danny::logging::*;
 use danny::operators::Route;
 use danny_base::measure::*;
 use danny_base::types::*;
-use rand::distributions::Exp1;
-use rand::distributions::Normal;
-use rand::distributions::Uniform;
-use rand::Rng;
-use rand::SeedableRng;
-use rand_xorshift::XorShiftRng;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::fs::File;
-use std::io::BufRead;
-use std::io::BufReader;
-use std::io::BufWriter;
-use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
 use std::time::Instant;
@@ -39,9 +28,6 @@ use timely::dataflow::channels::pact::Pipeline as PipelinePact;
 use timely::dataflow::operators::capture::Extract;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
-use timely::progress::timestamp::Timestamp;
-use timely::Data;
-use timely::ExchangeData;
 
 /// Broadcast a stream of tokens and ranks
 fn rank_tokens<G: Scope>(stream: &Stream<G, (u64, BagOfWords)>) -> Stream<G, (u32, u32)> {
@@ -87,7 +73,7 @@ fn rank_tokens<G: Scope>(stream: &Stream<G, (u64, BagOfWords)>) -> Stream<G, (u3
 
                     notificator.for_each(&[input.frontier()], |time, _notificator| {
                         let mut session = output.session(&time);
-                        if let Some(mut accum) = accum.remove(&time) {
+                        if let Some(accum) = accum.remove(&time) {
                             let mut counts_vec: Vec<(u32, usize)> = accum.into_iter().collect();
                             counts_vec.sort_by_key(|pair| pair.1); // sort by increasing frequency
                             for (rank, (token, _)) in counts_vec.into_iter().enumerate() {

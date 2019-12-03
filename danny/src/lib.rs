@@ -1,7 +1,6 @@
 #![feature(is_sorted)]
 #![feature(fn_traits)]
 #![feature(unboxed_closures)]
-#![feature(range_contains)]
 
 extern crate danny_base;
 #[macro_use]
@@ -15,11 +14,7 @@ extern crate serde;
 #[macro_use]
 extern crate clap;
 #[macro_use]
-extern crate abomonation;
-#[macro_use]
 extern crate abomonation_derive;
-#[macro_use]
-extern crate lazy_static;
 extern crate chrono;
 extern crate core;
 extern crate probabilistic_collections;

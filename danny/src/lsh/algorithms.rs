@@ -331,7 +331,6 @@ fn simple_source<G, K, F, D, S>(
     vecs: Arc<ChunkedDataset<K, D>>,
     sketcher: Arc<S>,
     hash_fns: Arc<TensorCollection<F>>,
-    throttle: Option<ProbeHandle<G::Timestamp>>,
     worker: u64,
     matrix: MatrixDescription,
     direction: MatrixDirection,
@@ -415,8 +414,6 @@ where
 
     let hasher = Arc::new(TensorCollection::new(k, range, hash_function_builder, rng));
 
-    let rng = rng.clone();
-
     debug!(
         "Left dataset has {} points, right has {}",
         D::num_elements(left_path.into()),
@@ -424,18 +421,11 @@ where
     );
     let (global_left, global_right) = load_vectors::<D>(left_path, right_path, &config);
 
-    let bloom_filter = Arc::new(AtomicBloomFilter::<ElementId>::new(
-        config.get_bloom_bits(),
-        config.get_bloom_k(),
-        rng.clone(),
-    ));
-
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
         let global_left = Arc::clone(&global_left);
         let global_right = Arc::clone(&global_right);
         // let bloom_filter = Arc::clone(&bloom_filter);
         let hasher = Arc::clone(&hasher);
-        let rng = rng.clone();
         let execution_summary = init_event_logging(&worker);
         let output_send_ch = output_send_ch
             .lock()
@@ -460,7 +450,6 @@ where
                 Arc::clone(&global_left),
                 Arc::clone(&sketcher),
                 Arc::clone(&hasher),
-                Some(probe.clone()),
                 worker_index,
                 matrix,
                 MatrixDirection::Rows,
@@ -470,7 +459,6 @@ where
                 Arc::clone(&global_right),
                 Arc::clone(&sketcher),
                 Arc::clone(&hasher),
-                Some(probe.clone()),
                 worker_index,
                 matrix,
                 MatrixDirection::Columns,
@@ -632,8 +620,6 @@ where
     let hasher = TensorCollection::new(k, range, hash_function_builder, rng);
     let hasher = Arc::new(hasher);
 
-    let rng = rng.clone();
-
     debug!(
         "Left dataset has {} points, right has {}",
         D::num_elements(left_path.into()),
@@ -645,7 +631,6 @@ where
         let global_left = Arc::clone(&global_left);
         let global_right = Arc::clone(&global_right);
         let hasher = Arc::clone(&hasher);
-        let mut rng = rng.clone();
         let execution_summary = init_event_logging(&worker);
         let output_send_ch = output_send_ch
             .lock()
@@ -730,19 +715,6 @@ where
     }
 }
 
-struct TwoRoundLSHValue<S, K, D>
-where
-    S: SketchData,
-    K: KeyData,
-    D: ExchangeData,
-{
-    outer_pool: TensorPool,
-    inner_pool: TensorPool,
-    sketch: S,
-    key: K,
-    data: D,
-}
-
 #[allow(clippy::too_many_arguments)]
 pub fn two_round_lsh<D, F, H, B, R, S, V>(
     left_path: &str,
@@ -784,8 +756,6 @@ where
     let hasher_intern = TensorCollection::new(k2, range, hash_function_builder_2, rng);
     let hasher_intern = Arc::new(hasher_intern);
 
-    let rng = rng.clone();
-
     debug!(
         "Left dataset has {} points, right has {}",
         D::num_elements(left_path.into()),
@@ -798,7 +768,6 @@ where
         let global_right = Arc::clone(&global_right);
         let hasher = Arc::clone(&hasher);
         let hasher_intern = Arc::clone(&hasher_intern);
-        let rng = rng.clone();
         let execution_summary = init_event_logging(&worker);
         let output_send_ch = output_send_ch
             .lock()
@@ -839,8 +808,6 @@ where
                     Arc::clone(&hasher_intern),
                     move |l, r| sim_pred(&l.1, &r.1),
                     move |l, r| sketch_pred.eval(l, r),
-                    |_, _| true,
-                    |x| x.1,
                 )
                 .exchange(|_| 0) // Bring all the counts to the first worker
                 .probe_with(&mut probe)
