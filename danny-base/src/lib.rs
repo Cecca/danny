@@ -13,7 +13,6 @@ extern crate siphasher;
 extern crate statrs;
 
 pub mod bloom;
-pub mod bucket;
 pub mod lsh;
 pub mod measure;
 pub mod sketch;

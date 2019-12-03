@@ -1,4 +1,5 @@
 use crate::config::*;
+use crate::dataset::ChunkedDataset;
 use crate::experiment::Experiment;
 use crate::io::*;
 use crate::join::Join;
@@ -11,13 +12,81 @@ use danny_base::sketch::*;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
 use std::clone::Clone;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
+use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
+use timely::progress::Timestamp;
 use timely::ExchangeData;
+
+pub fn source_hashed_one_round<G, T, K, D, F>(
+    scope: &G,
+    global_vecs: Arc<ChunkedDataset<K, D>>,
+    hash_fns: Arc<TensorCollection<F>>,
+    matrix: MatrixDescription,
+    direction: MatrixDirection,
+) -> Stream<G, ((usize, u32), (K, TensorPool, D))>
+// ) -> Stream<G, (u32, (K, D))>
+where
+    G: Scope<Timestamp = T>,
+    T: Timestamp + Succ,
+    D: ExchangeData + Debug,
+    F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
+    K: KeyData + Debug,
+{
+    let worker: u64 = scope.index() as u64;
+    let logger = scope.danny_logger();
+    let repetitions = hash_fns.repetitions();
+    let vecs = Arc::clone(&global_vecs);
+    let mut stopwatch = RepetitionStopWatch::new("repetition", worker == 0, logger);
+    let mut bit_pools: HashMap<K, TensorPool> = HashMap::new();
+    info!("Computing the bit pools");
+    let start = Instant::now();
+    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
+        bit_pools.insert(*k, hash_fns.pool(v));
+    }
+    let end = Instant::now();
+    info!(
+        "Computed the bit pools ({:?}, {})",
+        end - start,
+        proc_mem!()
+    );
+
+    source(scope, "hashed source one round", move |capability| {
+        let mut cap = Some(capability);
+        move |output| {
+            let mut done = false;
+            if let Some(cap) = cap.as_mut() {
+                for current_repetition in 0..repetitions {
+                    stopwatch.maybe_stop();
+                    stopwatch.start();
+                    if worker == 0 {
+                        debug!("Repetition {} (Hu et al. baseline)", current_repetition,);
+                    }
+                    let mut session = output.session(&cap);
+                    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
+                        let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
+                        session.give((
+                            (current_repetition, h),
+                            (k.clone(), bit_pools[k].clone(), v.clone()),
+                        ));
+                    }
+                }
+                done = true;
+            }
+
+            if done {
+                // Drop the capability to signal that we will send no more data
+                cap = None;
+            }
+        }
+    })
+}
 
 #[allow(clippy::too_many_arguments)]
 pub fn hu_baseline<D, F, H, B, R>(
