@@ -95,6 +95,29 @@ where
         ((left as u32) << self.k_right) | (right as u32)
     }
 
+    /// Tells whether a collision was already seen
+    pub fn already_seen(&self, a: &TensorPool, b: &TensorPool, repetition: usize) -> bool {
+        let idx_left = repetition / self.hashers.len();
+        let idx_right = repetition % self.hashers.len();
+        for i in 0..idx_left {
+            if a.left[i] == b.left[i] {
+                for j in 0..a.right.len() {
+                    if a.right[j] == b.right[j] {
+                        return true;
+                    }
+                }
+            }
+        }
+        if a.left[idx_left] == b.left[idx_left] {
+            for j in 0..idx_right {
+                if a.right[j] == b.right[j] {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     pub fn repetitions(&self) -> usize {
         self.repetitions
     }

@@ -433,9 +433,9 @@ where
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
         let global_left = Arc::clone(&global_left);
         let global_right = Arc::clone(&global_right);
-        let bloom_filter = Arc::clone(&bloom_filter);
+        // let bloom_filter = Arc::clone(&bloom_filter);
         let hasher = Arc::clone(&hasher);
-        let mut rng = rng.clone();
+        let rng = rng.clone();
         let execution_summary = init_event_logging(&worker);
         let output_send_ch = output_send_ch
             .lock()
@@ -509,26 +509,26 @@ where
                                 let start = Instant::now();
                                 let mut bucket = Bucket::default();
                                 for (k, pool, sketch) in left_data.iter() {
-                                    bucket.push_left(hasher.hash(pool, rep), (*k, *sketch));
+                                    bucket.push_left(hasher.hash(pool, rep), (*k, *sketch, pool));
                                 }
                                 for (k, pool, sketch) in right_data.iter() {
-                                    bucket.push_right(hasher.hash(pool, rep), (*k, *sketch));
+                                    bucket.push_right(hasher.hash(pool, rep), (*k, *sketch, pool));
                                 }
                                 let mut sketch_discarded = 0;
                                 let mut duplicates_discarded = 0;
                                 let mut examined_pairs = 0;
-                                bucket.for_all(|l, r| {
+                                bucket.for_all(|(lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
                                     examined_pairs += 1;
-                                    if sketch_predicate.eval(&l.1, &r.1) {
-                                        if !bloom_filter.test_and_insert(&(l.0, r.0)) {
-                                            if sim_pred(&global_left[&l.0], &global_right[&r.0]) {
+                                    if !hasher.already_seen(l_pool, r_pool, rep) {
+                                        if sketch_predicate.eval(l_sketch, r_sketch) {
+                                            if sim_pred(&global_left[lk], &global_right[rk]) {
                                                 cnt += 1;
                                             }
                                         } else {
-                                            duplicates_discarded += 1;
+                                            sketch_discarded += 1;
                                         }
                                     } else {
-                                        sketch_discarded += 1;
+                                        duplicates_discarded += 1;
                                     }
                                 });
                                 let end = Instant::now();
