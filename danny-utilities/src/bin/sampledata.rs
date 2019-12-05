@@ -9,13 +9,9 @@ extern crate rand_xorshift;
 extern crate serde;
 
 use danny::io::*;
-use danny::logging::ProgressLogger;
-use danny_base::measure::*;
 use danny_base::types::*;
 use rand::{Rng, SeedableRng};
 use serde::Serialize;
-use std::fs::File;
-use std::io::BufWriter;
 use std::io::Write;
 use std::path::PathBuf;
 

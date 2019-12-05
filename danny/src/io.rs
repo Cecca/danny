@@ -81,7 +81,7 @@ where
                 let res: bincode::Result<(u32, T)> = bincode::deserialize_from(&mut buf_reader);
                 match res {
                     Ok((i, element)) => fun(u64::from(i), element),
-                    Err(e) => {
+                    Err(_) => {
                         break;
                     }
                 }

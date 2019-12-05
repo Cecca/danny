@@ -113,11 +113,14 @@ impl<T: Into<u64> + Copy> Debug for AtomicBloomFilter<T> {
 
 #[cfg(test)]
 mod test {
+    extern crate probabilistic_collections;
+
     use super::*;
     use probabilistic_collections::hyperloglog::HyperLogLog;
     use rand::RngCore;
     use rand::SeedableRng;
     use rand_xorshift::XorShiftRng;
+    use std::collections::hash_map::DefaultHasher;
     use std::hash::Hash;
     use std::hash::Hasher;
     use std::hash::SipHasher;

@@ -9,10 +9,7 @@ use danny::config::*;
 use danny::experiment::Experiment;
 use danny::io::*;
 use danny::logging::*;
-use danny::lsh::algorithms::distributed_lsh;
-use danny::lsh::algorithms::hu_baseline;
-use danny::lsh::algorithms::simple_fixed;
-use danny::lsh::algorithms::two_round_lsh;
+use danny::lsh::algorithms::*;
 use danny::operators::*;
 use danny_base::lsh::*;
 use danny_base::measure::*;
@@ -22,7 +19,12 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-fn run_lsh<SV>(args: &CmdlineConfig, config: &Config, experiment: &mut Experiment) -> usize
+#[cfg(feature = "one-round-lsh")]
+fn run_one_round_lsh<SV>(
+    args: &CmdlineConfig,
+    config: &Config,
+    experiment: &mut Experiment,
+) -> usize
 where
     SV: BitBasedSketch + FromCosine + FromJaccard + SketchData + Debug,
 {
@@ -36,34 +38,19 @@ where
             let sketch_predicate =
                 SketchPredicate::cosine(sketch_bits, threshold, config.get_sketch_epsilon());
             let k = args.k.expect("K is needed on the command line");
-            match args.rounds {
-                Rounds::One => simple_fixed::<UnitNormVector, _, _, _, _, _, _>(
-                        &args.left_path,
-                        &args.right_path,
-                        threshold,
-                        k,
-                        Hyperplane::builder(dim),
-                        sketcher,
-                        sketch_predicate,
-                        move |a, b| InnerProduct::cosine(a, b) >= threshold,
-                        &mut rng,
-                        &config,
-                        experiment,
-                    ),
-                Rounds::Multi => distributed_lsh::<UnitNormVector, _, _, _, _, _, _>(
-                    &args.left_path,
-                    &args.right_path,
-                    threshold,
-                    k,
-                    Hyperplane::builder(dim),
-                    sketcher,
-                    sketch_predicate,
-                    move |a, b| InnerProduct::cosine(a, b) >= threshold,
-                    &mut rng,
-                    &config,
-                    experiment,
-                ),
-            }
+            one_round_lsh::<UnitNormVector, _, _, _, _, _, _>(
+                &args.left_path,
+                &args.right_path,
+                threshold,
+                k,
+                Hyperplane::builder(dim),
+                sketcher,
+                sketch_predicate,
+                move |a, b| InnerProduct::cosine(a, b) >= threshold,
+                &mut rng,
+                &config,
+                experiment,
+            )
         }
         "jaccard" => {
             let k = args.k.expect("K is needed on the command line");
@@ -72,40 +59,30 @@ where
             let sketcher = SV::from_jaccard(&mut rng);
             let sketch_predicate =
                 SketchPredicate::jaccard(sketch_bits, threshold, config.get_sketch_epsilon());
-            match args.rounds {
-                Rounds::One => simple_fixed::<BagOfWords, _, _, _, _, _, _>(
-                        &args.left_path,
-                        &args.right_path,
-                        threshold,
-                        k,
-                        OneBitMinHash::builder(),
-                        sketcher,
-                        sketch_predicate,
-                        move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
-                        &mut rng,
-                        &config,
-                        experiment,
-                    ),
-                Rounds::Multi => distributed_lsh::<BagOfWords, _, _, _, _, _, _>(
-                    &args.left_path,
-                    &args.right_path,
-                    threshold,
-                    k,
-                    OneBitMinHash::builder(),
-                    sketcher,
-                    sketch_predicate,
-                    move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
-                    &mut rng,
-                    &config,
-                    experiment,
-                ),
-            }
+            one_round_lsh::<BagOfWords, _, _, _, _, _, _>(
+                &args.left_path,
+                &args.right_path,
+                threshold,
+                k,
+                OneBitMinHash::builder(),
+                sketcher,
+                sketch_predicate,
+                move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
+                &mut rng,
+                &config,
+                experiment,
+            )
         }
         _ => unimplemented!("Unknown measure {}", args.measure),
     }
 }
 
-fn run_two_round_lsh<SV>(args: &CmdlineConfig, config: &Config, experiment: &mut Experiment) -> usize
+#[cfg(feature = "two-round-lsh")]
+fn run_two_round_lsh<SV>(
+    args: &CmdlineConfig,
+    config: &Config,
+    experiment: &mut Experiment,
+) -> usize
 where
     SV: BitBasedSketch + FromCosine + FromJaccard + SketchData + Debug,
 {
@@ -122,20 +99,20 @@ where
             let sketch_predicate =
                 SketchPredicate::cosine(sketch_bits, threshold, config.get_sketch_epsilon());
             two_round_lsh::<UnitNormVector, _, _, _, _, _, _>(
-                        &args.left_path,
-                        &args.right_path,
-                        threshold,
-                        k,
-                        k2,
-                        Hyperplane::builder(dim),
-                        Hyperplane::builder(dim),
-                        sketcher,
-                        sketch_predicate,
-                        move |a, b| InnerProduct::cosine(a, b) >= threshold,
-                        &mut rng,
-                        &config,
-                        experiment,
-                    )
+                &args.left_path,
+                &args.right_path,
+                threshold,
+                k,
+                k2,
+                Hyperplane::builder(dim),
+                Hyperplane::builder(dim),
+                sketcher,
+                sketch_predicate,
+                move |a, b| InnerProduct::cosine(a, b) >= threshold,
+                &mut rng,
+                &config,
+                experiment,
+            )
         }
         "jaccard" => {
             let k = args.k.expect("K is needed on the command line");
@@ -145,25 +122,24 @@ where
             let sketch_predicate =
                 SketchPredicate::jaccard(sketch_bits, threshold, config.get_sketch_epsilon());
             two_round_lsh::<BagOfWords, _, _, _, _, _, _>(
-                        &args.left_path,
-                        &args.right_path,
-                        threshold,
-                        k,
-                        k2, 
-                        OneBitMinHash::builder(),
-                        OneBitMinHash::builder(),
-                        sketcher,
-                        sketch_predicate,
-                        move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
-                        &mut rng,
-                        &config,
-                        experiment,
-                    )
+                &args.left_path,
+                &args.right_path,
+                threshold,
+                k,
+                k2,
+                OneBitMinHash::builder(),
+                OneBitMinHash::builder(),
+                sketcher,
+                sketch_predicate,
+                move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
+                &mut rng,
+                &config,
+                experiment,
+            )
         }
-        _ => unimplemented!("Unknown measure {}", args.measure)
+        _ => unimplemented!("Unknown measure {}", args.measure),
     }
 }
-
 
 fn main() {
     let config = Config::get();
@@ -177,23 +153,34 @@ fn main() {
     let threshold = args.threshold;
     let start = std::time::Instant::now();
 
-    let count = match args.algorithm.as_ref() {
+    let count: usize = match args.algorithm.as_ref() {
+        #[cfg(feature = "one-round-lsh")]
         "lsh" => match args.sketch_bits {
-            Some(0) | None => run_lsh::<Sketch0>(&args, &config, &mut experiment),
-            Some(64) => run_lsh::<Sketch64>(&args, &config, &mut experiment),
-            Some(128) => run_lsh::<Sketch128>(&args, &config, &mut experiment),
-            Some(256) => run_lsh::<Sketch256>(&args, &config, &mut experiment),
-            Some(512) => run_lsh::<Sketch512>(&args, &config, &mut experiment),
+            Some(0) | None => run_one_round_lsh::<Sketch0>(&args, &config, &mut experiment),
+            #[cfg(feature = "sketching")]
+            Some(64) => run_one_round_lsh::<Sketch64>(&args, &config, &mut experiment),
+            #[cfg(feature = "sketching")]
+            Some(128) => run_one_round_lsh::<Sketch128>(&args, &config, &mut experiment),
+            #[cfg(feature = "sketching")]
+            Some(256) => run_one_round_lsh::<Sketch256>(&args, &config, &mut experiment),
+            #[cfg(feature = "sketching")]
+            Some(512) => run_one_round_lsh::<Sketch512>(&args, &config, &mut experiment),
             Some(bits) => panic!("Unsupported number of sketch bits: {}", bits),
         },
+        #[cfg(feature = "two-round-lsh")]
         "two-round-lsh" => match args.sketch_bits {
             Some(0) | None => run_two_round_lsh::<Sketch0>(&args, &config, &mut experiment),
+            #[cfg(feature = "sketching")]
             Some(64) => run_two_round_lsh::<Sketch64>(&args, &config, &mut experiment),
+            #[cfg(feature = "sketching")]
             Some(128) => run_two_round_lsh::<Sketch128>(&args, &config, &mut experiment),
+            #[cfg(feature = "sketching")]
             Some(256) => run_two_round_lsh::<Sketch256>(&args, &config, &mut experiment),
+            #[cfg(feature = "sketching")]
             Some(512) => run_two_round_lsh::<Sketch512>(&args, &config, &mut experiment),
             Some(bits) => panic!("Unsupported number of sketch bits: {}", bits),
         },
+        #[cfg(feature = "hu-et-al")]
         "hu-et-al" => match args.measure.as_ref() {
             "cosine" => {
                 let mut rng = config.get_random_generator(0);
@@ -228,6 +215,7 @@ fn main() {
             }
             _ => unimplemented!(),
         },
+        #[cfg(feature = "all-2-all")]
         "all-2-all" => match args.measure.as_ref() {
             "cosine" => baseline::all_pairs_parallel::<UnitNormVector, _>(
                 args.threshold,
@@ -245,6 +233,7 @@ fn main() {
             ),
             _ => unimplemented!(),
         },
+        #[cfg(feature = "seq-all-2-all")]
         "seq-all-2-all" => match args.measure.as_ref() {
             "cosine" => baseline::sequential::<UnitNormVector, _>(
                 args.threshold,
@@ -260,6 +249,7 @@ fn main() {
             ),
             _ => unimplemented!(),
         },
+        "" => panic!(), // This is here just for type checking when no features are selected
         _ => unimplemented!("Unknown algorithm {}", args.algorithm),
     };
 

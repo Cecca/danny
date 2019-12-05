@@ -1,7 +1,6 @@
 use crate::logging::*;
 use abomonation::Abomonation;
 use danny_base::bloom::*;
-use danny_base::lsh::*;
 use danny_base::sketch::*;
 use danny_base::types::*;
 use std::collections::HashMap;
@@ -107,7 +106,7 @@ impl Route for i32 {
 impl Route for u32 {
     #[inline(always)]
     fn route(&self) -> u64 {
-        let mut h = std::hash::SipHasher::new();
+        let mut h = std::collections::hash_map::DefaultHasher::new();
         self.hash(&mut h);
         h.finish()
     }
@@ -182,12 +181,21 @@ impl<D> Route for (u32, D) {
     }
 }
 
-impl Route for (usize, u32) {
+// impl Route for (usize, u32) {
+//     #[inline(always)]
+//     fn route(&self) -> u64 {
+//         (self.0 as u64)
+//             .wrapping_mul(31u64)
+//             .wrapping_add(u64::from(self.1))
+//     }
+// }
+
+impl<R: Route> Route for (usize, R) {
     #[inline(always)]
     fn route(&self) -> u64 {
         (self.0 as u64)
             .wrapping_mul(31u64)
-            .wrapping_add(u64::from(self.1))
+            .wrapping_add(u64::from(self.1.route()))
     }
 }
 
@@ -406,8 +414,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use danny_base::lsh::*;
+    use rand::rngs::StdRng;
     use rand::SeedableRng;
-    use rand::StdRng;
     use std::sync::mpsc;
     use std::sync::{Arc, Mutex};
     use timely::dataflow::operators::capture::event::Event;

@@ -3,7 +3,6 @@ use crate::types::*;
 use rand::distributions::{Distribution, Normal, Uniform};
 use rand::Rng;
 use std::clone::Clone;
-use std::collections::HashMap;
 
 pub trait LSHFunction {
     type Input;
@@ -16,6 +15,110 @@ pub trait LSHFunction {
         let reps = (2.0 * (1_f64 / p).powi(k as i32)).ceil() as usize;
         debug!("Probability at range {} is {} (reps: {})", range, p, reps);
         reps
+    }
+}
+
+#[derive(Clone, Abomonation, Debug, Hash)]
+pub struct TensorPool {
+    left: Vec<u16>,
+    right: Vec<u16>,
+}
+
+pub struct TensorCollection<F>
+where
+    F: LSHFunction<Output = u32> + Clone,
+{
+    k_left: usize,
+    k_right: usize,
+    mask_left: u32,
+    mask_right: u32,
+    repetitions: usize,
+    hashers: Vec<F>,
+}
+
+impl<F> TensorCollection<F>
+where
+    F: LSHFunction<Output = u32> + Clone,
+{
+    fn get_mask(k: usize) -> u32 {
+        assert!(k <= 16);
+        let mut m = 0u32;
+        for _ in 0..k {
+            m = (m << 1) | 1;
+        }
+        m
+    }
+
+    pub fn new<B, R: Rng>(k: usize, range: f64, mut builder: B, rng: &mut R) -> Self
+    where
+        B: FnMut(usize, &mut R) -> F,
+    {
+        let repetitions = F::repetitions_at_range(range, k);
+        let part_repetitions = (repetitions as f64).sqrt().ceil() as usize;
+        let k_left = ((k as f64) / 2.0).ceil() as usize;
+        let k_right = ((k as f64) / 2.0).floor() as usize;
+        let mut hashers = Vec::new();
+        for _ in 0..part_repetitions {
+            hashers.push(builder(k, rng));
+        }
+
+        Self {
+            k_left,
+            k_right,
+            mask_left: Self::get_mask(k_left),
+            mask_right: Self::get_mask(k_right),
+            repetitions,
+            hashers,
+        }
+    }
+
+    pub fn pool(&self, v: &F::Input) -> TensorPool {
+        let mut left = Vec::new();
+        let mut right = Vec::new();
+        for hasher in self.hashers.iter() {
+            let h: u32 = hasher.hash(v);
+            let bits_left = (h & self.mask_left) as u16;
+            let bits_right = ((h >> self.k_left) & self.mask_right) as u16;
+            left.push(bits_left);
+            right.push(bits_right);
+        }
+
+        TensorPool { left, right }
+    }
+
+    pub fn hash(&self, pool: &TensorPool, repetition: usize) -> u32 {
+        let idx_left = repetition / self.hashers.len();
+        let idx_right = repetition % self.hashers.len();
+        let left = pool.left[idx_left];
+        let right = pool.right[idx_right];
+        ((left as u32) << self.k_right) | (right as u32)
+    }
+
+    /// Tells whether a collision was already seen
+    pub fn already_seen(&self, a: &TensorPool, b: &TensorPool, repetition: usize) -> bool {
+        let idx_left = repetition / self.hashers.len();
+        let idx_right = repetition % self.hashers.len();
+        for i in 0..idx_left {
+            if a.left[i] == b.left[i] {
+                for j in 0..a.right.len() {
+                    if a.right[j] == b.right[j] {
+                        return true;
+                    }
+                }
+            }
+        }
+        if a.left[idx_left] == b.left[idx_left] {
+            for j in 0..idx_right {
+                if a.right[j] == b.right[j] {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    pub fn repetitions(&self) -> usize {
+        self.repetitions
     }
 }
 
@@ -46,37 +149,30 @@ pub struct DKTCollection<F>
 where
     F: LSHFunction<Output = u32> + Clone,
 {
-    min_k: usize,
-    max_k: usize,
+    k: usize,
+    repetitions: usize,
     num_bits: usize,
     alphas: Vec<u64>,
     betas: Vec<u64>,
     hashers: Vec<Vec<F>>,
-    repetitions_at_level: HashMap<usize, usize>,
 }
 
 impl<F> DKTCollection<F>
 where
     F: LSHFunction<Output = u32> + Clone,
 {
-    pub fn new<B, R: Rng>(
-        min_k: usize,
-        max_k: usize,
-        range: f64,
-        mut builder: B,
-        rng: &mut R,
-    ) -> Self
+    pub fn new<B, R: Rng>(k: usize, range: f64, mut builder: B, rng: &mut R) -> Self
     where
         B: FnMut(usize, &mut R) -> F,
     {
         let p = F::probability_at_range(range);
-        let num_bits = (5.0 * max_k as f64 / p).ceil() as usize;
-        let alphas: Vec<u64> = (0..max_k).map(|_| rng.next_u64()).collect();
-        let betas: Vec<u64> = (0..max_k).map(|_| rng.next_u64()).collect();
+        let num_bits = (5.0 * k as f64 / p).ceil() as usize;
+        let alphas: Vec<u64> = (0..k).map(|_| rng.next_u64()).collect();
+        let betas: Vec<u64> = (0..k).map(|_| rng.next_u64()).collect();
         let mut hashers = Vec::new();
         let full_32 = num_bits / 32;
         let rem_32 = num_bits % 32;
-        for _ in 0..max_k {
+        for _ in 0..k {
             let mut hs = Vec::new();
             for _ in 0..full_32 {
                 hs.push(builder(32, rng));
@@ -86,17 +182,14 @@ where
             }
             hashers.push(hs);
         }
-        let repetitions_at_level: HashMap<usize, usize> = (min_k..=max_k)
-            .map(|l| (l, F::repetitions_at_range(range, l)))
-            .collect();
+        let repetitions = F::repetitions_at_range(range, k);
         Self {
-            min_k,
-            max_k,
+            k,
+            repetitions,
             num_bits,
             alphas,
             betas,
             hashers,
-            repetitions_at_level,
         }
     }
 
@@ -107,7 +200,7 @@ where
             for f in hashers_row {
                 bits.push(f.hash(v));
             }
-            let mut bits = BitVector::from_vec(bits);
+            let bits = BitVector::from_vec(bits);
             all_bits.push(bits);
         }
         DKTPool { bits: all_bits }
@@ -124,7 +217,6 @@ where
     pub fn hash(&self, pool: &DKTPool, repetition: usize) -> u32 {
         let mut h = 0u32;
         for (i, bits) in pool.bits.iter().enumerate() {
-            // if bits[self.get_bit_index(i, repetition)] {
             if bits.get(self.get_bit_index(i, repetition)) {
                 h = (h << 1) | 1;
             } else {
@@ -134,28 +226,8 @@ where
         h
     }
 
-    pub fn is_active(&self, repetition: usize, level: usize) -> bool {
-        repetition
-            < *self
-                .repetitions_at_level
-                .get(&level)
-                .expect("Missing level information in repetitions_at_level")
-    }
-
     pub fn repetitions(&self) -> usize {
-        self.repetitions_at_level[&self.max_k]
-    }
-
-    pub fn repetitions_at(&self, level: usize) -> usize {
-        *self.repetitions_at_level.get(&level).unwrap_or_else(|| panic!("missing level {}", level))
-    }
-
-    pub fn min_level(&self) -> usize {
-        self.min_k
-    }
-
-    pub fn max_level(&self) -> usize {
-        self.max_k
+        self.repetitions
     }
 }
 
@@ -387,5 +459,18 @@ mod tests {
                 expected
             );
         }
+    }
+
+    #[test]
+    fn test_tensor_1() {
+        let mut rng = StdRng::seed_from_u64(1223132);
+        let a = BagOfWords::random(3000, 0.01, &mut rng);
+        let coll = TensorCollection::new(4, 0.5, OneBitMinHash::builder(), &mut rng);
+        let pool = coll.pool(&a);
+        for rep in 0..coll.repetitions() {
+            let h = coll.hash(&pool, rep);
+            println!("{:32b}", h);
+        }
+        // TODO: come up with a way to actually test this
     }
 }

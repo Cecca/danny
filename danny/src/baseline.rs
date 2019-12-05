@@ -132,6 +132,7 @@ impl Baselines {
     }
 }
 
+#[cfg(feature = "seq-all-2-all")]
 pub fn sequential<T, F>(thresh: f64, left_path: &str, right_path: &str, sim_fn: F) -> usize
 where
     for<'de> T: ReadDataFile + Deserialize<'de>,
@@ -166,6 +167,7 @@ where
     sim_cnt
 }
 
+#[cfg(feature = "all-2-all")]
 pub fn all_pairs_parallel<T, F>(
     threshold: f64,
     left_path: &str,
