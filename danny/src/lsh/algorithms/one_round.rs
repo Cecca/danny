@@ -27,11 +27,11 @@ fn simple_source<G, K, F, D, S>(
     scope: &G,
     vecs: Arc<ChunkedDataset<K, D>>,
     sketcher: Arc<S>,
-    hash_fns: Arc<TensorCollection<F>>,
+    hash_fns: Arc<TensorDKTCollection<F>>,
     worker: u64,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-) -> Stream<G, (K, (TensorPool, S::Output))>
+) -> Stream<G, (K, (TensorDKTPool, S::Output))>
 where
     G: Scope,
     G::Timestamp: Succ,
@@ -108,7 +108,12 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let hasher = Arc::new(TensorCollection::new(k, range, hash_function_builder, rng));
+    let hasher = Arc::new(TensorDKTCollection::new(
+        k,
+        range,
+        hash_function_builder,
+        rng,
+    ));
 
     debug!(
         "Left dataset has {} points, right has {}",
@@ -205,16 +210,16 @@ where
                                 joiner.join_map(
                                     |_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
                                         examined_pairs += 1;
-                                        if !hasher.already_seen(l_pool, r_pool, rep) {
-                                            if sketch_predicate.eval(l_sketch, r_sketch) {
+                                        if sketch_predicate.eval(l_sketch, r_sketch) {
+                                            if !hasher.already_seen(l_pool, r_pool, rep) {
                                                 if sim_pred(&global_left[lk], &global_right[rk]) {
                                                     cnt += 1;
                                                 }
                                             } else {
-                                                sketch_discarded += 1;
+                                                duplicates_discarded += 1;
                                             }
                                         } else {
-                                            duplicates_discarded += 1;
+                                            sketch_discarded += 1;
                                         }
                                     },
                                 );

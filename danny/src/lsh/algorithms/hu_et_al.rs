@@ -27,10 +27,10 @@ use timely::ExchangeData;
 pub fn source_hashed_one_round<G, T, K, D, F>(
     scope: &G,
     global_vecs: Arc<ChunkedDataset<K, D>>,
-    hash_fns: Arc<TensorCollection<F>>,
+    hash_fns: Arc<TensorDKTCollection<F>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-) -> Stream<G, ((usize, u32), (K, TensorPool, D))>
+) -> Stream<G, ((usize, u32), (K, TensorDKTPool, D))>
 // ) -> Stream<G, (u32, (K, D))>
 where
     G: Scope<Timestamp = T>,
@@ -44,7 +44,7 @@ where
     let repetitions = hash_fns.repetitions();
     let vecs = Arc::clone(&global_vecs);
     let mut stopwatch = RepetitionStopWatch::new("repetition", worker == 0, logger);
-    let mut bit_pools: HashMap<K, TensorPool> = HashMap::new();
+    let mut bit_pools: HashMap<K, TensorDKTPool> = HashMap::new();
     info!("Computing the bit pools");
     let start = Instant::now();
     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
@@ -117,7 +117,7 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let hasher = TensorCollection::new(k, range, hash_function_builder, rng);
+    let hasher = TensorDKTCollection::new(k, range, hash_function_builder, rng);
     let hasher = Arc::new(hasher);
 
     debug!(

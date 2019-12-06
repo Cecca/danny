@@ -59,10 +59,10 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let hasher = TensorCollection::new(k, range, hash_function_builder, rng);
+    let hasher = TensorDKTCollection::new(k, range, hash_function_builder, rng);
     let hasher = Arc::new(hasher);
 
-    let hasher_intern = TensorCollection::new(k2, range, hash_function_builder_2, rng);
+    let hasher_intern = TensorDKTCollection::new(k2, range, hash_function_builder_2, rng);
     let hasher_intern = Arc::new(hasher_intern);
 
     debug!(
@@ -137,18 +137,18 @@ where
 
                             joiner.join_map(|_hash, l, r| {
                                 total += 1;
-                                if !hasher_intern.already_seen(&l.3, &r.3, rep)
-                                    && !hasher.already_seen(&l.2, &r.2, *outer_repetition)
-                                {
-                                    if sketch_pred.eval(l.0, r.0) {
+                                if sketch_pred.eval(l.0, r.0) {
+                                    if !hasher_intern.already_seen(&l.3, &r.3, rep)
+                                        && !hasher.already_seen(&l.2, &r.2, *outer_repetition)
+                                    {
                                         if sim_pred(&(l.1).1, &(r.1).1) {
                                             cnt += 1;
                                         }
                                     } else {
-                                        sketch_cnt += 1;
+                                        duplicate_cnt += 1;
                                     }
                                 } else {
-                                    duplicate_cnt += 1;
+                                    sketch_cnt += 1;
                                 }
                             });
                         }
@@ -207,11 +207,17 @@ pub fn source_hashed_two_round<G, T, K, D, F, S>(
     scope: &G,
     global_vecs: Arc<ChunkedDataset<K, D>>,
     sketcher: Arc<S>,
-    hash_fns: Arc<TensorCollection<F>>,
-    hash_fns2: Arc<TensorCollection<F>>,
+    hash_fns: Arc<TensorDKTCollection<F>>,
+    hash_fns2: Arc<TensorDKTCollection<F>>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-) -> Stream<G, ((usize, u32), (TensorPool, TensorPool, S::Output, (K, D)))>
+) -> Stream<
+    G,
+    (
+        (usize, u32),
+        (TensorDKTPool, TensorDKTPool, S::Output, (K, D)),
+    ),
+>
 // ) -> Stream<G, (u32, (K, D))>
 where
     G: Scope<Timestamp = T>,
@@ -227,8 +233,8 @@ where
     let repetitions = hash_fns.repetitions();
     let vecs = Arc::clone(&global_vecs);
     let mut stopwatch = RepetitionStopWatch::new("repetition", worker == 0, logger);
-    let mut bit_pools: HashMap<K, TensorPool> = HashMap::new();
-    let mut bit_pools_intern: HashMap<K, TensorPool> = HashMap::new();
+    let mut bit_pools: HashMap<K, TensorDKTPool> = HashMap::new();
+    let mut bit_pools_intern: HashMap<K, TensorDKTPool> = HashMap::new();
     info!("Computing the bit pools");
     let start = Instant::now();
     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {

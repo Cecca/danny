@@ -86,6 +86,7 @@ where
         TensorPool { left, right }
     }
 
+    #[inline]
     pub fn hash(&self, pool: &TensorPool, repetition: usize) -> u32 {
         let idx_left = repetition / self.hashers.len();
         let idx_right = repetition % self.hashers.len();
@@ -136,6 +137,7 @@ impl BitVector {
     fn from_vec(vec: Vec<u32>) -> Self {
         Self { bits: vec }
     }
+    #[inline]
     pub fn get(&self, index: usize) -> bool {
         let word_index = index / 32;
         let bit_index = index % 32;
@@ -214,6 +216,7 @@ where
             % self.num_bits
     }
 
+    #[inline]
     pub fn hash(&self, pool: &DKTPool, repetition: usize) -> u32 {
         let mut h = 0u32;
         for (i, bits) in pool.bits.iter().enumerate() {
@@ -231,6 +234,7 @@ where
     }
 }
 
+#[derive(Clone, Abomonation, Debug, Hash)]
 pub struct TensorDKTPool {
     left: DKTPool,
     right: DKTPool,
