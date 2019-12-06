@@ -231,6 +231,98 @@ where
     }
 }
 
+pub struct TensorDKTPool {
+    left: DKTPool,
+    right: DKTPool,
+}
+
+pub struct TensorDKTCollection<F>
+where
+    F: LSHFunction<Output = u32> + Clone,
+{
+    k_left: usize,
+    k_right: usize,
+    left_dkt: DKTCollection<F>,
+    right_dkt: DKTCollection<F>,
+    repetitions: usize,
+    part_repetitions: usize,
+}
+
+impl<F> TensorDKTCollection<F>
+where
+    F: LSHFunction<Output = u32> + Clone,
+{
+    fn get_mask(k: usize) -> u32 {
+        assert!(k <= 16);
+        let mut m = 0u32;
+        for _ in 0..k {
+            m = (m << 1) | 1;
+        }
+        m
+    }
+
+    pub fn new<B, R: Rng>(k: usize, range: f64, mut builder: B, rng: &mut R) -> Self
+    where
+        B: FnMut(usize, &mut R) -> F + Clone,
+    {
+        let repetitions = F::repetitions_at_range(range, k);
+        let part_repetitions = (repetitions as f64).sqrt().ceil() as usize;
+        let k_left = ((k as f64) / 2.0).ceil() as usize;
+        let k_right = ((k as f64) / 2.0).floor() as usize;
+
+        Self {
+            k_left,
+            k_right,
+            left_dkt: DKTCollection::new(k_left, range, builder.clone(), rng),
+            right_dkt: DKTCollection::new(k_right, range, builder, rng),
+            repetitions,
+            part_repetitions,
+        }
+    }
+
+    pub fn pool(&self, v: &F::Input) -> TensorDKTPool {
+        TensorDKTPool {
+            left: self.left_dkt.pool(v),
+            right: self.right_dkt.pool(v),
+        }
+    }
+
+    pub fn hash(&self, pool: &TensorDKTPool, repetition: usize) -> u32 {
+        let idx_left = repetition / self.part_repetitions;
+        let idx_right = repetition % self.part_repetitions;
+        let left = self.left_dkt.hash(&pool.left, idx_left);
+        let right = self.right_dkt.hash(&pool.right, idx_right);
+        ((left as u32) << self.k_right) | (right as u32)
+    }
+
+    /// Tells whether a collision was already seen
+    pub fn already_seen(&self, a: &TensorDKTPool, b: &TensorDKTPool, repetition: usize) -> bool {
+        let idx_left = repetition / self.part_repetitions;
+        let idx_right = repetition % self.part_repetitions;
+        for i in 0..idx_left {
+            if self.left_dkt.hash(&a.left, i) == self.left_dkt.hash(&b.left, i) {
+                for j in 0..self.part_repetitions {
+                    if self.right_dkt.hash(&a.right, j) == self.right_dkt.hash(&b.right, j) {
+                        return true;
+                    }
+                }
+            }
+        }
+        if self.left_dkt.hash(&a.left, idx_left) == self.left_dkt.hash(&b.left, idx_left) {
+            for j in 0..idx_right {
+                if self.right_dkt.hash(&a.right, j) == self.right_dkt.hash(&b.right, j) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    pub fn repetitions(&self) -> usize {
+        self.repetitions
+    }
+}
+
 #[derive(Clone)]
 pub struct Hyperplane {
     k: usize,
