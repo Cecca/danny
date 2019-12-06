@@ -114,6 +114,12 @@ where
                 .join_map_slice(
                     &right_hashes,
                     move |(outer_repetition, _hash), left_vals, right_vals| {
+                        println!(
+                            "{} Pairs to evaluate: {} x {}",
+                            _hash,
+                            left_vals.len(),
+                            right_vals.len()
+                        );
                         let mut cnt = 0;
                         let mut total = 0;
                         let mut sketch_cnt = 0;

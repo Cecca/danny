@@ -160,6 +160,12 @@ where
                 .join_map_slice(
                     &right_hashes,
                     move |(repetition, _hash), left_vals, right_vals| {
+                        println!(
+                            "{} Pairs to evaluate: {} x {}",
+                            _hash,
+                            left_vals.len(),
+                            right_vals.len()
+                        );
                         let mut cnt = 0usize;
                         for (_, (_, l_pool, l)) in left_vals {
                             for (_, (_, r_pool, r)) in right_vals {

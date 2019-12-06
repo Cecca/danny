@@ -148,6 +148,7 @@ fn main() {
     let mut experiment = Experiment::from_config(&config, &args);
 
     debug!("Starting...");
+    println!("Going to run algorithm {}", args.algorithm);
     debug!("Initial memory {}", proc_mem!());
 
     let threshold = args.threshold;
