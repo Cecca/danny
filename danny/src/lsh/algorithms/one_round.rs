@@ -205,16 +205,16 @@ where
                                 joiner.join_map(
                                     |_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
                                         examined_pairs += 1;
-                                        if !hasher.already_seen(l_pool, r_pool, rep) {
-                                            if sketch_predicate.eval(l_sketch, r_sketch) {
-                                                if sim_pred(&global_left[lk], &global_right[rk]) {
+                                        if sketch_predicate.eval(l_sketch, r_sketch) {
+                                            if sim_pred(&global_left[lk], &global_right[rk]) {
+                                                if !hasher.already_seen(l_pool, r_pool, rep) {
                                                     cnt += 1;
+                                                } else {
+                                                    duplicates_discarded += 1;
                                                 }
-                                            } else {
-                                                sketch_discarded += 1;
                                             }
                                         } else {
-                                            duplicates_discarded += 1;
+                                            sketch_discarded += 1;
                                         }
                                     },
                                 );

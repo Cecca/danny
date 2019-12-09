@@ -161,15 +161,32 @@ where
                     &right_hashes,
                     move |(repetition, _hash), left_vals, right_vals| {
                         let mut cnt = 0usize;
+                        let mut total = 0usize;
+                        let mut duplicate_cnt = 0usize;
+                        let start = Instant::now();
+                        // for (_, (_, _, v)) in left_vals.iter() {
+                        //     info!("{:?}", v);
+                        // }
                         for (_, (_, l_pool, l)) in left_vals {
                             for (_, (_, r_pool, r)) in right_vals {
-                                if !hasher.already_seen(l_pool, r_pool, *repetition)
-                                    && sim_pred(l, r)
-                                {
-                                    cnt += 1;
-                                }
+                                total += 1;
+                                if sim_pred(l, r) {
+                                    if !hasher.already_seen(l_pool, r_pool, *repetition) {
+                                        cnt += 1;
+                                    } else {
+                                        duplicate_cnt += 1;
+                                    }
+                                } 
                             }
                         }
+                        info!(
+                            "Candidates {}: Emitted {} / Duplicates {} in {:?} ({})",
+                            total,
+                            cnt,
+                            duplicate_cnt,
+                            Instant::now() - start,
+                            proc_mem!(),
+                        );
                         vec![cnt]
                     },
                 )

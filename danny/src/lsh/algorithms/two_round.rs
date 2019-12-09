@@ -109,6 +109,7 @@ where
                 matrix,
                 MatrixDirection::Columns,
             );
+            info!("Starting {} internal repetitions", hasher_intern.repetitions());
             left_hashes
                 .join_map_slice(
                     &right_hashes,
@@ -117,9 +118,13 @@ where
                         let mut total = 0;
                         let mut sketch_cnt = 0;
                         let mut duplicate_cnt = 0;
+                        let mut discarded_cnt = 0;
                         let repetitions = hasher_intern.repetitions();
                         let mut joiner = Joiner::default();
+                        let all_to_all = left_vals.len() * right_vals.len();
+                        let start = Instant::now();
                         for rep in 0..repetitions {
+                            //info!("In repetition {}", rep);
                             joiner.clear();
                             for (_, (outer_pool, inner_pool, s, v)) in left_vals.iter() {
                                 joiner.push_left(
@@ -133,24 +138,38 @@ where
                                     (s, v, outer_pool, inner_pool),
                                 );
                             }
+                            //info!("Inserting into buckets done in {:?}", Instant::now() - start);
+                            
 
                             joiner.join_map(|_hash, l, r| {
                                 total += 1;
-                                if !hasher_intern.already_seen(&l.3, &r.3, rep)
-                                    && !hasher.already_seen(&l.2, &r.2, *outer_repetition)
-                                {
-                                    if sketch_pred.eval(l.0, r.0) {
-                                        if sim_pred(&(l.1).1, &(r.1).1) {
+                                if sketch_pred.eval(l.0, r.0) {
+                                    if sim_pred(&(l.1).1, &(r.1).1) {
+                                        if !hasher_intern.already_seen(&l.3, &r.3, rep)
+                                            && !hasher.already_seen(&l.2, &r.2, *outer_repetition) {
                                             cnt += 1;
+                                        } else {
+                                            duplicate_cnt += 1;
                                         }
                                     } else {
-                                        sketch_cnt += 1;
+                                        discarded_cnt += 1;
                                     }
                                 } else {
-                                    duplicate_cnt += 1;
+                                    sketch_cnt += 1;
                                 }
                             });
+                            //info!("Repetition finished after {:?}", Instant::now() - start);
                         }
+                        info!(
+                            "Candidates {} ({}): Emitted {} / Discarded {} / Duplicates {} in {:?} ({})",
+                            total,
+                            all_to_all,
+                            cnt,
+                            sketch_cnt,
+                            duplicate_cnt,
+                            Instant::now() - start,
+                            proc_mem!(),
+                        );
                         vec![cnt]
                     },
                 )
