@@ -32,7 +32,6 @@ pub fn two_round_lsh<D, F, H, B, R, S, V>(
     k: usize,
     k2: usize,
     hash_function_builder: B,
-    hash_function_builder_2: B,
     sketcher: S,
     sketch_pred: SketchPredicate<V>,
     sim_pred: F,
@@ -59,10 +58,10 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let hasher = TensorCollection::new(k, range, hash_function_builder, rng);
+    let hasher = TensorCollection::new(k, range, hash_function_builder.clone(), rng);
     let hasher = Arc::new(hasher);
 
-    let hasher_intern = TensorCollection::new(k2, range, hash_function_builder_2, rng);
+    let hasher_intern = TensorCollection::new(k2, range, hash_function_builder, rng);
     let hasher_intern = Arc::new(hasher_intern);
 
     debug!(
@@ -251,7 +250,7 @@ where
                     stopwatch.maybe_stop();
                     stopwatch.start();
                     if worker == 0 {
-                        debug!("Repetition {} (Hu et al. baseline)", current_repetition,);
+                        debug!("Repetition {} (two round LSH)", current_repetition);
                     }
                     let mut session = output.session(&cap);
                     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
