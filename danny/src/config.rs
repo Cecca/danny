@@ -221,9 +221,8 @@ impl Config {
     }
 
     pub fn get_recall(&self) -> f64 {
-        return self.recall
+        return self.recall;
     }
-
 
     pub fn get_desired_bucket_size(&self) -> u32 {
         self.bucket_size
@@ -318,7 +317,7 @@ pub struct CmdlineConfig {
     pub left_path: String,
     pub right_path: String,
     pub algorithm: String,
-    pub k: Option<usize>, 
+    pub k: Option<usize>,
     pub k2: Option<usize>,
     pub sketch_bits: Option<usize>,
     pub rounds: Rounds,
@@ -371,22 +370,18 @@ impl CmdlineConfig {
                 _ => panic!("Unsupported rounds specification `{}`", s),
             })
             .unwrap_or(Rounds::Multi);
-        let k2 = matches
-        .value_of("L")
-        .map(|k_str| {
+        let k2 = matches.value_of("L").map(|k_str| {
             let _k = k_str
                 .parse::<usize>()
                 .expect("L should be an unsigned integer");
             _k
         });
-        let k = matches
-            .value_of("K")
-            .map(|k_str| {
-                let _k = k_str
-                    .parse::<usize>()
-                    .expect("k should be an unsigned integer");
-                _k
-            });
+        let k = matches.value_of("K").map(|k_str| {
+            let _k = k_str
+                .parse::<usize>()
+                .expect("k should be an unsigned integer");
+            _k
+        });
         let sketch_bits = matches.value_of("BITS").map(|bits_str| {
             bits_str
                 .parse::<usize>()
@@ -399,7 +394,7 @@ impl CmdlineConfig {
             right_path,
             algorithm,
             k,
-            k2, 
+            k2,
             sketch_bits,
             rounds,
         }

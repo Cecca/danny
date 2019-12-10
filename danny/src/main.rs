@@ -28,13 +28,14 @@ fn run_one_round_lsh<SV>(
 where
     SV: BitBasedSketch + FromCosine + FromJaccard + SketchData + Debug,
 {
-    let mut rng = config.get_random_generator(0);
+    let mut hasher_rng = config.get_random_generator(0);
+    let mut sketcher_rng = config.get_random_generator(1);
     match args.measure.as_ref() {
         "cosine" => {
             let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
             let threshold = args.threshold;
             let sketch_bits = args.sketch_bits.expect("Sketches are mandatory");
-            let sketcher = SV::from_cosine(dim, &mut rng);
+            let sketcher = SV::from_cosine(dim, &mut sketcher_rng);
             let sketch_predicate =
                 SketchPredicate::cosine(sketch_bits, threshold, config.get_sketch_epsilon());
             let k = args.k.expect("K is needed on the command line");
@@ -47,7 +48,7 @@ where
                 sketcher,
                 sketch_predicate,
                 move |a, b| InnerProduct::cosine(a, b) >= threshold,
-                &mut rng,
+                &mut hasher_rng,
                 &config,
                 experiment,
             )
@@ -56,7 +57,7 @@ where
             let k = args.k.expect("K is needed on the command line");
             let threshold = args.threshold;
             let sketch_bits = args.sketch_bits.expect("Sketch bits are mandatory");
-            let sketcher = SV::from_jaccard(&mut rng);
+            let sketcher = SV::from_jaccard(&mut sketcher_rng);
             let sketch_predicate =
                 SketchPredicate::jaccard(sketch_bits, threshold, config.get_sketch_epsilon());
             one_round_lsh::<BagOfWords, _, _, _, _, _, _>(
@@ -68,7 +69,7 @@ where
                 sketcher,
                 sketch_predicate,
                 move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
-                &mut rng,
+                &mut hasher_rng,
                 &config,
                 experiment,
             )
@@ -86,7 +87,8 @@ fn run_two_round_lsh<SV>(
 where
     SV: BitBasedSketch + FromCosine + FromJaccard + SketchData + Debug,
 {
-    let mut rng = config.get_random_generator(0);
+    let mut hasher_rng = config.get_random_generator(0);
+    let mut sketcher_rng = config.get_random_generator(1);
     let threshold = args.threshold;
     let sketch_bits = args.sketch_bits.expect("Sketches are mandatory");
     let k = args.k.expect("K is needed on the command line");
@@ -95,7 +97,7 @@ where
     match args.measure.as_ref() {
         "cosine" => {
             let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
-            let sketcher = SV::from_cosine(dim, &mut rng);
+            let sketcher = SV::from_cosine(dim, &mut sketcher_rng);
             let sketch_predicate =
                 SketchPredicate::cosine(sketch_bits, threshold, config.get_sketch_epsilon());
             two_round_lsh::<UnitNormVector, _, _, _, _, _, _>(
@@ -108,7 +110,7 @@ where
                 sketcher,
                 sketch_predicate,
                 move |a, b| InnerProduct::cosine(a, b) >= threshold,
-                &mut rng,
+                &mut hasher_rng,
                 &config,
                 experiment,
             )
@@ -117,7 +119,7 @@ where
             let k = args.k.expect("K is needed on the command line");
             let threshold = args.threshold;
             let sketch_bits = args.sketch_bits.expect("Sketch bits are mandatory");
-            let sketcher = SV::from_jaccard(&mut rng);
+            let sketcher = SV::from_jaccard(&mut sketcher_rng);
             let sketch_predicate =
                 SketchPredicate::jaccard(sketch_bits, threshold, config.get_sketch_epsilon());
             two_round_lsh::<BagOfWords, _, _, _, _, _, _>(
@@ -130,7 +132,7 @@ where
                 sketcher,
                 sketch_predicate,
                 move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
-                &mut rng,
+                &mut hasher_rng,
                 &config,
                 experiment,
             )
