@@ -90,6 +90,7 @@ where
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
             let mut probe = ProbeHandle::new();
             let matrix = MatrixDescription::for_workers(scope.peers() as usize);
+            let logger = scope.danny_logger();
 
             let left_hashes = source_hashed_two_round(
                 scope,
@@ -118,7 +119,6 @@ where
                         let mut total = 0;
                         let mut sketch_cnt = 0;
                         let mut duplicate_cnt = 0;
-                        let mut discarded_cnt = 0;
                         let repetitions = hasher_intern.repetitions();
                         let mut joiner = Joiner::default();
                         let all_to_all = left_vals.len() * right_vals.len();
@@ -139,7 +139,6 @@ where
                                 );
                             }
                             //info!("Inserting into buckets done in {:?}", Instant::now() - start);
-                            
 
                             joiner.join_map(|_hash, l, r| {
                                 total += 1;
@@ -151,9 +150,7 @@ where
                                         } else {
                                             duplicate_cnt += 1;
                                         }
-                                    } else {
-                                        discarded_cnt += 1;
-                                    }
+                                    } 
                                 } else {
                                     sketch_cnt += 1;
                                 }
@@ -169,6 +166,15 @@ where
                             duplicate_cnt,
                             Instant::now() - start,
                             proc_mem!(),
+                        );
+                        log_event!(logger, LogEvent::GeneratedPairs(*outer_repetition, cnt));
+                        log_event!(
+                            logger,
+                            LogEvent::SketchDiscarded(*outer_repetition, sketch_cnt)
+                        );
+                        log_event!(
+                            logger,
+                            LogEvent::DuplicatesDiscarded(*outer_repetition, duplicate_cnt)
                         );
                         vec![cnt]
                     },

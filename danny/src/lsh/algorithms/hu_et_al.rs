@@ -141,6 +141,7 @@ where
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
             let mut probe = ProbeHandle::new();
             let matrix = MatrixDescription::for_workers(scope.peers() as usize);
+            let logger = scope.danny_logger();
 
             let left_hashes = source_hashed_one_round(
                 scope,
@@ -176,7 +177,7 @@ where
                                     } else {
                                         duplicate_cnt += 1;
                                     }
-                                } 
+                                }
                             }
                         }
                         info!(
@@ -186,6 +187,11 @@ where
                             duplicate_cnt,
                             Instant::now() - start,
                             proc_mem!(),
+                        );
+                        log_event!(logger, LogEvent::GeneratedPairs(*repetition, cnt));
+                        log_event!(
+                            logger,
+                            LogEvent::DuplicatesDiscarded(*repetition, duplicate_cnt)
                         );
                         vec![cnt]
                     },
