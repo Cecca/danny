@@ -98,6 +98,7 @@ where
                 Arc::clone(&sketcher),
                 Arc::clone(&hasher),
                 Arc::clone(&hasher_intern),
+                probe.clone(),
                 matrix,
                 MatrixDirection::Rows,
             );
@@ -107,6 +108,7 @@ where
                 Arc::clone(&sketcher),
                 Arc::clone(&hasher),
                 Arc::clone(&hasher_intern),
+                probe.clone(),
                 matrix,
                 MatrixDirection::Columns,
             );
@@ -233,6 +235,7 @@ pub fn source_hashed_two_round<G, T, K, D, F, S>(
     sketcher: Arc<S>,
     hash_fns: Arc<TensorCollection<F>>,
     hash_fns2: Arc<TensorCollection<F>>,
+    throttle: ProbeHandle<T>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
 ) -> Stream<G, ((usize, u32), (TensorPool, TensorPool, S::Output, (K, D)))>
@@ -268,10 +271,12 @@ where
 
     source(scope, "hashed source two round", move |capability| {
         let mut cap = Some(capability);
+        let mut current_repetition = 0;
+
         move |output| {
             let mut done = false;
             if let Some(cap) = cap.as_mut() {
-                for current_repetition in 0..repetitions {
+                if !throttle.less_than(&cap) {
                     stopwatch.maybe_stop();
                     stopwatch.start();
                     if worker == 0 {
@@ -290,13 +295,11 @@ where
                                 (k.clone(), v.clone()),
                             ),
                         ));
-                        // for inner_rep in 0..repetitions_inner {
-                        //     let h2 = hash_fns2.hash(&bit_pools_intern[k], inner_rep as usize);
-                        //     session.give(((current_repetition, h), ((inner_rep, h2), (k.clone(), v.clone()))));
-                        // }
                     }
+                    cap.downgrade(&cap.time().succ());
+                    current_repetition += 1;
+                    done = current_repetition >= repetitions;
                 }
-                done = true;
             }
 
             if done {
