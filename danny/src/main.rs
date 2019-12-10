@@ -155,7 +155,7 @@ fn main() {
 
     let count: usize = match args.algorithm.as_ref() {
         #[cfg(feature = "one-round-lsh")]
-        "lsh" => match args.sketch_bits {
+        "one-round-lsh" => match args.sketch_bits {
             Some(0) | None => run_one_round_lsh::<Sketch0>(&args, &config, &mut experiment),
             #[cfg(feature = "sketching")]
             Some(64) => run_one_round_lsh::<Sketch64>(&args, &config, &mut experiment),

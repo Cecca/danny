@@ -297,20 +297,6 @@ impl Config {
     }
 }
 
-pub enum Rounds {
-    One,
-    Multi,
-}
-
-impl Rounds {
-    pub fn report(&self) -> String {
-        match self {
-            Rounds::One => "one-round".to_owned(),
-            Rounds::Multi => "multi-round".to_owned(),
-        }
-    }
-}
-
 pub struct CmdlineConfig {
     pub measure: String,
     pub threshold: f64,
@@ -320,7 +306,6 @@ pub struct CmdlineConfig {
     pub k: Option<usize>,
     pub k2: Option<usize>,
     pub sketch_bits: Option<usize>,
-    pub rounds: Rounds,
 }
 
 impl CmdlineConfig {
@@ -335,7 +320,6 @@ impl CmdlineConfig {
             (@arg L: -l +takes_value "The number of concatenations of the internal hash function")
             (@arg THRESHOLD: -r --range +required +takes_value "The similarity threshold")
             (@arg BITS: --("sketch-bits") +takes_value "The number of bits to use for sketching")
-            (@arg ROUNDS: --rounds +takes_value "One or multi round? (default multi)")
             (@arg LEFT: +required "Path to the left hand side of the join")
             (@arg RIGHT: +required "Path to the right hand side of the join")
         )
@@ -362,14 +346,6 @@ impl CmdlineConfig {
             .value_of("ALGORITHM")
             .unwrap_or("all-2-all")
             .to_owned();
-        let rounds = matches
-            .value_of("ROUNDS")
-            .map(|s| match s.as_ref() {
-                "one" => Rounds::One,
-                "multi" => Rounds::Multi,
-                _ => panic!("Unsupported rounds specification `{}`", s),
-            })
-            .unwrap_or(Rounds::Multi);
         let k2 = matches.value_of("L").map(|k_str| {
             let _k = k_str
                 .parse::<usize>()
@@ -396,7 +372,6 @@ impl CmdlineConfig {
             k,
             k2,
             sketch_bits,
-            rounds,
         }
     }
 

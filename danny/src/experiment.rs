@@ -37,7 +37,6 @@ impl Experiment {
     }
 
     pub fn from_config(config: &Config, cmdline: &CmdlineConfig) -> Experiment {
-        let algo_suffix = cmdline.rounds.report();
         let experiment = Experiment::new()
             .tag("threads_per_worker", config.get_threads())
             .tag("num_hosts", config.get_num_hosts())
@@ -52,10 +51,7 @@ impl Experiment {
             .tag("threshold", cmdline.threshold)
             .tag("left_path", cmdline.left_path.clone())
             .tag("right_path", cmdline.right_path.clone())
-            .tag(
-                "algorithm",
-                format!("{}-{}", cmdline.algorithm, algo_suffix),
-            )
+            .tag("algorithm", cmdline.algorithm.clone())
             .tag("git_revision", version::short_sha())
             .tag("git_commit_date", version::commit_date());
         let experiment = if cmdline.k.is_some() {
