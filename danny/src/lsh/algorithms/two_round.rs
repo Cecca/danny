@@ -94,6 +94,7 @@ where
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
             let mut probe = ProbeHandle::new();
             let matrix = MatrixDescription::for_workers(scope.peers() as usize);
+            let logger = scope.danny_logger();
 
             let left_hashes = source_hashed_two_round(
                 scope,
@@ -101,6 +102,7 @@ where
                 Arc::clone(&sketcher),
                 Arc::clone(&hasher),
                 Arc::clone(&hasher_intern),
+                probe.clone(),
                 matrix,
                 MatrixDirection::Rows,
             );
@@ -110,6 +112,7 @@ where
                 Arc::clone(&sketcher),
                 Arc::clone(&hasher),
                 Arc::clone(&hasher_intern),
+                probe.clone(),
                 matrix,
                 MatrixDirection::Columns,
             );
@@ -122,7 +125,6 @@ where
                         let mut total = 0;
                         let mut sketch_cnt = 0;
                         let mut duplicate_cnt = 0;
-                        let mut discarded_cnt = 0;
                         let repetitions = hasher_intern.repetitions();
                         let mut joiner = Joiner::default();
                         let all_to_all = left_vals.len() * right_vals.len();
@@ -143,7 +145,6 @@ where
                                 );
                             }
                             //info!("Inserting into buckets done in {:?}", Instant::now() - start);
-                            
 
                             joiner.join_map(|_hash, l, r| {
                                 total += 1;
@@ -155,9 +156,7 @@ where
                                         } else {
                                             duplicate_cnt += 1;
                                         }
-                                    } else {
-                                        discarded_cnt += 1;
-                                    }
+                                    } 
                                 } else {
                                     sketch_cnt += 1;
                                 }
@@ -173,6 +172,15 @@ where
                             duplicate_cnt,
                             Instant::now() - start,
                             proc_mem!(),
+                        );
+                        log_event!(logger, LogEvent::GeneratedPairs(*outer_repetition, cnt));
+                        log_event!(
+                            logger,
+                            LogEvent::SketchDiscarded(*outer_repetition, sketch_cnt)
+                        );
+                        log_event!(
+                            logger,
+                            LogEvent::DuplicatesDiscarded(*outer_repetition, duplicate_cnt)
                         );
                         vec![cnt]
                     },
@@ -231,6 +239,7 @@ pub fn source_hashed_two_round<G, T, K, D, F, S>(
     sketcher: Arc<S>,
     hash_fns: Arc<TensorCollection<F>>,
     hash_fns2: Arc<TensorCollection<F>>,
+    throttle: ProbeHandle<T>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
 ) -> Stream<G, ((usize, u32), (TensorPool, TensorPool, S::Output, (K, D)))>
@@ -266,10 +275,12 @@ where
 
     source(scope, "hashed source two round", move |capability| {
         let mut cap = Some(capability);
+        let mut current_repetition = 0;
+
         move |output| {
             let mut done = false;
             if let Some(cap) = cap.as_mut() {
-                for current_repetition in 0..repetitions {
+                if !throttle.less_than(&cap) {
                     stopwatch.maybe_stop();
                     stopwatch.start();
                     if worker == 0 {
@@ -288,13 +299,11 @@ where
                                 (k.clone(), v.clone()),
                             ),
                         ));
-                        // for inner_rep in 0..repetitions_inner {
-                        //     let h2 = hash_fns2.hash(&bit_pools_intern[k], inner_rep as usize);
-                        //     session.give(((current_repetition, h), ((inner_rep, h2), (k.clone(), v.clone()))));
-                        // }
                     }
+                    cap.downgrade(&cap.time().succ());
+                    current_repetition += 1;
+                    done = current_repetition >= repetitions;
                 }
-                done = true;
             }
 
             if done {
