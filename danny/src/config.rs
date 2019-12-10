@@ -65,15 +65,8 @@ impl Config {
             DANNY_SEED        The seed for the random number generator
             DANNY_SKETCH_EPSILON  The value of epsilon for the sketcher (if used)
             DANNY_BASELINES_PATH  The path to the baselines file
-            DANNY_SAMPLING_FACTOR  We take this number times sqrt(n) samples in the cost estimation (default 10)
-            DANNY_COST_BALANCE In the adaptive algorithm, a number between 0 and 1 (default 0.5)
-                               Values toward 0 penalize collisions (thus making more points have a higher level), 
-                               whereas values toward 1 penalize repetitions (thus making basically all the points 
-                               consider just collisions for the cost estimation)
             DANNY_BLOOM_BITS  Number of bits for the bloom filter (default 4G, use a string in the form \\d{K,M,G}B?)
             DANNY_BLOOM_K     Number of hash functions of the bloom filter (default 5)
-            DANNY_BUCKET_SIZE  The desired number of items in each bucket
-            DANNY_REPETITION_COST   The cost of performing a single repetition in the estimation process
             DANNY_TIMEOUT     Number of seconds before killing a run (default: unbounded)
             DANNY_RECALL    Guaranteed recall (default: 0.5)
         "
