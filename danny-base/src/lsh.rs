@@ -49,14 +49,15 @@ where
         m
     }
 
-    pub fn new<B, R: Rng>(k: usize, range: f64, mut builder: B, rng: &mut R) -> Self
+    pub fn new<B, R: Rng>(k: usize, range: f64, recall: f64, mut builder: B, rng: &mut R) -> Self
     where
         B: FnMut(usize, &mut R) -> F,
     {
-        let repetitions = F::repetitions_at_range(range, k);
-        let part_repetitions = (repetitions as f64).sqrt().ceil() as usize;
         let k_left = ((k as f64) / 2.0).ceil() as usize;
         let k_right = ((k as f64) / 2.0).floor() as usize;
+        let coll_prob = F::probability_at_range(range).powi(k_left as i32);
+        let repetitions = ((1_f64 - recall.sqrt()).ln() / (1_f64 - coll_prob).ln()).powi(2) as usize;
+        let part_repetitions = (repetitions as f64).sqrt().ceil() as usize;
         let mut hashers = Vec::new();
         for _ in 0..part_repetitions {
             hashers.push(builder(k, rng));

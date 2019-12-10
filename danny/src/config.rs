@@ -48,6 +48,8 @@ pub struct Config {
     bucket_size: u32,
     #[serde(default = "Config::default_timeout")]
     timeout: Option<u64>,
+    #[serde(default = "Config::default_recall")]
+    recall: f64,
 }
 
 #[allow(dead_code)]
@@ -73,6 +75,7 @@ impl Config {
             DANNY_BUCKET_SIZE  The desired number of items in each bucket
             DANNY_REPETITION_COST   The cost of performing a single repetition in the estimation process
             DANNY_TIMEOUT     Number of seconds before killing a run (default: unbounded)
+            DANNY_RECALL    Guaranteed recall (default: 0.5)
         "
     }
 
@@ -172,6 +175,10 @@ impl Config {
         false
     }
 
+    fn default_recall() -> f64 {
+        0.5
+    }
+
     pub fn master_hostname(&self) -> Option<String> {
         if !self.hosts.is_empty() {
             let hn = self.hosts[0]
@@ -212,6 +219,11 @@ impl Config {
         );
         self.sampling_factor
     }
+
+    pub fn get_recall(&self) -> f64 {
+        return self.recall
+    }
+
 
     pub fn get_desired_bucket_size(&self) -> u32 {
         self.bucket_size
