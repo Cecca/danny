@@ -3,9 +3,9 @@ environment:
   DANNY_THREADS: 8
   DANNY_HOSTS: "sss00:2001,sss01:2001,sss02:2001,sss03:2001,sss04:2001"
   DANNY_BASELINES_PATH: "/mnt/fast_storage/users/mcec/baselines.csv"
-  DANNY_COST_BALANCE: 0.5
   DANNY_DATA_DIR: /mnt/fast_storage/users/mcec
   DANNY_SKETCH_EPSILON: 0.01
+  DANNY_RECALL: 0.8
 experiments:
 
   - name: Glove fixed
@@ -17,10 +17,11 @@ experiments:
       DANNY_SEED:
         - 13124534
     parameters:
-      --algorithm: hu-et-al 
-      --range: [0.5,0.7,0.9]
+      --algorithm: one-round-lsh 
+      --range: [0.7]
       --measure: cosine
-      -k: [9,11,13,15,17]
+      -k: [5,10,15]
+      --sketch-bits: 0
     arguments:
       - ["{{ dataset('Glove-27-200') }}", "{{ dataset('Glove-27-200') }}"]
 
@@ -33,28 +34,13 @@ experiments:
       DANNY_SEED:
         - 13124534
     parameters:
-      --algorithm: hu-et-al
-      --range: [0.5,0.7,0.9]
+      --algorithm: one-round-lsh
+      --range: [0.7]
       --measure: jaccard
-      -k: [9,11,13,15]
+      -k: [5,10,15]
+      --sketch-bits: 0
     arguments:
       - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
-
-  - name: Bag of Words (fixed)
-    tags:
-      - aol
-      - jaccard
-      - fixed
-    environment:
-      DANNY_SEED:
-        - 13124534
-    parameters:
-      --algorithm: hu-et-al
-      --range: [0.5,0.7,0.9]
-      --measure: jaccard
-      -k: [9,11,13,15]
-    arguments:
-      - ["{{ dataset('AOL') }}", "{{ dataset('AOL') }}"]
 
   - name: Bag of Words (fixed)
     tags:
@@ -65,25 +51,10 @@ experiments:
       DANNY_SEED:
         - 13124534
     parameters:
-      --algorithm: hu-et-al
-      --range: [0.5,0.7,0.9]
+      --algorithm: one-round-lsh
+      --range: [0.7]
       --measure: jaccard
-      -k: [9,11,13,15]
+      -k: [5,10,15]
+      --sketch-bits: 0
     arguments:
       - ["{{ dataset('Livejournal') }}", "{{ dataset('Livejournal') }}"]
-
-  - name: GNews
-    tags:
-      - cosine
-      - fixed
-      - gnews
-    environment:
-      DANNY_SEED:
-        - 13124534
-    parameters:
-      --algorithm: hu-et-al
-      --range: [0.5,0.7,0.9]
-      --measure: cosine
-      -k: [9,11,13,15]
-    arguments:
-      - ["{{ dataset('GNews') }}", "{{ dataset('GNews') }}"]
