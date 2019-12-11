@@ -66,6 +66,8 @@ where
     let hasher_intern = TensorCollection::new(k2, range, individual_recall, hash_function_builder, rng);
     let hasher_intern = Arc::new(hasher_intern);
 
+    let repetition_batch = config.get_repetition_batch();
+
     println!("{}", config.get_recall());
 
     debug!(
@@ -103,6 +105,7 @@ where
                 Arc::clone(&hasher),
                 Arc::clone(&hasher_intern),
                 probe.clone(),
+                repetition_batch,
                 matrix,
                 MatrixDirection::Rows,
             );
@@ -113,6 +116,7 @@ where
                 Arc::clone(&hasher),
                 Arc::clone(&hasher_intern),
                 probe.clone(),
+                repetition_batch,
                 matrix,
                 MatrixDirection::Columns,
             );
@@ -240,6 +244,7 @@ pub fn source_hashed_two_round<G, T, K, D, F, S>(
     hash_fns: Arc<TensorCollection<F>>,
     hash_fns2: Arc<TensorCollection<F>>,
     throttle: ProbeHandle<T>,
+    repetition_batch: usize,
     matrix: MatrixDescription,
     direction: MatrixDirection,
 ) -> Stream<G, ((usize, u32), (TensorPool, TensorPool, S::Output, (K, D)))>
@@ -300,7 +305,9 @@ where
                             ),
                         ));
                     }
-                    cap.downgrade(&cap.time().succ());
+                    if current_repetition % repetition_batch == 0 {
+                        cap.downgrade(&cap.time().succ());
+                    }
                     current_repetition += 1;
                     done = current_repetition >= repetitions;
                 }

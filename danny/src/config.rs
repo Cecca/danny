@@ -50,6 +50,8 @@ pub struct Config {
     timeout: Option<u64>,
     #[serde(default = "Config::default_recall")]
     recall: f64,
+    #[serde(default = "Config::default_repetition_batch")]
+    repetition_batch: usize,
 }
 
 #[allow(dead_code)]
@@ -69,6 +71,7 @@ impl Config {
             DANNY_BLOOM_K     Number of hash functions of the bloom filter (default 5)
             DANNY_TIMEOUT     Number of seconds before killing a run (default: unbounded)
             DANNY_RECALL    Guaranteed recall (default: 0.5)
+            DANNY_REPETITION_BATCH  The number of repetitions to squash into a distributed round
         "
     }
 
@@ -122,6 +125,14 @@ impl Config {
 
     pub fn get_bloom_k(&self) -> usize {
         self.bloom_k
+    }
+
+    fn default_repetition_batch() -> usize {
+        1
+    }
+
+    pub fn get_repetition_batch(&self) -> usize {
+        self.repetition_batch
     }
 
     fn default_timeout() -> Option<u64> {
