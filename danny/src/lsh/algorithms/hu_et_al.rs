@@ -9,6 +9,7 @@ use crate::lsh::repetition_stopwatch::*;
 use crate::operators::*;
 use danny_base::lsh::*;
 use danny_base::sketch::*;
+use danny_base::types::ElementId;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
 use std::clone::Clone;
@@ -158,21 +159,26 @@ where
                 MatrixDirection::Columns,
             );
             left_hashes
-                .join_map_slice(
+                .join_map_slice_accum::<HashMap<ElementId, (TensorPool, D)>, _, _, _, _, _, _>(
                     &right_hashes,
-                    move |(repetition, _hash), left_vals, right_vals| {
+                    |_, (k, pool, value), stash| {
+                        stash.entry(k).or_insert_with(|| (pool, value));
+                    },
+                    |tuple| tuple.0,
+                    move |(repetition, _hash), left_stash, right_stash, left_vals, right_vals| {
                         let mut cnt = 0usize;
                         let mut total = 0usize;
                         let mut duplicate_cnt = 0usize;
                         let start = Instant::now();
-                        // for (_, (_, _, v)) in left_vals.iter() {
-                        //     info!("{:?}", v);
-                        // }
-                        for (_, (_, l_pool, l)) in left_vals {
-                            for (_, (_, r_pool, r)) in right_vals {
+                        for (_, kl) in left_vals {
+                            for (_, kr) in right_vals {
                                 total += 1;
-                                if sim_pred(l, r) {
-                                    if !hasher.already_seen(l_pool, r_pool, *repetition) {
+                                if sim_pred(&left_stash[kl].1, &right_stash[kr].1) {
+                                    if !hasher.already_seen(
+                                        &left_stash[kl].0,
+                                        &right_stash[kr].0,
+                                        *repetition,
+                                    ) {
                                         cnt += 1;
                                     } else {
                                         duplicate_cnt += 1;
