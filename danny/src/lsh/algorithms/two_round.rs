@@ -23,6 +23,7 @@ use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use timely::progress::Timestamp;
 use timely::ExchangeData;
+use danny_base::types::ElementId;
 
 #[derive(Clone, Abomonation)]
 struct TwoRoundPayload<D, S> {
@@ -126,13 +127,13 @@ where
             );
             info!("Starting {} internal repetitions", hasher_intern.repetitions());
             left_hashes
-                .join_map_slice(
+                .join_map_slice_accum::<HashMap<ElementId, TwoRoundPayload<D, V>>,_,_,_,_,_,_>(
                     &right_hashes,
-                    // |_hash, (outer_pool, inner_pool, sketch, (k, v)), stash| {
-                    //     stash.entry(&k).or_insert_with(move || (outer_pool, inner_pool, sketch, ))
-                    // },
-                    // ||
-                    move |(outer_repetition, _hash), left_vals, right_vals| {
+                    |_hash, (k, payload), stash| {
+                        stash.entry(k).or_insert_with(move || payload);
+                    },
+                    |pair| pair.0,
+                    move |(outer_repetition, _hash), left_stash, right_stash, left_vals, right_vals| {
                         let mut cnt = 0;
                         let mut total = 0;
                         let mut sketch_cnt = 0;
@@ -143,21 +144,23 @@ where
                         let start = Instant::now();
                         for rep in 0..repetitions {
                             joiner.clear();
-                            for (_, (k, payload)) in left_vals.iter() {
+                            for (_, k) in left_vals.iter() {
                                 joiner.push_left(
-                                    hasher_intern.hash(&payload.inner_pool, rep),
-                                    payload
+                                    hasher_intern.hash(&left_stash[k].inner_pool, rep),
+                                    k
                                 );
                             }
-                            for (_, (k, payload)) in right_vals.iter() {
+                            for (_, k) in right_vals.iter() {
                                 joiner.push_right(
-                                    hasher_intern.hash(&payload.inner_pool, rep),
-                                    payload,
+                                    hasher_intern.hash(&right_stash[k].inner_pool, rep),
+                                    k,
                                 );
                             }
 
                             joiner.join_map(|_hash, l, r| {
                                 total += 1;
+                                let l = &left_stash[l];
+                                let r = &right_stash[r];
                                 if sketch_pred.eval(&l.sketch, &r.sketch) {
                                     if sim_pred(&l.data, &r.data) {
                                         if !hasher_intern.already_seen(&l.inner_pool, &r.inner_pool, rep)
