@@ -111,7 +111,6 @@ where
                 Arc::clone(&sketcher),
                 Arc::clone(&hasher),
                 Arc::clone(&hasher_intern),
-                probe.clone(),
                 matrix,
                 MatrixDirection::Rows,
             );
@@ -121,7 +120,6 @@ where
                 Arc::clone(&sketcher),
                 Arc::clone(&hasher),
                 Arc::clone(&hasher_intern),
-                probe.clone(),
                 matrix,
                 MatrixDirection::Columns,
             );
@@ -251,7 +249,6 @@ fn source_hashed_two_round<G, T, K, D, F, S>(
     sketcher: Arc<S>,
     hash_fns: Arc<TensorCollection<F>>,
     hash_fns2: Arc<TensorCollection<F>>,
-    throttle: ProbeHandle<T>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
 ) -> Stream<G, ((usize, u32), (K, TwoRoundPayload<D, S::Output>))>
@@ -286,12 +283,11 @@ where
 
     source(scope, "hashed source two round", move |capability| {
         let mut cap = Some(capability);
-        let mut current_repetition = 0;
 
         move |output| {
             let mut done = false;
             if let Some(cap) = cap.as_mut() {
-                if !throttle.less_than(&cap) {
+                for current_repetition in 0..repetitions {
                     stopwatch.maybe_stop();
                     stopwatch.start();
                     if worker == 0 {
@@ -314,10 +310,8 @@ where
                             ),
                         ));
                     }
-                    cap.downgrade(&cap.time().succ());
-                    current_repetition += 1;
-                    done = current_repetition >= repetitions;
                 }
+                done = true;
             }
 
             if done {
