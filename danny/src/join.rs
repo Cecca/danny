@@ -16,6 +16,22 @@ where
         I: IntoIterator<Item = O>,
         O: ExchangeData,
         F: FnMut(&K, &[(K, V)], &[(K, V)]) -> I + 'static;
+
+    fn join_map_slice_accum<A, AF, DF, DK, F, I, O>(
+        &self,
+        other: &Stream<G, (K, V)>,
+        accum: AF,
+        data_key: DF,
+        f: F,
+    ) -> Stream<G, O>
+    where
+        I: IntoIterator<Item = O>,
+        A: Default + 'static,
+        AF: Fn(&K, V, &mut A) + 'static,
+        O: ExchangeData,
+        DF: Fn(&V) -> DK + 'static,
+        DK: 'static,
+        F: FnMut(&K, &A, &A, &[(K, DK)], &[(K, DK)]) -> I + 'static;
 }
 
 impl<G, K, V> Join<G, K, V> for Stream<G, (K, V)>
@@ -69,6 +85,84 @@ where
                                 let mut session = output.session(&time);
                                 joiner.join_map_slice(|k, l_vals, r_vals| {
                                     let res = f(k, l_vals, r_vals);
+                                    for r in res {
+                                        session.give(r);
+                                    }
+                                });
+                            }
+                        }
+                    });
+                }
+            },
+        )
+    }
+
+    fn join_map_slice_accum<A, AF, DF, DK, F, I, O>(
+        &self,
+        other: &Stream<G, (K, V)>,
+        accum: AF,
+        data_key: DF,
+        mut f: F,
+    ) -> Stream<G, O>
+    where
+        I: IntoIterator<Item = O>,
+        A: Default + 'static,
+        AF: Fn(&K, V, &mut A) + 'static,
+        O: ExchangeData,
+        DF: Fn(&V) -> DK + 'static,
+        DK: 'static,
+        F: FnMut(&K, &A, &A, &[(K, DK)], &[(K, DK)]) -> I + 'static,
+    {
+        let mut joiners = HashMap::new();
+        let mut notificator = FrontierNotificator::new();
+        let mut left_accum = HashMap::new();
+        let mut right_accum = HashMap::new();
+
+        self.binary_frontier(
+            &other,
+            ExchangePact::new(|pair: &(K, V)| pair.0.route()),
+            ExchangePact::new(|pair: &(K, V)| pair.0.route()),
+            "bucket",
+            move |_, _| {
+                move |left_in, right_in, output| {
+                    left_in.for_each(|t, d| {
+                        let mut data = d.replace(Vec::new());
+                        let mut stash = left_accum
+                            .entry(t.time().clone())
+                            .or_insert_with(A::default);
+                        let rep_entry = joiners
+                            .entry(t.time().clone())
+                            .or_insert_with(Joiner::default);
+                        for (k, v) in data.drain(..) {
+                            rep_entry.push_left(k, data_key(&v));
+                            accum(&k, v, &mut stash);
+                        }
+                        notificator.notify_at(t.retain());
+                    });
+                    right_in.for_each(|t, d| {
+                        let mut data = d.replace(Vec::new());
+                        let mut stash = right_accum
+                            .entry(t.time().clone())
+                            .or_insert_with(A::default);
+                        let rep_entry = joiners
+                            .entry(t.time().clone())
+                            .or_insert_with(Joiner::default);
+                        for (k, v) in data.drain(..) {
+                            rep_entry.push_right(k, data_key(&v));
+                            accum(&k, v, &mut stash);
+                        }
+                        notificator.notify_at(t.retain());
+                    });
+
+                    let frontiers = &[left_in.frontier(), right_in.frontier()];
+                    notificator.for_each(frontiers, |time, _| {
+                        if let Some(mut joiner) = joiners.remove(&time) {
+                            let left_stash = left_accum.remove(&time).unwrap();
+                            let right_stash = right_accum.remove(&time).unwrap();
+                            if joiner.has_work() {
+                                let mut session = output.session(&time);
+                                joiner.join_map_slice(|k, l_vals, r_vals| {
+                                    let res = f(k, &left_stash, &right_stash, l_vals, r_vals);
                                     for r in res {
                                         session.give(r);
                                     }
