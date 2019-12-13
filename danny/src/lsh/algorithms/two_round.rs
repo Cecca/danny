@@ -24,6 +24,14 @@ use timely::dataflow::*;
 use timely::progress::Timestamp;
 use timely::ExchangeData;
 
+#[derive(Clone, Abomonation)]
+struct TwoRoundPayload<D, S> {
+    outer_pool: TensorPool, 
+    inner_pool: TensorPool, 
+    sketch: S, 
+    data: D
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn two_round_lsh<D, F, H, B, R, S, V>(
     left_path: &str,
@@ -120,6 +128,10 @@ where
             left_hashes
                 .join_map_slice(
                     &right_hashes,
+                    // |_hash, (outer_pool, inner_pool, sketch, (k, v)), stash| {
+                    //     stash.entry(&k).or_insert_with(move || (outer_pool, inner_pool, sketch, ))
+                    // },
+                    // ||
                     move |(outer_repetition, _hash), left_vals, right_vals| {
                         let mut cnt = 0;
                         let mut total = 0;
@@ -130,28 +142,26 @@ where
                         let all_to_all = left_vals.len() * right_vals.len();
                         let start = Instant::now();
                         for rep in 0..repetitions {
-                            //info!("In repetition {}", rep);
                             joiner.clear();
-                            for (_, (outer_pool, inner_pool, s, v)) in left_vals.iter() {
+                            for (_, (k, payload)) in left_vals.iter() {
                                 joiner.push_left(
-                                    hasher_intern.hash(inner_pool, rep),
-                                    (s, v, outer_pool, inner_pool),
+                                    hasher_intern.hash(&payload.inner_pool, rep),
+                                    payload
                                 );
                             }
-                            for (_, (outer_pool, inner_pool, s, v)) in right_vals.iter() {
+                            for (_, (k, payload)) in right_vals.iter() {
                                 joiner.push_right(
-                                    hasher_intern.hash(inner_pool, rep),
-                                    (s, v, outer_pool, inner_pool),
+                                    hasher_intern.hash(&payload.inner_pool, rep),
+                                    payload,
                                 );
                             }
-                            //info!("Inserting into buckets done in {:?}", Instant::now() - start);
 
                             joiner.join_map(|_hash, l, r| {
                                 total += 1;
-                                if sketch_pred.eval(l.0, r.0) {
-                                    if sim_pred(&(l.1).1, &(r.1).1) {
-                                        if !hasher_intern.already_seen(&l.3, &r.3, rep)
-                                            && !hasher.already_seen(&l.2, &r.2, *outer_repetition) {
+                                if sketch_pred.eval(&l.sketch, &r.sketch) {
+                                    if sim_pred(&l.data, &r.data) {
+                                        if !hasher_intern.already_seen(&l.inner_pool, &r.inner_pool, rep)
+                                            && !hasher.already_seen(&l.outer_pool, &r.outer_pool, *outer_repetition) {
                                             cnt += 1;
                                         } else {
                                             duplicate_cnt += 1;
@@ -161,7 +171,6 @@ where
                                     sketch_cnt += 1;
                                 }
                             });
-                            //info!("Repetition finished after {:?}", Instant::now() - start);
                         }
                         info!(
                             "Candidates {} ({}): Emitted {} / Discarded {} / Duplicates {} in {:?} ({})",
@@ -233,7 +242,7 @@ where
     }
 }
 
-pub fn source_hashed_two_round<G, T, K, D, F, S>(
+fn source_hashed_two_round<G, T, K, D, F, S>(
     scope: &G,
     global_vecs: Arc<ChunkedDataset<K, D>>,
     sketcher: Arc<S>,
@@ -242,8 +251,7 @@ pub fn source_hashed_two_round<G, T, K, D, F, S>(
     throttle: ProbeHandle<T>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-) -> Stream<G, ((usize, u32), (TensorPool, TensorPool, S::Output, (K, D)))>
-// ) -> Stream<G, (u32, (K, D))>
+) -> Stream<G, ((usize, u32), (K, TwoRoundPayload<D, S::Output>))>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ,
@@ -290,13 +298,16 @@ where
                     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
                         let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
                         let s = sketcher.sketch(v);
+                        let payload = TwoRoundPayload{
+                            outer_pool: bit_pools[k].clone(), 
+                            inner_pool: hash_fns2.pool(v), 
+                            sketch: s.clone(), 
+                            data: v.clone()
+                        };
                         session.give((
                             (current_repetition, h),
                             (
-                                bit_pools[k].clone(),
-                                hash_fns2.pool(v),
-                                s.clone(),
-                                (k.clone(), v.clone()),
+                                k.clone(), payload
                             ),
                         ));
                     }
