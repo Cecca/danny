@@ -9,6 +9,7 @@ environment:
   DANNY_REPETITION_BATCH: 20
 experiments:
 
+{% for k in [5,10,15] %}
   - name: Glove fixed
     tags:
       - glove
@@ -21,7 +22,7 @@ experiments:
       --algorithm: two-round-lsh 
       --range: [0.7]
       --measure: cosine
-      -k: [5,10,15]
+      -k: "{{ k }}"
       -l: "{{ k + 3 }}"
       --sketch-bits: 0
     arguments:
@@ -39,7 +40,7 @@ experiments:
       --algorithm: two-round-lsh
       --range: [0.7]
       --measure: jaccard
-      -k: [5,10,15]
+      -k: "{{ k }}"
       -l: "{{ k + 3 }}"
       --sketch-bits: 0
     arguments:
@@ -57,8 +58,10 @@ experiments:
       --algorithm: two-round-lsh
       --range: [0.7]
       --measure: jaccard
-      -k: [5,10,15]
+      -k: "{{ k }}"
       -l: "{{ k + 3 }}"
       --sketch-bits: 0
     arguments:
       - ["{{ dataset('Livejournal') }}", "{{ dataset('Livejournal') }}"]
+
+{% endfor %}
