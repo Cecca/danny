@@ -23,7 +23,7 @@ experiments:
       -k: [5,10,15]
       --sketch-bits: 0
     arguments:
-      - ["{{ dataset('Glove-27-200') }}", "{{ dataset('Glove-27-200') }}"]
+      - ["{{ dataset('Glove-sample-200000') }}", "{{ dataset('Glove-sample-200000') }}"]
 
   - name: Bag of Words (fixed)
     tags:
@@ -40,7 +40,7 @@ experiments:
       -k: [5,10,15]
       --sketch-bits: 0
     arguments:
-      - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
+      - ["{{ dataset('Orkut-sample-200000') }}", "{{ dataset('Orkut-sample-200000') }}"]
 
   - name: Bag of Words (fixed)
     tags:
@@ -57,4 +57,4 @@ experiments:
       -k: [5,10,15]
       --sketch-bits: 0
     arguments:
-      - ["{{ dataset('Livejournal') }}", "{{ dataset('Livejournal') }}"]
+      - ["{{ dataset('Livejournal-sample-200000') }}", "{{ dataset('Livejournal-sample-200000') }}"]
