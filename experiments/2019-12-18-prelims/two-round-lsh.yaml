@@ -6,8 +6,10 @@ environment:
   DANNY_DATA_DIR: /mnt/fast_storage/users/mcec
   DANNY_SKETCH_EPSILON: 0.01
   DANNY_RECALL: 0.8
+  DANNY_REPETITION_BATCH: 20
 experiments:
 
+{% for k in [5,10,15] %}
   - name: Glove fixed
     tags:
       - glove
@@ -17,12 +19,14 @@ experiments:
       DANNY_SEED:
         - 13124534
     parameters:
-      --algorithm: hu-et-al 
+      --algorithm: two-round-lsh 
       --range: [0.7]
       --measure: cosine
-      -k: [5,10,15]
+      -k: "{{ k }}"
+      -l: "{{ k + 3 }}"
+      --sketch-bits: 0
     arguments:
-      - ["{{ dataset('Glove-27-200') }}", "{{ dataset('Glove-27-200') }}"]
+      - ["{{ dataset('Glove-sample-200000') }}", "{{ dataset('Glove-sample-200000') }}"]
 
   - name: Bag of Words (fixed)
     tags:
@@ -33,12 +37,14 @@ experiments:
       DANNY_SEED:
         - 13124534
     parameters:
-      --algorithm: hu-et-al
+      --algorithm: two-round-lsh
       --range: [0.7]
       --measure: jaccard
-      -k: [5,10,15]
+      -k: "{{ k }}"
+      -l: "{{ k + 3 }}"
+      --sketch-bits: 0
     arguments:
-      - ["{{ dataset('Orkut') }}", "{{ dataset('Orkut') }}"]
+      - ["{{ dataset('Orkut-sample-200000') }}", "{{ dataset('Orkut-sample-200000') }}"]
 
   - name: Bag of Words (fixed)
     tags:
@@ -49,9 +55,13 @@ experiments:
       DANNY_SEED:
         - 13124534
     parameters:
-      --algorithm: hu-et-al
+      --algorithm: two-round-lsh
       --range: [0.7]
       --measure: jaccard
-      -k: [5,10,15]
+      -k: "{{ k }}"
+      -l: "{{ k + 3 }}"
+      --sketch-bits: 0
     arguments:
-      - ["{{ dataset('Livejournal') }}", "{{ dataset('Livejournal') }}"]
+      - ["{{ dataset('Livejournal-sample-200000') }}", "{{ dataset('Livejournal-sample-200000') }}"]
+
+{% endfor %}
