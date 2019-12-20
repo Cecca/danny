@@ -56,7 +56,13 @@ impl Experiment {
             .tag("git_commit_date", version::commit_date());
         let experiment = if cmdline.k.is_some() {
             let k_str = cmdline.k.unwrap().to_string().clone();
-            experiment.tag("k", k_str)
+            let exp = experiment.tag("k", k_str);
+            if cmdline.k2.is_some() {
+                let k2_str = cmdline.k2.unwrap().to_string().clone();
+                exp.tag("k2", k2_str)
+            } else {
+                exp
+            }
         } else {
             experiment
         };
