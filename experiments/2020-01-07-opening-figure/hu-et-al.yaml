@@ -1,0 +1,43 @@
+# The idea of this experiment is to show that the theoretically best parameter
+# choice for hu et al is not the practically best one.
+# For jaccard similarity threshold 0.5 the theoretical k for the best performance 
+# in distinguishing points at distance is 0.49 is 6
+---
+environment:
+  DANNY_THREADS: 8
+  DANNY_HOSTS: "sss00:2001,sss01:2001,sss02:2001,sss03:2001,sss04:2001"
+  DANNY_BASELINES_PATH: "/mnt/fast_storage/users/mcec/baselines.csv"
+  DANNY_DATA_DIR: /mnt/fast_storage/users/mcec
+  DANNY_SKETCH_EPSILON: 0.01
+  DANNY_RECALL: 0.8
+experiments:
+
+  - name: Bag of Words 
+    tags:
+      - jaccard
+      - orkut
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --algorithm: hu-et-al
+      --range: [0.5]
+      --measure: jaccard
+      -k: [3,4,5,6,7]
+    arguments:
+      - ["{{ dataset('Orkut-sample-200000') }}", "{{ dataset('Orkut-sample-200000') }}"]
+
+  - name: Bag of Words 
+    tags:
+      - jaccard
+      - livejournal
+    environment:
+      DANNY_SEED:
+        - 13124534
+    parameters:
+      --algorithm: hu-et-al
+      --range: [0.5]
+      --measure: jaccard
+      -k: [3,4,5,6,7]
+    arguments:
+      - ["{{ dataset('Livejournal-sample-200000') }}", "{{ dataset('Livejournal-sample-200000') }}"]
