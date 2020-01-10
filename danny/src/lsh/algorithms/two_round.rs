@@ -122,9 +122,10 @@ where
             );
             info!("Starting {} internal repetitions", hasher_intern.repetitions());
             left_hashes
-                .join_map_slice(
+                .join_map_accum(
                     &right_hashes,
-                    move |(outer_repetition, _hash), left_vals, right_vals| {
+                    |payload| (payload.3).0,
+                    move |(outer_repetition, _hash), left_vals, right_vals, l_accum, r_accum| {
                         let mut cnt = 0;
                         let mut total = 0;
                         let mut sketch_cnt = 0;
@@ -136,13 +137,15 @@ where
                         for rep in 0..repetitions {
                             //info!("In repetition {}", rep);
                             joiner.clear();
-                            for (_, (outer_pool, inner_pool, s, v)) in left_vals.iter() {
+                            for (_, data_key) in left_vals.iter() {
+                                let (outer_pool, inner_pool, s, v) = &l_accum[data_key];
                                 joiner.push_left(
                                     hasher_intern.hash(inner_pool, rep),
                                     (s, v, outer_pool, inner_pool),
                                 );
                             }
-                            for (_, (outer_pool, inner_pool, s, v)) in right_vals.iter() {
+                            for (_, data_key) in right_vals.iter() {
+                                let (outer_pool, inner_pool, s, v) = &r_accum[data_key];
                                 joiner.push_right(
                                     hasher_intern.hash(inner_pool, rep),
                                     (s, v, outer_pool, inner_pool),

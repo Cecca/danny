@@ -16,6 +16,19 @@ where
         I: IntoIterator<Item = O>,
         O: ExchangeData,
         F: FnMut(&K, &[(K, V)], &[(K, V)]) -> I + 'static;
+
+    fn join_map_accum<DF, DK, F, I, O>(
+        &self,
+        other: &Stream<G, (K, V)>,
+        data_key: DF,
+        f: F,
+    ) -> Stream<G, O>
+    where
+        I: IntoIterator<Item = O>,
+        O: ExchangeData,
+        DF: FnMut(&V) -> DK + 'static,
+        DK: std::hash::Hash + Eq + Clone + 'static,
+        F: FnMut(&K, &[(K, DK)], &[(K, DK)], &HashMap<DK, V>, &HashMap<DK, V>) -> I + 'static;
 }
 
 impl<G, K, V> Join<G, K, V> for Stream<G, (K, V)>
@@ -69,6 +82,73 @@ where
                                 let mut session = output.session(&time);
                                 joiner.join_map_slice(|k, l_vals, r_vals| {
                                     let res = f(k, l_vals, r_vals);
+                                    for r in res {
+                                        session.give(r);
+                                    }
+                                });
+                            }
+                        }
+                    });
+                }
+            },
+        )
+    }
+
+    fn join_map_accum<DF, DK, F, I, O>(
+        &self,
+        other: &Stream<G, (K, V)>,
+        mut data_key: DF,
+        mut f: F,
+    ) -> Stream<G, O>
+    where
+        I: IntoIterator<Item = O>,
+        O: ExchangeData,
+        DF: FnMut(&V) -> DK + 'static,
+        DK: std::hash::Hash + Eq + Clone + 'static,
+        F: FnMut(&K, &[(K, DK)], &[(K, DK)], &HashMap<DK, V>, &HashMap<DK, V>) -> I + 'static,
+    {
+        let mut joiners = HashMap::new();
+        let mut notificator = FrontierNotificator::new();
+        let mut l_accum = HashMap::new();
+        let mut r_accum = HashMap::new();
+
+        self.binary_frontier(
+            &other,
+            ExchangePact::new(|pair: &(K, V)| pair.0.route()),
+            ExchangePact::new(|pair: &(K, V)| pair.0.route()),
+            "bucket",
+            move |_, _| {
+                move |left_in, right_in, output| {
+                    left_in.for_each(|t, d| {
+                        let mut data = d.replace(Vec::new());
+                        let rep_entry = joiners
+                            .entry(t.time().clone())
+                            .or_insert_with(Joiner::default);
+                        for (k, v) in data.drain(..) {
+                            rep_entry.push_left(k, data_key(&v));
+                            l_accum.entry(data_key(&v)).or_insert(v);
+                        }
+                        notificator.notify_at(t.retain());
+                    });
+                    right_in.for_each(|t, d| {
+                        let mut data = d.replace(Vec::new());
+                        let rep_entry = joiners
+                            .entry(t.time().clone())
+                            .or_insert_with(Joiner::default);
+                        for (k, v) in data.drain(..) {
+                            rep_entry.push_right(k, data_key(&v));
+                            r_accum.entry(data_key(&v)).or_insert(v);
+                        }
+                        notificator.notify_at(t.retain());
+                    });
+
+                    let frontiers = &[left_in.frontier(), right_in.frontier()];
+                    notificator.for_each(frontiers, |time, _| {
+                        if let Some(mut joiner) = joiners.remove(&time) {
+                            if joiner.has_work() {
+                                let mut session = output.session(&time);
+                                joiner.join_map_slice(|k, l_vals, r_vals| {
+                                    let res = f(k, l_vals, r_vals, &l_accum, &r_accum);
                                     for r in res {
                                         session.give(r);
                                     }
