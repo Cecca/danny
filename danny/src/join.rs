@@ -50,6 +50,7 @@ where
                             rep_entry.push_left(k, v);
                         }
                         notificator.notify_at(t.retain());
+                        info!("There are {} joiners", joiners.len());
                     });
                     right_in.for_each(|t, d| {
                         let mut data = d.replace(Vec::new());
