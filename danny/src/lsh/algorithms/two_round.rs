@@ -285,7 +285,7 @@ where
         move |output| {
             let mut done = false;
             if let Some(cap) = cap.as_mut() {
-                if !throttle.less_than(&cap) {
+                // if !throttle.less_than(&cap) {
                     stopwatch.maybe_stop();
                     stopwatch.start();
                     if worker == 0 {
@@ -310,7 +310,7 @@ where
                     // }
                     current_repetition += 1;
                     done = current_repetition >= repetitions;
-                }
+                // }
             }
 
             if done {
