@@ -64,6 +64,7 @@ where
 
                     let frontiers = &[left_in.frontier(), right_in.frontier()];
                     notificator.for_each(frontiers, |time, _| {
+                        info!("Joiners saved at time {:?}: {}", time, joiners.len());
                         if let Some(mut joiner) = joiners.remove(&time) {
                             if joiner.has_work() {
                                 let mut session = output.session(&time);

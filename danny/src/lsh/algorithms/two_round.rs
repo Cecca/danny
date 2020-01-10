@@ -289,7 +289,7 @@ where
                     stopwatch.maybe_stop();
                     stopwatch.start();
                     if worker == 0 {
-                        debug!("Repetition {} (two round LSH)", current_repetition);
+                        info!("Repetition {} (two round LSH)", current_repetition);
                     }
                     let mut session = output.session(&cap);
                     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
