@@ -305,9 +305,9 @@ where
                             ),
                         ));
                     }
-                    if current_repetition % repetition_batch == 0 {
-                        cap.downgrade(&cap.time().succ());
-                    }
+                    // if current_repetition % repetition_batch == 0 {
+                    cap.downgrade(&cap.time().succ());
+                    // }
                     current_repetition += 1;
                     done = current_repetition >= repetitions;
                 }
