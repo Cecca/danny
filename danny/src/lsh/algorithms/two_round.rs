@@ -126,6 +126,7 @@ where
                     &right_hashes,
                     |payload| (payload.3).0,
                     move |(outer_repetition, _hash), left_vals, right_vals, l_accum, r_accum| {
+                        info!("Accumulators have size {} and {}", l_accum.len(), r_accum.len());
                         let mut cnt = 0;
                         let mut total = 0;
                         let mut sketch_cnt = 0;
