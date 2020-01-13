@@ -13,12 +13,12 @@ experiments:
       - jaccard
     environment:
       DANNY_SEED:
-        - 13124534
+        - 131245
     parameters:
       --algorithm: ["one-round-lsh", "hu-et-al"]
       --range: [0.5, 0.7, 0.9]
       --measure: jaccard
-      -k: [6,9,12,15]
+      -k: [5,6,7,8,9,10,11,12,13,14,15]
       --sketch-bits: 128
     arguments:
       - ["{{ dataset('Orkut-sample-200000') }}", "{{ dataset('Orkut-sample-200000') }}"]
@@ -30,12 +30,12 @@ experiments:
       - cosine
     environment:
       DANNY_SEED:
-        - 13124534
+        - 131245
     parameters:
       --algorithm: ["one-round-lsh", "hu-et-al"]
       --range: [0.5,0.7,0.9]
       --measure: cosine
-      -k: [6,9,12,15]
+      -k: [5,6,7,8,9,10,11,12,13,14,15]
       --sketch-bits: 128
     arguments:
       - ["{{ dataset('Glove-sample-200000') }}", "{{ dataset('Glove-sample-200000') }}"]
