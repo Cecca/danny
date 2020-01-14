@@ -99,6 +99,7 @@ where
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
     B: Fn(usize, &mut R) -> H + Sized + Send + Sync + Clone + 'static,
 {
+    let no_dedup = config.no_dedup;
     let network = NetworkGauge::start();
     let timely_builder = config.get_timely_builder();
     // This channel is used to get the results
@@ -108,7 +109,13 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let hasher = Arc::new(TensorCollection::new(k, range, config.get_recall(), hash_function_builder, rng));
+    let hasher = Arc::new(TensorCollection::new(
+        k,
+        range,
+        config.get_recall(),
+        hash_function_builder,
+        rng,
+    ));
 
     debug!(
         "Left dataset has {} points, right has {}",
@@ -207,7 +214,9 @@ where
                                         examined_pairs += 1;
                                         if sketch_predicate.eval(l_sketch, r_sketch) {
                                             if sim_pred(&global_left[lk], &global_right[rk]) {
-                                                if !hasher.already_seen(l_pool, r_pool, rep) {
+                                                if no_dedup
+                                                    || !hasher.already_seen(l_pool, r_pool, rep)
+                                                {
                                                     cnt += 1;
                                                 } else {
                                                     duplicates_discarded += 1;

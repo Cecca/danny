@@ -108,6 +108,7 @@ where
     B: Fn(usize, &mut R) -> H + Sized + Send + Sync + Clone + 'static,
 {
     let network = NetworkGauge::start();
+    let no_dedup = config.no_dedup;
 
     let timely_builder = config.get_timely_builder();
     // This channel is used to get the results
@@ -172,7 +173,8 @@ where
                             for (_, (_, r_pool, r)) in right_vals {
                                 total += 1;
                                 if sim_pred(l, r) {
-                                    if !hasher.already_seen(l_pool, r_pool, *repetition) {
+                                    if no_dedup || !hasher.already_seen(l_pool, r_pool, *repetition)
+                                    {
                                         cnt += 1;
                                     } else {
                                         duplicate_cnt += 1;

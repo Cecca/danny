@@ -49,6 +49,7 @@ where
     B: Fn(usize, &mut R) -> H + Sized + Send + Sync + Clone + 'static,
 {
     let network = NetworkGauge::start();
+    let no_dedup = config.no_dedup;
 
     let timely_builder = config.get_timely_builder();
     // This channel is used to get the results
@@ -154,8 +155,8 @@ where
                                 total += 1;
                                 if sketch_pred.eval(l.0, r.0) {
                                     if sim_pred(&(l.1).1, &(r.1).1) {
-                                        if !hasher_intern.already_seen(&l.3, &r.3, rep)
-                                            && !hasher.already_seen(&l.2, &r.2, *outer_repetition) {
+                                        if no_dedup || (!hasher_intern.already_seen(&l.3, &r.3, rep)
+                                            && !hasher.already_seen(&l.2, &r.2, *outer_repetition)) {
                                             cnt += 1;
                                         } else {
                                             duplicate_cnt += 1;

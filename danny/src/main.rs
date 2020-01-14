@@ -144,6 +144,9 @@ where
 fn main() {
     let config = Config::get();
     init_logging(&config);
+    if config.no_dedup {
+        warn!("Running with NO DUPLICATE ELIMINATION");
+    }
     let args = CmdlineConfig::get();
     let mut experiment = Experiment::from_config(&config, &args);
 

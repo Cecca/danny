@@ -52,6 +52,8 @@ pub struct Config {
     recall: f64,
     #[serde(default = "Config::default_repetition_batch")]
     repetition_batch: usize,
+    #[serde(default = "Config::default_no_dedup")]
+    pub no_dedup: bool,
 }
 
 #[allow(dead_code)]
@@ -72,6 +74,7 @@ impl Config {
             DANNY_TIMEOUT     Number of seconds before killing a run (default: unbounded)
             DANNY_RECALL    Guaranteed recall (default: 0.5)
             DANNY_REPETITION_BATCH  The number of repetitions to squash into a distributed round
+            DANNY_NO_DEDUP  Don't perform duplicate elimination
         "
     }
 
@@ -84,6 +87,10 @@ impl Config {
 
     fn default_bloom_bits() -> String {
         "4G".to_owned()
+    }
+
+    fn default_no_dedup() -> bool {
+        false
     }
 
     pub fn get_bloom_bits(&self) -> usize {
