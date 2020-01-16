@@ -8,6 +8,7 @@ use crate::logging::*;
 use crate::operators::*;
 use danny_base::lsh::*;
 use danny_base::sketch::*;
+use danny_base::types::*;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
 use std::clone::Clone;
@@ -31,7 +32,7 @@ fn simple_source<G, K, F, D, S>(
     worker: u64,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-) -> Stream<G, (K, (TensorPool, S::Output))>
+) -> Stream<G, (K, (D, TensorPool, S::Output))>
 where
     G: Scope,
     G::Timestamp: Succ,
@@ -52,7 +53,7 @@ where
                 for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
                     let pool = hash_fns.pool(v);
                     let s = sketcher.sketch(v);
-                    let output_element = (k.clone(), (pool.clone(), s.clone()));
+                    let output_element = (k.clone(), (v.clone(), pool.clone(), s.clone()));
                     match direction {
                         MatrixDirection::Columns => {
                             let col = (k.route() % u64::from(matrix.columns)) as u8;
@@ -171,13 +172,19 @@ where
                 let mut notificator = FrontierNotificator::new();
                 let mut left_data = HashMap::new();
                 let mut right_data = HashMap::new();
+                let mut left_vectors = HashMap::new();
+                let mut right_vectors = HashMap::new();
                 move |left_in, right_in, output| {
                     left_in.for_each(|t, data| {
                         let local_data = left_data.entry(t.time().clone()).or_insert_with(|| {
                             Vec::with_capacity(global_left.chunk_len(worker_row as usize))
                         });
-                        for (k, (p, s)) in data.replace(Vec::new()).drain(..) {
+                        let local_vectors = left_vectors
+                            .entry(t.time().clone())
+                            .or_insert_with(HashMap::new);
+                        for (k, (v, p, s)) in data.replace(Vec::new()).drain(..) {
                             local_data.push((k, p, s));
+                            local_vectors.entry(k).or_insert(v);
                         }
                         notificator.notify_at(t.retain());
                     });
@@ -185,14 +192,22 @@ where
                         let local_data = right_data.entry(t.time().clone()).or_insert_with(|| {
                             Vec::with_capacity(global_right.chunk_len(worker_col as usize))
                         });
-                        for (k, (p, s)) in data.replace(Vec::new()).drain(..) {
+                        let local_vectors = right_vectors
+                            .entry(t.time().clone())
+                            .or_insert_with(HashMap::<ElementId, D>::new);
+                        for (k, (v, p, s)) in data.replace(Vec::new()).drain(..) {
                             local_data.push((k, p, s));
+                            local_vectors.entry(k).or_insert(v);
                         }
                         notificator.notify_at(t.retain());
                     });
                     notificator.for_each(&[left_in.frontier(), &right_in.frontier()], |t, _| {
                         if let Some(left_data) = left_data.remove(&t) {
                             let right_data = right_data.remove(&t).expect("missing right data");
+                            let left_vectors =
+                                left_vectors.remove(&t).expect("missing left vectors");
+                            let right_vectors =
+                                right_vectors.remove(&t).expect("missing right vectors");
                             let repetitions = hasher.repetitions();
                             let mut cnt = 0;
                             for rep in 0..repetitions {
@@ -213,7 +228,7 @@ where
                                     |_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
                                         examined_pairs += 1;
                                         if sketch_predicate.eval(l_sketch, r_sketch) {
-                                            if sim_pred(&global_left[lk], &global_right[rk]) {
+                                            if sim_pred(&left_vectors[lk], &right_vectors[rk]) {
                                                 if no_dedup
                                                     || !hasher.already_seen(l_pool, r_pool, rep)
                                                 {
