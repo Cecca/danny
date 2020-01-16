@@ -176,6 +176,7 @@ where
                 let mut right_vectors = HashMap::new();
                 move |left_in, right_in, output| {
                     left_in.for_each(|t, data| {
+                        log_event!(logger, LogEvent::Load(t.time().to_step_id(), data.len()));
                         let local_data = left_data.entry(t.time().clone()).or_insert_with(|| {
                             Vec::with_capacity(global_left.chunk_len(worker_row as usize))
                         });
@@ -189,6 +190,7 @@ where
                         notificator.notify_at(t.retain());
                     });
                     right_in.for_each(|t, data| {
+                        log_event!(logger, LogEvent::Load(t.time().to_step_id(), data.len()));
                         let local_data = right_data.entry(t.time().clone()).or_insert_with(|| {
                             Vec::with_capacity(global_right.chunk_len(worker_col as usize))
                         });

@@ -1,3 +1,4 @@
+use crate::logging::*;
 use crate::operators::*;
 use std::collections::HashMap;
 use timely::dataflow::channels::pact::Exchange as ExchangePact;
@@ -21,6 +22,7 @@ where
 impl<G, K, V> Join<G, K, V> for Stream<G, (K, V)>
 where
     G: Scope,
+    G::Timestamp: ToStepId,
     K: KeyData + Ord,
     V: ExchangeData,
 {
@@ -33,6 +35,7 @@ where
     {
         let mut joiners = HashMap::new();
         let mut notificator = FrontierNotificator::new();
+        let logger = self.scope().danny_logger();
 
         self.binary_frontier(
             &other,
@@ -42,6 +45,7 @@ where
             move |_, _| {
                 move |left_in, right_in, output| {
                     left_in.for_each(|t, d| {
+                        log_event!(logger, LogEvent::Load(t.time().to_step_id(), d.len()));
                         let mut data = d.replace(Vec::new());
                         let rep_entry = joiners
                             .entry(t.time().clone())
@@ -52,6 +56,7 @@ where
                         notificator.notify_at(t.retain());
                     });
                     right_in.for_each(|t, d| {
+                        log_event!(logger, LogEvent::Load(t.time().to_step_id(), d.len()));
                         let mut data = d.replace(Vec::new());
                         let rep_entry = joiners
                             .entry(t.time().clone())

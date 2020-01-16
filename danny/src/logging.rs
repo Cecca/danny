@@ -357,6 +357,7 @@ impl Drop for ProfileGuard {
 
 #[derive(Debug, Clone, Abomonation)]
 pub enum LogEvent {
+    Load(usize, usize),
     SketchDiscarded(usize, usize),
     DistinctPairs(usize, usize),
     DuplicatesDiscarded(usize, usize),
@@ -389,6 +390,7 @@ where
 #[derive(Debug)]
 pub struct ExecutionSummary {
     worker_id: usize,
+    load: HashMap<usize, usize>,
     sketch_discarded: HashMap<usize, usize>,
     distinct_pairs: HashMap<usize, usize>,
     duplicates_discarded: HashMap<usize, usize>,
@@ -405,6 +407,7 @@ impl ExecutionSummary {
     pub fn new(worker_id: usize) -> Self {
         Self {
             worker_id,
+            load: HashMap::new(),
             sketch_discarded: HashMap::new(),
             distinct_pairs: HashMap::new(),
             duplicates_discarded: HashMap::new(),
@@ -425,6 +428,7 @@ impl ExecutionSummary {
     pub fn freeze(&self) -> FrozenExecutionSummary {
         FrozenExecutionSummary {
             worker_id: self.worker_id,
+            load: Self::map_to_vec(&self.load),
             sketch_discarded: Self::map_to_vec(&self.sketch_discarded),
             distinct_pairs: Self::map_to_vec(&self.distinct_pairs),
             duplicates_discarded: Self::map_to_vec(&self.duplicates_discarded),
@@ -440,6 +444,9 @@ impl ExecutionSummary {
 
     pub fn add(&mut self, event: LogEvent) {
         match event {
+            LogEvent::Load(step, count) => {
+                *self.load.entry(step).or_insert(0usize) += count;
+            }
             LogEvent::SketchDiscarded(step, count) => {
                 *self.sketch_discarded.entry(step).or_insert(0usize) += count;
             }
@@ -480,6 +487,7 @@ impl ExecutionSummary {
 #[derive(Debug, Abomonation, Clone, Default)]
 pub struct FrozenExecutionSummary {
     pub worker_id: usize,
+    pub load: Vec<(usize, usize)>,
     pub sketch_discarded: Vec<(usize, usize)>,
     pub distinct_pairs: Vec<(usize, usize)>,
     pub duplicates_discarded: Vec<(usize, usize)>,
@@ -507,6 +515,7 @@ macro_rules! append_step_counter {
 impl FrozenExecutionSummary {
     pub fn add_to_experiment(&self, experiment: &mut Experiment) {
         let mut steps = std::collections::HashSet::new();
+        steps.extend(self.load.iter().map(|p| p.0));
         steps.extend(self.received_hashes.iter().map(|p| p.0));
         steps.extend(self.sketch_discarded.iter().map(|p| p.0));
         steps.extend(self.distinct_pairs.iter().map(|p| p.0));
@@ -514,6 +523,7 @@ impl FrozenExecutionSummary {
         steps.extend(self.generated_pairs.iter().map(|p| p.0));
         steps.extend(self.generated_hashes.iter().map(|p| p.0));
         for step in steps.iter() {
+            append_step_counter!(self, experiment, step, load);
             append_step_counter!(self, experiment, step, received_hashes);
             append_step_counter!(self, experiment, step, sketch_discarded);
             append_step_counter!(self, experiment, step, distinct_pairs);
