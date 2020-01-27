@@ -24,18 +24,21 @@ use timely::dataflow::*;
 use timely::progress::Timestamp;
 use timely::ExchangeData;
 
-pub fn source_hashed_one_round<G, T, K, D, F>(
+pub fn source_hashed_one_round<G, T, K, D, S, F>(
     scope: &G,
     global_vecs: Arc<ChunkedDataset<K, D>>,
     hash_fns: Arc<TensorCollection<F>>,
+    sketcher: Arc<S>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-) -> Stream<G, ((usize, u32), (K, TensorPool, D))>
+) -> Stream<G, ((usize, u32), (K, TensorPool, S::Output, D))>
 // ) -> Stream<G, (u32, (K, D))>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ,
     D: ExchangeData + Debug,
+    S: Sketcher<Input = D> + Clone + 'static,
+    S::Output: SketchData + Debug,
     F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
     K: KeyData + Debug,
 {
@@ -45,10 +48,24 @@ where
     let vecs = Arc::clone(&global_vecs);
     let mut stopwatch = RepetitionStopWatch::new("repetition", worker == 0, logger);
     let mut bit_pools: HashMap<K, TensorPool> = HashMap::new();
+    let mut sketches = HashMap::new();
     info!("Computing the bit pools");
     let start = Instant::now();
     for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
         bit_pools.insert(*k, hash_fns.pool(v));
+    }
+    let end = Instant::now();
+    info!(
+        "Computed the bit pools ({:?}, {})",
+        end - start,
+        proc_mem!()
+    );
+
+    info!("Computing sketches");
+    let start = Instant::now();
+    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
+        let s = sketcher.sketch(v);
+        sketches.insert(*k, s);
     }
     let end = Instant::now();
     info!(
@@ -73,7 +90,12 @@ where
                         let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
                         session.give((
                             (current_repetition, h),
-                            (k.clone(), bit_pools[k].clone(), v.clone()),
+                            (
+                                k.clone(),
+                                bit_pools[k].clone(),
+                                sketches[k].clone(),
+                                v.clone(),
+                            ),
                         ));
                     }
                 }
@@ -89,12 +111,14 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn hu_baseline<D, F, H, B, R>(
+pub fn hu_baseline<D, F, H, S, V, B, R>(
     left_path: &str,
     right_path: &str,
     range: f64,
     k: usize,
     hash_function_builder: B,
+    sketcher: S,
+    sketch_predicate: SketchPredicate<V>,
     sim_pred: F,
     rng: &mut R,
     config: &Config,
@@ -105,6 +129,8 @@ where
     F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
     H: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
+    S: Sketcher<Input = D, Output = V> + Send + Sync + Clone + 'static,
+    V: SketchData + Debug,
     B: Fn(usize, &mut R) -> H + Sized + Send + Sync + Clone + 'static,
 {
     let network = NetworkGauge::start();
@@ -138,6 +164,9 @@ where
             .expect("Cannot get lock on output channel")
             .clone();
         let sim_pred = sim_pred.clone();
+        let sketch_predicate = sketch_predicate.clone();
+        let sketcher = sketcher.clone();
+        let sketcher = Arc::new(sketcher);
 
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
             let mut probe = ProbeHandle::new();
@@ -148,6 +177,7 @@ where
                 scope,
                 Arc::clone(&global_left),
                 Arc::clone(&hasher),
+                Arc::clone(&sketcher),
                 matrix,
                 MatrixDirection::Rows,
             );
@@ -155,6 +185,7 @@ where
                 scope,
                 Arc::clone(&global_right),
                 Arc::clone(&hasher),
+                Arc::clone(&sketcher),
                 matrix,
                 MatrixDirection::Columns,
             );
@@ -164,31 +195,42 @@ where
                     move |(repetition, _hash), left_vals, right_vals| {
                         let mut cnt = 0usize;
                         let mut total = 0usize;
+                        let mut sketch_discarded = 0;
                         let mut duplicate_cnt = 0usize;
                         let start = Instant::now();
                         // for (_, (_, _, v)) in left_vals.iter() {
                         //     info!("{:?}", v);
                         // }
-                        for (_, (_, l_pool, l)) in left_vals {
-                            for (_, (_, r_pool, r)) in right_vals {
+                        for (_, (_, l_pool, l_sketch, l)) in left_vals {
+                            for (_, (_, r_pool, r_sketch, r)) in right_vals {
                                 total += 1;
-                                if sim_pred(l, r) {
-                                    if no_dedup || !hasher.already_seen(l_pool, r_pool, *repetition)
-                                    {
-                                        cnt += 1;
-                                    } else {
-                                        duplicate_cnt += 1;
+                                if sketch_predicate.eval(l_sketch, r_sketch) {
+                                    if sim_pred(l, r) {
+                                        if no_dedup
+                                            || !hasher.already_seen(l_pool, r_pool, *repetition)
+                                        {
+                                            cnt += 1;
+                                        } else {
+                                            duplicate_cnt += 1;
+                                        }
                                     }
+                                } else {
+                                    sketch_discarded += 1;
                                 }
                             }
                         }
                         info!(
-                            "Candidates {}: Emitted {} / Duplicates {} in {:?} ({})",
+                            "Candidates {}: Emitted {} / Sketch discarded {} / Duplicates {} in {:?} ({})",
                             total,
                             cnt,
+                            sketch_discarded,
                             duplicate_cnt,
                             Instant::now() - start,
                             proc_mem!(),
+                        );
+                        log_event!(
+                            logger,
+                            LogEvent::SketchDiscarded(*repetition, sketch_discarded)
                         );
                         log_event!(logger, LogEvent::GeneratedPairs(*repetition, cnt));
                         log_event!(

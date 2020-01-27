@@ -141,6 +141,61 @@ where
     }
 }
 
+#[cfg(feature = "two-round-lsh")]
+fn run_hu_et_al<SV>(args: &CmdlineConfig, config: &Config, experiment: &mut Experiment) -> usize
+where
+    SV: BitBasedSketch + FromCosine + FromJaccard + SketchData + Debug,
+{
+    let mut hasher_rng = config.get_random_generator(0);
+    let mut sketcher_rng = config.get_random_generator(1);
+    let threshold = args.threshold;
+    let sketch_bits = args.sketch_bits.expect("Sketches are mandatory");
+    let k = args.k.expect("K is needed on the command line");
+
+    match args.measure.as_ref() {
+        "cosine" => {
+            let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
+            let sketcher = SV::from_cosine(dim, &mut sketcher_rng);
+            let sketch_predicate =
+                SketchPredicate::cosine(sketch_bits, threshold, config.get_sketch_epsilon());
+            hu_baseline::<UnitNormVector, _, _, _, _, _, _>(
+                &args.left_path,
+                &args.right_path,
+                threshold,
+                k,
+                Hyperplane::builder(dim),
+                sketcher,
+                sketch_predicate,
+                move |a, b| UnitNormVector::cosine(a, b) >= threshold,
+                &mut hasher_rng,
+                &config,
+                experiment,
+            )
+        }
+        "jaccard" => {
+            let threshold = args.threshold;
+            let sketch_bits = args.sketch_bits.expect("Sketch bits are mandatory");
+            let sketcher = SV::from_jaccard(&mut sketcher_rng);
+            let sketch_predicate =
+                SketchPredicate::jaccard(sketch_bits, threshold, config.get_sketch_epsilon());
+            hu_baseline::<BagOfWords, _, _, _, _, _, _>(
+                &args.left_path,
+                &args.right_path,
+                threshold,
+                k,
+                OneBitMinHash::builder(),
+                sketcher,
+                sketch_predicate,
+                move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
+                &mut hasher_rng,
+                &config,
+                experiment,
+            )
+        }
+        _ => unimplemented!("Unknown measure {}", args.measure),
+    }
+}
+
 fn main() {
     let config = Config::get();
     init_logging(&config);
@@ -185,37 +240,30 @@ fn main() {
         },
         #[cfg(feature = "hu-et-al")]
         "hu-et-al" => match args.measure.as_ref() {
-            "cosine" => {
-                let mut rng = config.get_random_generator(0);
-                let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
-                let k = args.k.expect("k is needed on the command line");
-                hu_baseline::<UnitNormVector, _, _, _, _>(
-                    &args.left_path,
-                    &args.right_path,
-                    threshold,
-                    k,
-                    Hyperplane::builder(dim),
-                    move |a, b| UnitNormVector::cosine(a, b) >= threshold,
-                    &mut rng,
-                    &config,
-                    &mut experiment,
-                )
-            }
-            "jaccard" => {
-                let mut rng = config.get_random_generator(0);
-                let k = args.k.expect("k is needed on the command line");
-                hu_baseline::<BagOfWords, _, _, _, _>(
-                    &args.left_path,
-                    &args.right_path,
-                    threshold,
-                    k,
-                    OneBitMinHash::builder(),
-                    move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
-                    &mut rng,
-                    &config,
-                    &mut experiment,
-                )
-            }
+            "cosine" => match args.sketch_bits {
+                Some(0) | None => run_hu_et_al::<Sketch0>(&args, &config, &mut experiment),
+                #[cfg(feature = "sketching")]
+                Some(64) => run_hu_et_al::<Sketch64>(&args, &config, &mut experiment),
+                #[cfg(feature = "sketching")]
+                Some(128) => run_hu_et_al::<Sketch128>(&args, &config, &mut experiment),
+                #[cfg(feature = "sketching")]
+                Some(256) => run_hu_et_al::<Sketch256>(&args, &config, &mut experiment),
+                #[cfg(feature = "sketching")]
+                Some(512) => run_hu_et_al::<Sketch512>(&args, &config, &mut experiment),
+                Some(bits) => panic!("Unsupported number of sketch bits: {}", bits),
+            },
+            "jaccard" => match args.sketch_bits {
+                Some(0) | None => run_hu_et_al::<Sketch0>(&args, &config, &mut experiment),
+                #[cfg(feature = "sketching")]
+                Some(64) => run_hu_et_al::<Sketch64>(&args, &config, &mut experiment),
+                #[cfg(feature = "sketching")]
+                Some(128) => run_hu_et_al::<Sketch128>(&args, &config, &mut experiment),
+                #[cfg(feature = "sketching")]
+                Some(256) => run_hu_et_al::<Sketch256>(&args, &config, &mut experiment),
+                #[cfg(feature = "sketching")]
+                Some(512) => run_hu_et_al::<Sketch512>(&args, &config, &mut experiment),
+                Some(bits) => panic!("Unsupported number of sketch bits: {}", bits),
+            },
             _ => unimplemented!(),
         },
         #[cfg(feature = "all-2-all")]
