@@ -36,9 +36,24 @@ experiments:
       --algorithm: ["hu-et-al"]
       --range: [0.5, 0.7,0.9]
       --measure: cosine
-      -k: [3,4,5,6,7,8,9,10,11,12,13,14,15]
+      -k: [3,4,5,6,7,8,9,10]
       --sketch-bits: [0,64,128,256,512]
     arguments:
       - ["{{ dataset('Glove-sample-200000') }}", "{{ dataset('Glove-sample-200000') }}"]
 
+  - name: Glove fixed, large k
+    tags:
+      - glove
+      - cosine
+    environment:
+      DANNY_SEED:
+        - 131245
+    parameters:
+      --algorithm: ["hu-et-al"]
+      --range: [0.7,0.9]
+      --measure: cosine
+      -k: [11,12,13,14,15]
+      --sketch-bits: [0,64,128,256,512]
+    arguments:
+      - ["{{ dataset('Glove-sample-200000') }}", "{{ dataset('Glove-sample-200000') }}"]
 
