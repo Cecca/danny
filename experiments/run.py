@@ -201,6 +201,37 @@ def _preprocess_wiki(vocab_size, download_file, final_output):
         ]
     )
 
+def _load_texmex_vectors(f, n, k):
+    import struct
+
+    v = numpy.zeros((n, k))
+    for i in range(n):
+        f.read(4)  # ignore vec length
+        v[i] = struct.unpack('f' * k, f.read(k * 4))
+
+    return v
+
+
+# From ann-benchmarks
+def _get_irisa_matrix(t, fn):
+    import struct
+    m = t.getmember(fn)
+    f = t.extractfile(m)
+    k, = struct.unpack('i', f.read(4))
+    n = m.size // (4 + 4 * k)
+    f.seek(0)
+    return _load_texmex_vectors(f, n, k)
+
+
+# From ann-benchmarks
+def preprocess_sift(download_file, final_output):
+    import tarfile
+
+    with tarfile.open(download_file, 'r:gz') as t:
+        train = _get_irisa_matrix(t, 'sift/sift_base.fvecs')
+        test = _get_irisa_matrix(t, 'sift/sift_query.fvecs')
+        print(train)
+
 
 def preprocess_wiki_builder(vocab_size):
     return lambda download_file, final_output: _preprocess_wiki(
@@ -403,6 +434,12 @@ def sample_dataset(base_path, filepath):
 
 
 DATASETS = {
+    "SIFT": Dataset(
+        "SIFT",
+        "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
+        "sift.bin",
+        preprocess_sift
+    ),
     "Glove-6B-100": Dataset(
         "Glove-6B-100",
         "http://nlp.stanford.edu/data/glove.6B.zip",
