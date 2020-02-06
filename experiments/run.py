@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import shlex
+import numpy
 import datetime
 import argparse
 from sklearn.feature_extraction.text import CountVectorizer
@@ -223,14 +224,54 @@ def _get_irisa_matrix(t, fn):
     return _load_texmex_vectors(f, n, k)
 
 
+class Embedder(object):
+    def __init__(self, dim_in, dim_out, seed):
+        numpy.random.seed(seed)
+        self.scale_factor = numpy.sqrt(2/dim_out)
+        self.shifts = numpy.random.uniform(0,2*numpy.pi, size=dim_out)
+        stddev = numpy.power(numpy.sqrt(numpy.pi), (dim_in - 1))
+        self.vecs = numpy.random.normal(scale=stddev,
+                                        size=(dim_in, dim_out))
+    def embed(self, vec):
+        prods = numpy.matmul(self.vecs, vec)
+        shifted = prods + self.shifts
+        return numpy.cos(shifted) * self.scale_factor
+
+
 # From ann-benchmarks
 def preprocess_sift(download_file, final_output):
     import tarfile
+    tmp_dir = os.path.join(os.path.dirname(download_file))
 
     with tarfile.open(download_file, 'r:gz') as t:
         train = _get_irisa_matrix(t, 'sift/sift_base.fvecs')
         test = _get_irisa_matrix(t, 'sift/sift_query.fvecs')
-        print(train)
+    embedder = Embedder(128,128,123)
+    tmp_file = os.path.join(tmp_dir, "sift-temp.txt")
+    print("Embed the vectors")
+    with open(tmp_file, "w") as fp:
+      i = 0
+      for vec in train:
+            proj = embedder.embed(vec)
+            fp.write(str(i))
+            fp.write(" ")
+            fp.write(" ".join([str(x) for x in proj]))
+            fp.write("\n")
+    print("Convert the file to binary")
+    subprocess.run(
+        [
+            "danny_convert",
+            "-i",
+            tmp_file,
+            "-o",
+            final_output,
+            "-t",
+            "unit-norm-vector",
+            "-n",
+            "40",
+        ],
+        cwd=tmp_dir,
+    )
 
 
 def preprocess_wiki_builder(vocab_size):
@@ -453,12 +494,12 @@ DATASETS = {
         "glove.twitter.27B.200d.bin",
         preprocess_glove_6b,
     ),
-    "wiki-10k": Dataset(
-        "wiki-10k",
-        "https://dumps.wikimedia.org/enwiki/20190220/enwiki-20190220-pages-articles-multistream.xml.bz2",
-        "wiki-10k.bin",
-        preprocess_wiki_builder(10000),
-    ),
+    #"wiki-10k": Dataset(
+    #    "wiki-10k",
+    #    "https://dumps.wikimedia.org/enwiki/20190220/enwiki-20190220-pages-articles-multistream.xml.bz2",
+    #    "wiki-10k.bin",
+    #    preprocess_wiki_builder(10000),
+    #),
     "AOL": Dataset(
         "AOL",
         "http://www.cim.mcgill.ca/~dudek/206/Logs/AOL-user-ct-collection/aol-data.tar.gz",
@@ -566,12 +607,12 @@ derived_datasets.append(DerivedDataset(
     DATASETS['AOL'],
     preprocess_diverse_expansion
 ))
-derived_datasets.append(DerivedDataset(
-    'wiki-10k-diverse-exp-{}-3M'.format(0.5),
-    'wiki-10k-diverse-exp-{}-3000000.bin'.format(0.5),
-    DATASETS['wiki-10k'],
-    preprocess_diverse_expansion
-))
+#derived_datasets.append(DerivedDataset(
+    #'wiki-10k-diverse-exp-{}-3M'.format(0.5),
+    #'wiki-10k-diverse-exp-{}-3000000.bin'.format(0.5),
+    #DATASETS['wiki-10k'],
+    #preprocess_diverse_expansion
+#))
 derived_datasets.append(DerivedDataset(
     'Glove-27-diverse-exp-{}-3M'.format(0.5),
     'Glove-27-diverse-exp-{}-3000000.bin'.format(0.5),
