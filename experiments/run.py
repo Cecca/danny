@@ -456,7 +456,7 @@ def preprocess_diverse_expansion(base_path, filepath):
     )
 
 def sample_dataset(base_path, filepath):
-    measure = "cosine" if "glove" in base_path else "jaccard"
+    measure = "cosine" if ("glove" in base_path or "sift" in base_path) else "jaccard"
     pre, ext = os.path.splitext(filepath)
     tokens = pre.split("-")
     size = tokens[-1]
@@ -562,6 +562,12 @@ for r in [0.5,0.7,0.9]:
     )
     derived_datasets.append(d)
 
+derived_datasets.append(DerivedDataset(
+    'SIFT-sample-200000',
+    'sift-sample-200000.bin',
+    DATASETS['SIFT'],
+    sample_dataset
+))
 derived_datasets.append(DerivedDataset(
     'Glove-sample-200000',
     'Glove-sample-200000.bin',
