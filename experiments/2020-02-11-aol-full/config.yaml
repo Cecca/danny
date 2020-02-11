@@ -12,14 +12,14 @@ experiments:
   - name: AOL fixed
     tags:
       - glove
-      - cosine
+      - jaccard
     environment:
       DANNY_SEED:
         - 131245
     parameters:
       --algorithm: ["one-round-lsh"]
       --range: [0.5, 0.7,0.9]
-      --measure: cosine
+      --measure: jaccard
       -k: [3,4,5,6,7,8,9,10,11,12,13,14,15]
       --sketch-bits: [0,64,128,256,512]
     arguments:
@@ -28,14 +28,14 @@ experiments:
   - name: Hu et al AOL (small k)
     tags:
       - glove
-      - cosine
+      - jaccard
     environment:
       DANNY_SEED:
         - 131245
     parameters:
       --algorithm: ["hu-et-al"]
       --range: [0.5, 0.7,0.9]
-      --measure: cosine
+      --measure: jaccard
       -k: [3,4,5,6,7,8,9,10]
       --sketch-bits: [0,64,128,256,512]
     arguments:
@@ -44,14 +44,14 @@ experiments:
   - name: AOL Hu et al, large k
     tags:
       - glove
-      - cosine
+      - jaccard
     environment:
       DANNY_SEED:
         - 131245
     parameters:
       --algorithm: ["hu-et-al"]
       --range: [0.7,0.9]
-      --measure: cosine
+      --measure: jaccard
       -k: [11,12,13,14,15]
       --sketch-bits: [0,64,128,256,512]
     arguments:
@@ -63,14 +63,14 @@ experiments:
   - name: AOL wto round
     tags:
       - glove
-      - cosine
+      - jaccard
     environment:
       DANNY_SEED:
         - 131245
     parameters:
       --algorithm: ["two-round-lsh"]
       --range: [0.5,0.7,0.9]
-      --measure: cosine
+      --measure: jaccard
       -k: "{{ k }}"
       -l: "{{ k + addend }}"
       --sketch-bits: [0,64,128,256,512]
