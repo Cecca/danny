@@ -624,6 +624,38 @@ derived_datasets.append(DerivedDataset(
     sample_dataset
 ))
 
+# Sampled datasets
+for size in [200000, 400000, 800000]:
+    derived_datasets.append(DerivedDataset(
+        'SIFT-sample-{}'.format(size),
+        'sift-sample-{}.bin'.format(size),
+        DATASETS['SIFT'],
+        sample_dataset
+    ))
+    derived_datasets.append(DerivedDataset(
+        'Glove-sample-{}'.format(size),
+        'Glove-sample-{}.bin'.format(size),
+        DATASETS['Glove-27-200'],
+        sample_dataset
+    ))
+    derived_datasets.append(DerivedDataset(
+        'AOL-sample-{}'.format(size),
+        'AOL-sample-{}.bin'.format(size),
+        DATASETS['AOL'],
+        sample_dataset
+    ))
+    derived_datasets.append(DerivedDataset(
+        'Orkut-sample-{}'.format(size),
+        'Orkut-sample-{}.bin'.format(size),
+        DATASETS['Orkut'],
+        sample_dataset
+    ))
+    derived_datasets.append(DerivedDataset(
+        'Livejournal-sample-{}'.format(size), 
+        'Livejournal-sample-{}.bin'.format(size),
+        DATASETS['Livejournal'],
+        sample_dataset
+    ))
 
 
 derived_datasets.append(DerivedDataset(
