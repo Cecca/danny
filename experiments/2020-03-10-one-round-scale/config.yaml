@@ -52,7 +52,7 @@ experiments:
       - ["{{ dataset('Glove-sample-200000') }}", "{{ dataset('Glove-sample-200000') }}"]
       - ["{{ dataset('Glove-sample-400000') }}", "{{ dataset('Glove-sample-400000') }}"]
       - ["{{ dataset('Glove-sample-800000') }}", "{{ dataset('Glove-sample-800000') }}"]
-      - ["{{ dataset('Glove') }}", "{{ dataset('Glove') }}"]
+      - ["{{ dataset('Glove-27-200') }}", "{{ dataset('Glove-27-200') }}"]
 
 
 
