@@ -14,12 +14,15 @@ experiments:
       - jaccard
     environment:
       DANNY_SEED:
-        - 131245
+        - 1587
+        - 10975
+        - 4590871
+        - 457234
     parameters:
       --algorithm: ["one-round-lsh"]
       --range: [0.5]
       --measure: jaccard
-      -k: [12,13,14,15]
+      -k: [7,8,9,10,11,12]
       --sketch-bits: 256
     arguments:
       - ["{{ dataset('Orkut-sample-200000') }}", "{{ dataset('Orkut-sample-200000') }}"]
@@ -37,12 +40,15 @@ experiments:
       - cosine
     environment:
       DANNY_SEED:
-        - 131245
+        - 1587
+        - 10975
+        - 4590871
+        - 457234
     parameters:
       --algorithm: ["one-round-lsh"]
       --range: [0.5]
       --measure: cosine
-      -k: [12,13,14,15]
+      -k: [7,8,9,10,11,12]
       --sketch-bits: 256
     arguments:
       - ["{{ dataset('SIFT-sample-200000') }}", "{{ dataset('SIFT-sample-200000') }}"]
