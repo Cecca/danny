@@ -1,0 +1,47 @@
+---
+environment:
+  DANNY_THREADS: 8
+  DANNY_HOSTS: "sss00:2001,sss01:2001,sss02:2001,sss03:2001,sss04:2001"
+  DANNY_BASELINES_PATH: "/mnt/fast_storage/users/mcec/baselines.csv"
+  DANNY_DATA_DIR: /mnt/fast_storage/users/mcec
+  DANNY_SKETCH_EPSILON: 0.01
+  DANNY_RECALL: 0.8
+  DANNY_NO_DEDUP: "true"
+experiments:
+
+{% for k in [3,4,5,6,7,8,9,10,11,12,13,14,15] %}
+  - name: Bag of Words (fixed)
+    tags:
+      - jaccard
+    environment:
+      DANNY_SEED:
+        - 131245
+    parameters:
+      --algorithm: ["one-round-lsh", "two-round-lsh", "hu-et-al"]
+      --range: [0.5]
+      --measure: jaccard
+      -k: "{{ k }}"
+      -l: "{{ k }}"
+      --sketch-bits: 0
+    arguments:
+      - ["{{ dataset('Orkut-sample-200000') }}", "{{ dataset('Orkut-sample-200000') }}"]
+      - ["{{ dataset('Livejournal-sample-200000') }}", "{{ dataset('Livejournal-sample-200000') }}"]
+
+  - name: Glove fixed
+    tags:
+      - glove
+      - cosine
+    environment:
+      DANNY_SEED:
+        - 131245
+    parameters:
+      --algorithm: ["one-round-lsh", "two-round-lsh", "hu-et-al"]
+      --range: [0.5]
+      --measure: cosine
+      -k: "{{ k }}"
+      -l: "{{ k }}"
+      --sketch-bits: 0
+    arguments:
+      - ["{{ dataset('Glove-sample-200000') }}", "{{ dataset('Glove-sample-200000') }}"]
+      - ["{{ dataset('SIFT-sample-200000') }}", "{{ dataset('SIFT-sample-200000') }}"]
+{% endfor %}
