@@ -477,12 +477,12 @@ def inflate(base_path, filepath):
     measure = "cosine" if ("glove" in base_path or "sift" in base_path) else "jaccard"
     pre, ext = os.path.splitext(filepath)
     tokens = pre.split("-")
-    inflations = tokens[-1]
+    inflation = tokens[-1]
     subprocess.run(
         [
-            "inflation",
+            "inflate",
             "--factor",
-            str(size),
+            str(inflation),
             "--measure",
             measure,
             base_path,
