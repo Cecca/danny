@@ -227,24 +227,71 @@ where
                                 let mut sketch_discarded = 0;
                                 let mut duplicates_discarded = 0;
                                 let mut examined_pairs = 0;
-                                joiner.join_map(
-                                    |_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
-                                        examined_pairs += 1;
-                                        if sketch_predicate.eval(l_sketch, r_sketch) {
-                                            if no_verify || sim_pred(&left_vectors[lk], &right_vectors[rk]) {
-                                                if no_dedup
-                                                    || !hasher.already_seen(l_pool, r_pool, rep)
-                                                {
+                                match (no_verify, no_dedup) {
+                                    (false, false) => {
+                                        joiner.join_map(
+                                            |_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
+                                                examined_pairs += 1;
+                                                if sketch_predicate.eval(l_sketch, r_sketch) {
+                                                    if sim_pred(&left_vectors[lk], &right_vectors[rk]) {
+                                                        if !hasher.already_seen(l_pool, r_pool, rep)
+                                                        {
+                                                            cnt += 1;
+                                                        } else {
+                                                            duplicates_discarded += 1;
+                                                        }
+                                                    }
+                                                } else {
+                                                    sketch_discarded += 1;
+                                                }
+                                            },
+                                        );
+                                    },
+                                    (false, true) => {
+                                        joiner.join_map(
+                                            |_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
+                                                examined_pairs += 1;
+                                                if sketch_predicate.eval(l_sketch, r_sketch) {
+                                                    if sim_pred(&left_vectors[lk], &right_vectors[rk]) {
+                                                        cnt += 1;
+                                                    }
+                                                } else {
+                                                    sketch_discarded += 1;
+                                                }
+                                            },
+                                        );
+                                    }
+                                    (true, false) => {
+                                        joiner.join_map(
+                                            |_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
+                                                examined_pairs += 1;
+                                                if sketch_predicate.eval(l_sketch, r_sketch) {
+                                                    if !hasher.already_seen(l_pool, r_pool, rep)
+                                                    {
+                                                        cnt += 1;
+                                                    } else {
+                                                        duplicates_discarded += 1;
+                                                    }
+                                                } else {
+                                                    sketch_discarded += 1;
+                                                }
+                                            },
+                                        );
+                                    },
+                                    (true, true) => {
+                                        joiner.join_map(
+                                            |_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
+                                                examined_pairs += 1;
+                                                if sketch_predicate.eval(l_sketch, r_sketch) {
                                                     cnt += 1;
                                                 } else {
-                                                    duplicates_discarded += 1;
+                                                    sketch_discarded += 1;
                                                 }
-                                            }
-                                        } else {
-                                            sketch_discarded += 1;
-                                        }
+                                            },
+                                        );
                                     },
-                                );
+                                    _ => panic!()
+                                }
                                 let end = Instant::now();
                                 info!("Repetition {} ended in {:?}", rep, end - start);
                                 log_event!(logger, LogEvent::GeneratedPairs(rep, examined_pairs));
