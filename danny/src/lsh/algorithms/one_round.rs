@@ -232,13 +232,7 @@ where
                                         examined_pairs += 1;
                                         if sketch_predicate.eval(l_sketch, r_sketch) {
                                             if no_verify || sim_pred(&left_vectors[lk], &right_vectors[rk]) {
-                                                if no_dedup
-                                                    || !hasher.already_seen(l_pool, r_pool, rep)
-                                                {
                                                     cnt += 1;
-                                                } else {
-                                                    duplicates_discarded += 1;
-                                                }
                                             }
                                         } else {
                                             sketch_discarded += 1;
