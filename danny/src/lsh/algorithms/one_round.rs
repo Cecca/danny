@@ -101,6 +101,7 @@ where
     B: Fn(usize, &mut R) -> H + Sized + Send + Sync + Clone + 'static,
 {
     let no_dedup = config.no_dedup;
+    let no_verify = config.no_verify;
     let network = NetworkGauge::start();
     let timely_builder = config.get_timely_builder();
     // This channel is used to get the results
@@ -230,7 +231,7 @@ where
                                     |_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
                                         examined_pairs += 1;
                                         if sketch_predicate.eval(l_sketch, r_sketch) {
-                                            if sim_pred(&left_vectors[lk], &right_vectors[rk]) {
+                                            if no_verify || sim_pred(&left_vectors[lk], &right_vectors[rk]) {
                                                 if no_dedup
                                                     || !hasher.already_seen(l_pool, r_pool, rep)
                                                 {

@@ -40,6 +40,8 @@ pub struct Config {
     repetition_batch: usize,
     #[serde(default = "Config::default_no_dedup")]
     pub no_dedup: bool,
+    #[serde(default = "Config::default_no_verify")]
+    pub no_verify: bool,
 }
 
 #[allow(dead_code)]
@@ -59,6 +61,7 @@ impl Config {
             DANNY_RECALL    Guaranteed recall (default: 0.5)
             DANNY_REPETITION_BATCH  The number of repetitions to squash into a distributed round
             DANNY_NO_DEDUP  Don't perform duplicate elimination
+            DANNY_NO_VERIFY  Don't perform verification of distances
         "
     }
 
@@ -70,6 +73,10 @@ impl Config {
     }
 
     fn default_no_dedup() -> bool {
+        false
+    }
+
+    fn default_no_verify() -> bool {
         false
     }
 

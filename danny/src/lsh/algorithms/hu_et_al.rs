@@ -135,6 +135,7 @@ where
 {
     let network = NetworkGauge::start();
     let no_dedup = config.no_dedup;
+    let no_verify = config.no_verify;
 
     let timely_builder = config.get_timely_builder();
     // This channel is used to get the results
@@ -205,7 +206,7 @@ where
                             for (_, (_, r_pool, r_sketch, r)) in right_vals {
                                 total += 1;
                                 if sketch_predicate.eval(l_sketch, r_sketch) {
-                                    if sim_pred(l, r) {
+                                    if no_verify || sim_pred(l, r) {
                                         if no_dedup
                                             || !hasher.already_seen(l_pool, r_pool, *repetition)
                                         {

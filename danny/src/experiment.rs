@@ -44,6 +44,8 @@ impl Experiment {
             .tag("seed", config.get_seed())
             .tag("sketch_epsilon", config.get_sketch_epsilon())
             .tag("required_recall", config.get_recall())
+            .tag("no_dedup", config.no_dedup)
+            .tag("no_verify", config.no_verify)
             .tag("measure", cmdline.measure.clone())
             .tag("threshold", cmdline.threshold)
             .tag("left_path", cmdline.left_path.clone())
