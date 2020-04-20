@@ -473,6 +473,23 @@ def sample_dataset(base_path, filepath):
     )
 
 
+def inflate(base_path, filepath):
+    measure = "cosine" if ("glove" in base_path or "sift" in base_path) else "jaccard"
+    pre, ext = os.path.splitext(filepath)
+    tokens = pre.split("-")
+    inflations = tokens[-1]
+    subprocess.run(
+        [
+            "inflation",
+            "--factor",
+            str(size),
+            "--measure",
+            measure,
+            base_path,
+            filepath,
+        ]
+    )
+
 
 DATASETS = {
     "SIFT": Dataset(
@@ -687,6 +704,32 @@ derived_datasets.append(DerivedDataset(
     'Glove-27-diverse-exp-{}-3000000.bin'.format(0.5),
     DATASETS['Glove-27-200'],
     preprocess_diverse_expansion
+))
+
+# inflated datasets
+derived_datasets.append(DerivedDataset(
+    'Livejournal-inflated-5',
+    'Livejournal-inflated-5.bin',
+    DATASETS['Livejournal'],
+    preprocess_inflate
+))
+derived_datasets.append(DerivedDataset(
+    'Orkut-inflated-5',
+    'Orkut-inflated-5.bin',
+    DATASETS['Orkut'],
+    preprocess_inflate
+))
+derived_datasets.append(DerivedDataset(
+    'Livejournal-inflated-10',
+    'Livejournal-inflated-10.bin',
+    DATASETS['Livejournal'],
+    preprocess_inflate
+))
+derived_datasets.append(DerivedDataset(
+    'Orkut-inflated-10',
+    'Orkut-inflated-10.bin',
+    DATASETS['Orkut'],
+    preprocess_inflate
 ))
 
 
