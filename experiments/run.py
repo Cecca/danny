@@ -711,25 +711,25 @@ derived_datasets.append(DerivedDataset(
     'Livejournal-inflated-5',
     'Livejournal-inflated-5.bin',
     DATASETS['Livejournal'],
-    preprocess_inflate
+    inflate
 ))
 derived_datasets.append(DerivedDataset(
     'Orkut-inflated-5',
     'Orkut-inflated-5.bin',
     DATASETS['Orkut'],
-    preprocess_inflate
+    inflate
 ))
 derived_datasets.append(DerivedDataset(
     'Livejournal-inflated-10',
     'Livejournal-inflated-10.bin',
     DATASETS['Livejournal'],
-    preprocess_inflate
+    inflate
 ))
 derived_datasets.append(DerivedDataset(
     'Orkut-inflated-10',
     'Orkut-inflated-10.bin',
     DATASETS['Orkut'],
-    preprocess_inflate
+    inflate
 ))
 
 
