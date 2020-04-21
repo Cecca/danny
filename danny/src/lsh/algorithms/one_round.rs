@@ -14,6 +14,7 @@ use serde::de::Deserialize;
 use std::clone::Clone;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -24,51 +25,85 @@ use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use timely::ExchangeData;
 
-fn simple_source<G, K, F, D, S>(
+fn simple_source<G, F, D, S, P>(
     scope: &G,
-    vecs: Arc<ChunkedDataset<K, D>>,
+    path: P,
     sketcher: Arc<S>,
     hash_fns: Arc<TensorCollection<F>>,
     worker: u64,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-) -> Stream<G, (K, (D, TensorPool, S::Output))>
+) -> Stream<G, (ElementId, (D, TensorPool, S::Output))>
 where
     G: Scope,
     G::Timestamp: Succ,
-    K: KeyData + Debug,
-    D: ExchangeData + SketchEstimate + Debug,
+    // D: ExchangeData + SketchEstimate + Debug,
+    for<'de> D: Deserialize<'de> + ReadBinaryFile + ExchangeData + SketchEstimate + Debug,
     S: Sketcher<Input = D> + Clone + 'static,
     S::Output: SketchData + Debug,
     F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
+    P: AsRef<Path>,
 {
+    let path: PathBuf = path.as_ref().into();
+    let worker = scope.index() as u64;
+    let peers = scope.peers() as u64;
     let logger = scope.danny_logger();
     source(scope, "hashed source", move |capability| {
         let mut cap = Some(capability);
         move |output| {
+            let path = path.clone();
             if let Some(cap) = cap.take() {
                 let _pg = ProfileGuard::new(logger.clone(), 0, 0, "sketching_hashing");
                 let start = Instant::now();
                 let mut session = output.session(&cap);
-                for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
-                    let pool = hash_fns.pool(v);
-                    let s = sketcher.sketch(v);
-                    let output_element = (k.clone(), (v.clone(), pool.clone(), s.clone()));
-                    match direction {
-                        MatrixDirection::Columns => {
-                            let col = (k.route() % u64::from(matrix.columns)) as u8;
-                            for row in 0..matrix.rows {
-                                session.give(((row, col), output_element.clone()));
-                            }
+                <D as ReadBinaryFile>::read_binary(
+                    path,
+                    |_| true,
+                    |k, v| {
+                        if k % peers == worker {
+                            let pool = hash_fns.pool(&v);
+                            let s = sketcher.sketch(&v);
+                            let output_element = (
+                                ElementId(k.clone() as u32),
+                                (v.clone(), pool.clone(), s.clone()),
+                            );
+                            match direction {
+                                MatrixDirection::Columns => {
+                                    let col = (k.route() % u64::from(matrix.columns)) as u8;
+                                    for row in 0..matrix.rows {
+                                        session.give(((row, col), output_element.clone()));
+                                    }
+                                }
+                                MatrixDirection::Rows => {
+                                    let row = (k.route() % u64::from(matrix.rows)) as u8;
+                                    for col in 0..matrix.columns {
+                                        session.give(((row, col), output_element.clone()));
+                                    }
+                                }
+                            };
                         }
-                        MatrixDirection::Rows => {
-                            let row = (k.route() % u64::from(matrix.rows)) as u8;
-                            for col in 0..matrix.columns {
-                                session.give(((row, col), output_element.clone()));
-                            }
-                        }
-                    };
-                }
+                    },
+                );
+
+                // for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
+                //     let pool = hash_fns.pool(v);
+                //     let s = sketcher.sketch(v);
+                //     let output_element = (k.clone(), (v.clone(), pool.clone(), s.clone()));
+                //     match direction {
+                //         MatrixDirection::Columns => {
+                //             let col = (k.route() % u64::from(matrix.columns)) as u8;
+                //             for row in 0..matrix.rows {
+                //                 session.give(((row, col), output_element.clone()));
+                //             }
+                //         }
+                //         MatrixDirection::Rows => {
+                //             let row = (k.route() % u64::from(matrix.rows)) as u8;
+                //             for col in 0..matrix.columns {
+                //                 session.give(((row, col), output_element.clone()));
+                //             }
+                //         }
+                //     };
+                // }
                 let end = Instant::now();
                 info!("Distributed sketches and pools in {:?}", end - start);
             }
@@ -100,6 +135,8 @@ where
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
     B: Fn(usize, &mut R) -> H + Sized + Send + Sync + Clone + 'static,
 {
+    let left_path = PathBuf::from(left_path);
+    let right_path = PathBuf::from(right_path);
     let no_dedup = config.no_dedup;
     let no_verify = config.no_verify;
     let network = NetworkGauge::start();
@@ -119,16 +156,18 @@ where
         rng,
     ));
 
-    debug!(
-        "Left dataset has {} points, right has {}",
-        D::num_elements(left_path.into()),
-        D::num_elements(right_path.into())
-    );
-    let (global_left, global_right) = load_vectors::<D>(left_path, right_path, &config);
+    // debug!(
+    //     "Left dataset has {} points, right has {}",
+    //     D::num_elements(left_path.into()),
+    //     D::num_elements(right_path.into())
+    // );
+    // let (global_left, global_right) = load_vectors::<D>(left_path, right_path, &config);
 
     timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
-        let global_left = Arc::clone(&global_left);
-        let global_right = Arc::clone(&global_right);
+        let left_path = left_path.clone();
+        let right_path = right_path.clone();
+        // let global_left = Arc::clone(&global_left);
+        // let global_right = Arc::clone(&global_right);
         // let bloom_filter = Arc::clone(&bloom_filter);
         let hasher = Arc::clone(&hasher);
         let execution_summary = init_event_logging(&worker);
@@ -146,8 +185,8 @@ where
 
         let probe = worker.dataflow::<u32, _, _>(move |scope| {
             let mut probe = ProbeHandle::<u32>::new();
-            let global_left = Arc::clone(&global_left);
-            let global_right = Arc::clone(&global_right);
+            // let global_left = Arc::clone(&global_left);
+            // let global_right = Arc::clone(&global_right);
             let logger = scope.danny_logger();
             let mut pl = progress_logger::ProgressLogger::builder()
                 .with_items_name("repetitions")
@@ -156,7 +195,8 @@ where
 
             let left = simple_source(
                 scope,
-                Arc::clone(&global_left),
+                // Arc::clone(&global_left),
+                left_path,
                 Arc::clone(&sketcher),
                 Arc::clone(&hasher),
                 worker_index,
@@ -165,7 +205,8 @@ where
             );
             let right = simple_source(
                 scope,
-                Arc::clone(&global_right),
+                // Arc::clone(&global_right),
+                right_path,
                 Arc::clone(&sketcher),
                 Arc::clone(&hasher),
                 worker_index,
@@ -183,7 +224,8 @@ where
                     left_in.for_each(|t, data| {
                         log_event!(logger, LogEvent::Load(t.time().to_step_id(), data.len()));
                         let local_data = left_data.entry(t.time().clone()).or_insert_with(|| {
-                            Vec::with_capacity(global_left.chunk_len(worker_row as usize))
+                            // Vec::with_capacity(global_left.chunk_len(worker_row as usize))
+                            Vec::new()
                         });
                         let local_vectors = left_vectors
                             .entry(t.time().clone())
@@ -197,7 +239,8 @@ where
                     right_in.for_each(|t, data| {
                         log_event!(logger, LogEvent::Load(t.time().to_step_id(), data.len()));
                         let local_data = right_data.entry(t.time().clone()).or_insert_with(|| {
-                            Vec::with_capacity(global_right.chunk_len(worker_col as usize))
+                            // Vec::with_capacity(global_right.chunk_len(worker_col as usize))
+                            Vec::new()
                         });
                         let local_vectors = right_vectors
                             .entry(t.time().clone())
