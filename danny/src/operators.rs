@@ -325,11 +325,6 @@ where
         P: ParallelizationContract<G::Timestamp, (K, K)>,
     {
         let logger = self.scope().danny_logger();
-        let mut pl = ProgressLogger::new(
-            std::time::Duration::from_secs(60),
-            "candidates".to_owned(),
-            None,
-        );
         self.unary(pact, "approximate-distinct-atomic", move |_, _| {
             move |input, output| {
                 input.for_each(|t, d| {
@@ -349,7 +344,6 @@ where
                             cnt += 1;
                         }
                     }
-                    pl.add(received as u64);
                     log_event!(logger, LogEvent::DistinctPairs(t.time().to_step_id(), cnt));
                     log_event!(
                         logger,

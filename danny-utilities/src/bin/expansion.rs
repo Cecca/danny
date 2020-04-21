@@ -10,7 +10,6 @@ extern crate rayon;
 extern crate serde;
 
 use danny::io::*;
-use danny::logging::ProgressLogger;
 use danny_base::measure::*;
 use danny_base::types::*;
 use rayon::prelude::*;
@@ -62,18 +61,18 @@ where
     output_path.set_extension("exp");
     let output_file = File::create(output_path).expect("Error opening file");
     let mut output = BufWriter::new(output_file);
-    let mut pl = ProgressLogger::new(
-        Duration::from_secs(30),
-        "points".to_owned(),
-        Some((data.len() * ranges.len()) as u64),
-    );
+    let mut pl = progress_logger::ProgressLogger::builder()
+        .with_frequency(Duration::from_secs(30))
+        .with_items_name("points")
+        .with_expected_updates((data.len() * ranges.len()) as u64)
+        .start();
 
     let th = thread::spawn(move || {
         for (c, range, expansion) in recv.iter() {
-            pl.add(1);
+            pl.update(1u64);
             writeln!(output, "{} {} {}", c, range, expansion).expect("Write failed");
         }
-        pl.done();
+        pl.stop();
     });
 
     data.par_iter().for_each(|(c, v)| {

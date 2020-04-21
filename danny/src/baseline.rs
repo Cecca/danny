@@ -147,11 +147,11 @@ where
         left.len(),
         right.len(),
     );
-    let mut pl = ProgressLogger::new(
-        Duration::from_secs(1),
-        "pairs".to_owned(),
-        Some((left.len() * right.len()) as u64),
-    );
+    let mut pl = progress_logger::ProgressLogger::builder()
+        .with_frequency(Duration::from_secs(10))
+        .with_items_name("pairs")
+        .with_expected_updates((left.len() * right.len()) as u64)
+        .start();
 
     let mut sim_cnt = 0;
     for l in left.iter() {
@@ -161,9 +161,9 @@ where
                 sim_cnt += 1;
             }
         }
-        pl.add(right.len() as u64);
+        pl.update_light(right.len() as u64);
     }
-    pl.done();
+    pl.stop();
     sim_cnt
 }
 
@@ -208,25 +208,25 @@ where
                     if let Some(cap) = cap.take() {
                         info!("Starting to count pairs (memory {})", proc_mem!());
                         let mut count = 0usize;
-                        let mut pl = ProgressLogger::new(
-                            Duration::from_secs(60),
-                            "pairs".to_owned(),
-                            Some(
+                        let mut pl = progress_logger::ProgressLogger::builder()
+                            .with_frequency(Duration::from_secs(60))
+                            .with_items_name("pairs")
+                            .with_expected_updates(
                                 (left.chunk_len(row as usize) * right.chunk_len(col as usize))
                                     as u64,
-                            ),
-                        );
+                            )
+                            .start();
                         for (_lk, lv) in left.iter_chunk(row as usize) {
-                            let mut pairs_looked = 0;
+                            let mut pairs_looked = 0_u64;
                             for (_rk, rv) in right.iter_chunk(col as usize) {
                                 if sim_pred(lv, rv) {
                                     count += 1;
                                 }
                                 pairs_looked += 1;
                             }
-                            pl.add(pairs_looked);
+                            pl.update_light(pairs_looked);
                         }
-                        pl.done();
+                        pl.stop();
 
                         info!(
                             "Worker {} outputting count {} (memory {})",

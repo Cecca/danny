@@ -304,11 +304,11 @@ where
 {
     let empty_vec = Vec::new();
     let inverted_index = build_inverted_index(right, range);
-    let mut progress_logger = ProgressLogger::new(
-        std::time::Duration::from_secs(60),
-        "'left sets'".to_owned(),
-        Some(left.len() as u64),
-    );
+    let mut progress_logger = progress_logger::ProgressLogger::builder()
+        .with_frequency(std::time::Duration::from_secs(60))
+        .with_items_name("'left sets'")
+        .with_expected_updates(left.len() as u64)
+        .start();
     let mut overlap_map: HashMap<u64, usize> = HashMap::new();
     for (l, l_bow) in left {
         overlap_map.clear();
@@ -337,9 +337,9 @@ where
             }
         }
         verify(*l, l_bow, &overlap_map, right, range, &mut action);
-        progress_logger.add(1);
+        progress_logger.update_light(1u64);
     }
-    progress_logger.done();
+    progress_logger.stop();
 }
 
 fn filter_candidates<G: Scope>(
