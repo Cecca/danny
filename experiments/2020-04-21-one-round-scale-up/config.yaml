@@ -25,6 +25,5 @@ experiments:
       -k: [12,13]
       --sketch-bits: 256
     arguments:
-      - ["{{ dataset('Orkut-inflated-5') }}", "{{ dataset('Orkut-inflated-5') }}"]
       - ["{{ dataset('Livejournal-inflated-5') }}", "{{ dataset('Livejournal-inflated-5') }}"]
 
