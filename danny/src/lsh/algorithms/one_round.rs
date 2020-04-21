@@ -149,6 +149,10 @@ where
             let global_left = Arc::clone(&global_left);
             let global_right = Arc::clone(&global_right);
             let logger = scope.danny_logger();
+            let mut pl = progress_logger::ProgressLogger::builder()
+                .with_items_name("repetitions")
+                .with_expected_updates(hasher.repetitions() as u64)
+                .start();
 
             let left = simple_source(
                 scope,
@@ -231,7 +235,9 @@ where
                                     |_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
                                         examined_pairs += 1;
                                         if sketch_predicate.eval(l_sketch, r_sketch) {
-                                            if no_verify || sim_pred(&left_vectors[lk], &right_vectors[rk]) {
+                                            if no_verify
+                                                || sim_pred(&left_vectors[lk], &right_vectors[rk])
+                                            {
                                                 if no_dedup
                                                     || !hasher.already_seen(l_pool, r_pool, rep)
                                                 {
@@ -247,6 +253,7 @@ where
                                 );
                                 let end = Instant::now();
                                 info!("Repetition {} ended in {:?}", rep, end - start);
+                                pl.update(1u64);
                                 log_event!(logger, LogEvent::GeneratedPairs(rep, examined_pairs));
                                 log_event!(
                                     logger,
