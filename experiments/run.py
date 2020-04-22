@@ -232,8 +232,9 @@ class Embedder(object):
         stddev = numpy.power(numpy.sqrt(numpy.pi), (dim_in - 1))
         self.vecs = numpy.random.normal(scale=stddev,
                                         size=(dim_in, dim_out))
-    def embed(self, vec):
-        prods = numpy.matmul(self.vecs, vec)
+    def embed(self, vec, target_distance=1):
+        v = vec / numpy.sqrt(target_distance)
+        prods = numpy.matmul(self.vecs, v)
         shifted = prods + self.shifts
         return numpy.cos(shifted) * self.scale_factor
 
