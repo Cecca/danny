@@ -22,7 +22,7 @@ experiments:
       --algorithm: ["one-round-lsh"]
       --range: [0.5]
       --measure: jaccard
-      -k: [12,13]
+      -k: [14,15]
       --sketch-bits: 256
     arguments:
       - ["{{ dataset('Livejournal-inflated-5') }}", "{{ dataset('Livejournal-inflated-5') }}"]
