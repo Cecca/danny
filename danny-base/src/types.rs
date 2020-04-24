@@ -32,6 +32,10 @@ impl Vector {
         Vector { data }
     }
 
+    pub fn normalize(&self) -> Self {
+        Self::normalized(self.data.clone())
+    }
+
     #[allow(dead_code)]
     pub fn random_normal<R: Rng>(dim: usize, rng: &mut R) -> Self {
         let dist = Normal::new(0.0, 1.0);

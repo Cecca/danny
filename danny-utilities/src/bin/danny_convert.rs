@@ -37,14 +37,22 @@ fn main() {
         .parse()
         .expect("Chunks should be an integer");
 
-    // TODO Add normalize flag
     match matches.value_of("TYPE").unwrap() {
-        "unit-norm-vector" => {
-            read_write::<Vector>(input, output.clone(), chunks);
+        "vector" => {
+            let mut elements = Vec::new();
+            Vector::from_file(&input, |e| elements.push(e));
+            Vector::write_binary(output, chunks, elements.into_iter());
+        }
+        "vector-normalized" => {
+            let mut elements = Vec::new();
+            Vector::from_file(&input, |e| elements.push(e.normalize()));
+            Vector::write_binary(output, chunks, elements.into_iter());
         }
         "bag-of-words" => {
-            read_write::<BagOfWords>(input, output, chunks);
+            let mut elements = Vec::new();
+            BagOfWords::from_file(&input, |e| elements.push(e));
+            BagOfWords::write_binary(output, chunks, elements.into_iter());
         }
-        x => panic!("Unsupported measure {}", x),
+        x => panic!("Unsupported type {}", x),
     }
 }
