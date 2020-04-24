@@ -239,6 +239,15 @@ class Embedder(object):
         return numpy.cos(shifted) * self.scale_factor
 
 
+def inflate_cosine(X, factor=10, seed=1234):
+    numpy.random.seed(seed)
+    d = X.shape[1]
+    Y = numpy.array(X)
+    for _ in range(factor - 1):
+        shift_matrix = 1/numpy.sqrt(d) * numpy.random.normal(size=(d, d))
+        Y = numpy.vstack((Y, numpy.matmul(X, shift_matrix)))
+    return Y
+
 # From ann-benchmarks
 def preprocess_sift(download_file, final_output):
     import tarfile
