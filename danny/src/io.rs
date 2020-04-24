@@ -19,7 +19,6 @@ use std::sync::{Arc, Mutex};
 
 pub enum ContentType {
     Vector,
-    NormalizedVector,
     BagOfWords,
 }
 
@@ -54,8 +53,6 @@ pub fn content_type<P: AsRef<Path>>(path: P) -> ContentType {
     let file = File::open(file).expect("Problem opening file");
 
     if has_content_type::<UnitNormVector>(&file) {
-        ContentType::NormalizedVector
-    } else if has_content_type::<VectorWithNorm>(&file) {
         ContentType::Vector
     } else if has_content_type::<BagOfWords>(&file) {
         ContentType::BagOfWords
@@ -315,7 +312,7 @@ where
     fn from_line(line: &str) -> Option<Self>;
 }
 
-impl ReadDataFile for VectorWithNorm {
+impl ReadDataFile for UnitNormVector {
     fn from_line(line: &str) -> Option<Self> {
         let data: Vec<f32> = line
             .split_whitespace()
@@ -325,13 +322,7 @@ impl ReadDataFile for VectorWithNorm {
                     .unwrap_or_else(|_| panic!("Error parsing floating point number `{}`", s))
             })
             .collect();
-        Some(VectorWithNorm::new(data))
-    }
-}
-
-impl ReadDataFile for UnitNormVector {
-    fn from_line(line: &str) -> Option<Self> {
-        VectorWithNorm::from_line(line).map(Into::into)
+        Some(UnitNormVector::new(data))
     }
 }
 

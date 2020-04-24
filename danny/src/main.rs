@@ -31,7 +31,7 @@ where
     let mut hasher_rng = config.get_random_generator(0);
     let mut sketcher_rng = config.get_random_generator(1);
     match content_type(&args.left_path) {
-        ContentType::NormalizedVector => {
+        ContentType::Vector => {
             let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
             let threshold = args.threshold;
             let sketch_bits = args.sketch_bits.expect("Sketches are mandatory");
@@ -74,7 +74,6 @@ where
                 experiment,
             )
         }
-        ContentType::Vector => unimplemented!(),
     }
 }
 
@@ -95,7 +94,7 @@ where
     let k2 = args.k2.expect("k2 is needed on the command line");
 
     match content_type(&args.left_path) {
-        ContentType::NormalizedVector => {
+        ContentType::Vector => {
             let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
             let sketcher = SV::from_cosine(dim, &mut sketcher_rng);
             let sketch_predicate =
@@ -137,7 +136,6 @@ where
                 experiment,
             )
         }
-        ContentType::Vector => unimplemented!(),
     }
 }
 
@@ -153,7 +151,7 @@ where
     let k = args.k.expect("K is needed on the command line");
 
     match content_type(&args.left_path) {
-        ContentType::NormalizedVector => {
+        ContentType::Vector => {
             let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
             let sketcher = SV::from_cosine(dim, &mut sketcher_rng);
             let sketch_predicate =
@@ -192,7 +190,6 @@ where
                 experiment,
             )
         }
-        ContentType::Vector => unimplemented!(),
     }
 }
 
@@ -240,7 +237,7 @@ fn main() {
         },
         #[cfg(feature = "hu-et-al")]
         "hu-et-al" => match content_type(&args.left_path) {
-            ContentType::NormalizedVector => match args.sketch_bits {
+            ContentType::Vector => match args.sketch_bits {
                 Some(0) | None => run_hu_et_al::<Sketch0>(&args, &config, &mut experiment),
                 #[cfg(feature = "sketching")]
                 Some(64) => run_hu_et_al::<Sketch64>(&args, &config, &mut experiment),
@@ -264,11 +261,10 @@ fn main() {
                 Some(512) => run_hu_et_al::<Sketch512>(&args, &config, &mut experiment),
                 Some(bits) => panic!("Unsupported number of sketch bits: {}", bits),
             },
-            ContentType::Vector => unimplemented!(),
         },
         #[cfg(feature = "all-2-all")]
         "all-2-all" => match content_type(&args.left_path) {
-            ContentType::NormalizedVector => baseline::all_pairs_parallel::<UnitNormVector, _>(
+            ContentType::Vector => baseline::all_pairs_parallel::<UnitNormVector, _>(
                 args.threshold,
                 &args.left_path,
                 &args.right_path,
@@ -282,11 +278,10 @@ fn main() {
                 move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
                 &config,
             ),
-            ContentType::Vector => unimplemented!(),
         },
         #[cfg(feature = "seq-all-2-all")]
         "seq-all-2-all" => match content_type(&args.left_path) {
-            ContentType::NormalizedVector => baseline::sequential::<UnitNormVector, _>(
+            ContentType::Vector => baseline::sequential::<UnitNormVector, _>(
                 args.threshold,
                 &args.left_path,
                 &args.right_path,
@@ -298,7 +293,6 @@ fn main() {
                 &args.right_path,
                 Jaccard::jaccard,
             ),
-            ContentType::Vector => unimplemented!(),
         },
         "" => panic!(), // This is here just for type checking when no features are selected
         _ => unimplemented!("Unknown algorithm {}", args.algorithm),

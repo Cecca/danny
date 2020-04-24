@@ -8,44 +8,12 @@ use std::fmt;
 use std::fmt::Debug;
 use std::hash::Hash;
 
-#[derive(Serialize, Deserialize, Clone, Default, Abomonation)]
-pub struct VectorWithNorm {
-    data: Vec<f32>,
-    norm: f64,
-}
-
 #[derive(Clone, Default, Eq, Ord, Hash, PartialEq, PartialOrd, Abomonation, Copy, Debug)]
 pub struct ElementId(pub u32);
 
 impl Into<u64> for ElementId {
     fn into(self) -> u64 {
         self.0.into()
-    }
-}
-
-impl Debug for VectorWithNorm {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "VectorWithNorm({})", self.norm)
-    }
-}
-
-impl VectorWithNorm {
-    #[allow(dead_code)]
-    pub fn dim(&self) -> usize {
-        self.data.len()
-    }
-
-    pub fn new(data: Vec<f32>) -> VectorWithNorm {
-        let norm = InnerProduct::norm_2(&data);
-        VectorWithNorm { data, norm }
-    }
-
-    pub fn data(&self) -> &Vec<f32> {
-        &self.data
-    }
-
-    pub fn norm(&self) -> f64 {
-        self.norm
     }
 }
 
@@ -74,14 +42,6 @@ impl UnitNormVector {
 
     pub fn dim(&self) -> usize {
         self.data.len()
-    }
-}
-
-impl From<VectorWithNorm> for UnitNormVector {
-    fn from(v: VectorWithNorm) -> Self {
-        let norm = v.norm() as f32;
-        let data = v.data.iter().map(|x| x / norm).collect();
-        UnitNormVector { data }
     }
 }
 

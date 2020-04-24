@@ -40,16 +40,6 @@ impl InnerProduct for Vec<f32> {
     }
 }
 
-impl InnerProduct for VectorWithNorm {
-    fn inner_product(a: &VectorWithNorm, b: &VectorWithNorm) -> f64 {
-        InnerProduct::inner_product(a.data(), &b.data())
-    }
-
-    fn norm_2(a: &VectorWithNorm) -> f64 {
-        a.norm()
-    }
-}
-
 impl InnerProduct for UnitNormVector {
     fn inner_product(a: &UnitNormVector, b: &UnitNormVector) -> f64 {
         InnerProduct::inner_product(a.data(), &b.data())
