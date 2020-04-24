@@ -232,8 +232,9 @@ class Embedder(object):
         stddev = numpy.power(numpy.sqrt(numpy.pi), (dim_in - 1))
         self.vecs = numpy.random.normal(scale=stddev,
                                         size=(dim_in, dim_out))
-    def embed(self, vec):
-        prods = numpy.matmul(self.vecs, vec)
+    def embed(self, vec, target_distance=1):
+        v = vec / numpy.sqrt(target_distance)
+        prods = numpy.matmul(self.vecs, v)
         shifted = prods + self.shifts
         return numpy.cos(shifted) * self.scale_factor
 
@@ -242,6 +243,10 @@ class Embedder(object):
 def preprocess_sift(download_file, final_output):
     import tarfile
     tmp_dir = os.path.join(os.path.dirname(download_file))
+    pre, ext = os.path.splitext(final_output)
+    tokens = pre.split("-")
+    target_distance = float(tokens[-1])
+    print("Target distance is", target_distance)
 
     with tarfile.open(download_file, 'r:gz') as t:
         train = _get_irisa_matrix(t, 'sift/sift_base.fvecs')
@@ -252,7 +257,7 @@ def preprocess_sift(download_file, final_output):
     with open(tmp_file, "w") as fp:
       i = 0
       for vec in train:
-            proj = embedder.embed(vec)
+            proj = embedder.embed(vec, target_distance)
             fp.write(str(i))
             fp.write(" ")
             fp.write(" ".join([str(x) for x in proj]))
@@ -496,6 +501,24 @@ DATASETS = {
         "SIFT",
         "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
         "sift.bin",
+        preprocess_sift
+    ),
+    "SIFT-5nn": Dataset(
+        "SIFT-5nn",
+        "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
+        "sift-14.42.bin",
+        preprocess_sift
+    ),
+    "SIFT-30nn": Dataset(
+        "SIFT-30nn",
+        "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
+        "sift-15.23.bin",
+        preprocess_sift
+    ),
+    "SIFT-100nn": Dataset(
+        "SIFT-100nn",
+        "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
+        "sift-15.8.bin",
         preprocess_sift
     ),
     "Glove-6B-100": Dataset(
