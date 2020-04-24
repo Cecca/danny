@@ -233,7 +233,6 @@ fn main() {
         (version: "0.1")
         (author: "Matteo Ceccarello <mcec@itu.dk>")
         (about: "Build a dataset with a diverse distribution of local intrinsic dimensionalities")
-        (@arg TYPE: -t +takes_value +required "The type of data, either bag-of-words or unit-norm-vector")
         (@arg GEN: --gen -g +takes_value "The type of data, either random or extreme")
         (@arg RANGE: -r +takes_value +required "The range for the difficulty selection")
         (@arg TARGET: -s +takes_value "Target size")
@@ -298,9 +297,8 @@ fn main() {
         .unwrap()
         .parse::<f64>()
         .expect("Problem parsing the seed");
-    let datatype: String = matches.value_of("TYPE").unwrap().to_owned();
-    match datatype.as_ref() {
-        "bag-of-words" => run::<BagOfWords>(
+    match content_type(&input) {
+        ContentType::BagOfWords => run::<BagOfWords>(
             &input,
             &output,
             &difficulty_path,
@@ -308,7 +306,7 @@ fn main() {
             range,
             seed,
         ),
-        "unit-norm-vector" => run::<Vector>(
+        ContentType::Vector => run::<Vector>(
             &input,
             &output,
             &difficulty_path,
@@ -316,7 +314,6 @@ fn main() {
             range,
             seed,
         ),
-        e => panic!("Unsupported measure {}", e),
     };
     info!("Done!");
 }

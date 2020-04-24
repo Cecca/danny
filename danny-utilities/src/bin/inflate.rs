@@ -99,7 +99,6 @@ fn main() {
         (version: "0.1")
         (author: "Matteo Ceccarello <mcec@itu.dk>")
         (about: "Sample the given dataset")
-        (@arg MEASURE: -m --measure +takes_value +required "The measure")
         (@arg FACTOR: -f --factor +takes_value +required "The factor of the inflation")
         (@arg INPUT: +required "The input path")
         (@arg OUTPUT: +required "The output path")
@@ -115,15 +114,13 @@ fn main() {
 
     let input: PathBuf = matches.value_of("INPUT").unwrap().into();
     let output: PathBuf = matches.value_of("OUTPUT").unwrap().into();
-    let measure: String = matches.value_of("MEASURE").unwrap().to_owned();
     let factor: usize = matches
         .value_of("FACTOR")
         .unwrap()
         .parse::<usize>()
         .unwrap();
-    match measure.as_ref() {
-        "jaccard" => run_bow(&input, &output, factor, seed),
-        "cosine" => run_cosine(&input, &output, factor, seed),
-        e => panic!("Unsupported measure {}", e),
+    match content_type(&input) {
+        ContentType::BagOfWords => run_bow(&input, &output, factor, seed),
+        ContentType::Vector => run_cosine(&input, &output, factor, seed),
     };
 }

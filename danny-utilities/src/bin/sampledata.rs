@@ -55,7 +55,6 @@ fn main() {
         (version: "0.1")
         (author: "Matteo Ceccarello <mcec@itu.dk>")
         (about: "Sample the given dataset")
-        (@arg MEASURE: -m --measure +takes_value +required "The measure")
         (@arg SIZE: -s --size +takes_value +required "The sample size")
         (@arg INPUT: +required "The input path")
         (@arg OUTPUT: +required "The output path")
@@ -71,11 +70,9 @@ fn main() {
 
     let input: PathBuf = matches.value_of("INPUT").unwrap().into();
     let output: PathBuf = matches.value_of("OUTPUT").unwrap().into();
-    let measure: String = matches.value_of("MEASURE").unwrap().to_owned();
     let size: usize = matches.value_of("SIZE").unwrap().parse::<usize>().unwrap();
-    match measure.as_ref() {
-        "jaccard" => run::<BagOfWords>(&input, &output, size, seed),
-        "cosine" => run::<Vector>(&input, &output, size, seed),
-        e => panic!("Unsupported measure {}", e),
+    match content_type(&input) {
+        ContentType::BagOfWords => run::<BagOfWords>(&input, &output, size, seed),
+        ContentType::Vector => run::<Vector>(&input, &output, size, seed),
     };
 }

@@ -110,7 +110,6 @@ fn main() {
         (version: "0.1")
         (author: "Matteo Ceccarello <mcec@itu.dk>")
         (about: "Compute the expansion of the points of a dataset")
-        (@arg MEASURE: -m +takes_value +required "The measure")
         (@arg RANGE: -r +takes_value +required "Query ranges")
         (@arg INPUT: +required "The input path")
         (@arg BASE: "The path to compare with")
@@ -130,7 +129,6 @@ fn main() {
             info!("Using the input as the base");
             input.clone()
         });
-    let measure: String = matches.value_of("MEASURE").unwrap().to_owned();
     let ranges: Vec<f64> = matches
         .value_of("RANGE")
         .unwrap()
@@ -138,9 +136,8 @@ fn main() {
         .map(|token| token.parse::<f64>().expect("Problem parsing range"))
         .collect();
     info!("Query ranges {:?}", ranges);
-    match measure.as_ref() {
-        "jaccard" => run::<BagOfWords, _>(&input, &base, ranges, Jaccard::jaccard),
-        "cosine" => run::<Vector, _>(&input, &base, ranges, InnerProduct::inner_product),
-        e => panic!("Unsupported measure {}", e),
+    match content_type(&input) {
+        ContentType::BagOfWords => run::<BagOfWords, _>(&input, &base, ranges, Jaccard::jaccard),
+        ContentType::Vector => run::<Vector, _>(&input, &base, ranges, InnerProduct::inner_product),
     };
 }

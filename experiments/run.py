@@ -416,7 +416,6 @@ def preprocess_livejournal(download_file, final_output):
 
 
 def sample_dataset(base_path, filepath):
-    measure = "cosine" if ("glove" in base_path or "sift" in base_path) else "jaccard"
     pre, ext = os.path.splitext(filepath)
     tokens = pre.split("-")
     size = tokens[-1]
@@ -425,8 +424,6 @@ def sample_dataset(base_path, filepath):
             "sampledata",
             "--size",
             str(size),
-            "--measure",
-            measure,
             base_path,
             filepath,
         ]
@@ -434,7 +431,6 @@ def sample_dataset(base_path, filepath):
 
 
 def inflate(base_path, filepath):
-    measure = "cosine" if ("glove" in base_path or "sift" in base_path) else "jaccard"
     pre, ext = os.path.splitext(filepath)
     tokens = pre.split("-")
     inflation = tokens[-1]
@@ -443,8 +439,6 @@ def inflate(base_path, filepath):
             "inflate",
             "--factor",
             str(inflation),
-            "--measure",
-            measure,
             base_path,
             filepath,
         ]
