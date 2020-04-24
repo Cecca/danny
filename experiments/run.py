@@ -273,6 +273,7 @@ def preprocess_sift(download_file, final_output):
             fp.write(" ")
             fp.write(" ".join([str(x) for x in proj]))
             fp.write("\n")
+            i += 1
     print("Convert the file to binary")
     subprocess.run(
         [
