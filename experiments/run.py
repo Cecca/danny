@@ -506,19 +506,19 @@ DATASETS = {
     "SIFT-5nn": Dataset(
         "SIFT-5nn",
         "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-        "sift-14.42.bin",
+        "sift-20.39.bin",
         preprocess_sift
     ),
     "SIFT-30nn": Dataset(
         "SIFT-30nn",
         "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-        "sift-15.23.bin",
+        "sift-21.53.bin",
         preprocess_sift
     ),
     "SIFT-100nn": Dataset(
         "SIFT-100nn",
         "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-        "sift-15.8.bin",
+        "sift-22.34.bin",
         preprocess_sift
     ),
     "Glove-6B-100": Dataset(
