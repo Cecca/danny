@@ -415,63 +415,6 @@ def preprocess_livejournal(download_file, final_output):
     )
 
 
-def preprocess_diverse(base_path, filepath):
-    datatype = "vector-normalized" if "glove" in base_path else "bag-of-words"
-    pre, ext = os.path.splitext(filepath)
-    tokens = pre.split("-")
-    similarity_range = tokens[-2]
-    size = tokens[-1]
-    pre, ext = os.path.splitext(base_path)
-    lid_path = pre + ".lid"
-    if not os.path.exists(lid_path):
-        print("Missing lid file for dataset", base_path)
-        print("Aborting!")
-        sys.exit(1)
-    subprocess.run(
-        [
-            "gendiverse",
-            "-t",
-            datatype,
-            "-s",
-            str(size),
-            "-r",
-            str(similarity_range),
-            base_path,
-            lid_path,
-            filepath,
-        ]
-    )
-
-def preprocess_diverse_expansion(base_path, filepath):
-    datatype = "unit-norm-vector" if "glove" in base_path else "bag-of-words"
-    pre, ext = os.path.splitext(filepath)
-    extreme = "extreme" in filepath
-    tokens = pre.split("-")
-    similarity_range = tokens[-2]
-    size = tokens[-1]
-    pre, ext = os.path.splitext(base_path)
-    exp_path = pre + ".exp"
-    if not os.path.exists(exp_path):
-        print("Missing expansion file for dataset", base_path)
-        print("Aborting!")
-        sys.exit(1)
-    subprocess.run(
-        [
-            "gendiverse",
-            "-t",
-            datatype,
-            "-s",
-            str(size),
-            "-r",
-            str(similarity_range),
-            "-g",
-            "extreme" if extreme else "random",
-            base_path,
-            exp_path,
-            filepath,
-        ]
-    )
-
 def sample_dataset(base_path, filepath):
     measure = "cosine" if ("glove" in base_path or "sift" in base_path) else "jaccard"
     pre, ext = os.path.splitext(filepath)
@@ -509,42 +452,12 @@ def inflate(base_path, filepath):
 
 
 DATASETS = {
-    # "SIFT": Dataset(
-    #     "SIFT",
-    #     "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-    #     "sift.bin",
-    #     preprocess_sift
-    # ),
-    # "SIFT-5nn": Dataset(
-    #     "SIFT-5nn",
-    #     "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-    #     "sift-20.39.bin",
-    #     preprocess_sift
-    # ),
-    # "SIFT-30nn": Dataset(
-    #     "SIFT-30nn",
-    #     "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-    #     "sift-21.53.bin",
-    #     preprocess_sift
-    # ),
     "SIFT-100nn-0.5": Dataset(
         "SIFT-100nn-0.5",
         "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
         "sift-15.8-0.5.bin",
         preprocess_sift
     ),
-    # "SIFT-100nn-0.7": Dataset(
-    #     "SIFT-100nn-0.7",
-    #     "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-    #     "sift-15.8-0.7.bin",
-    #     preprocess_sift
-    # ),
-    # "SIFT-100nn-0.9": Dataset(
-    #     "SIFT-100nn-0.9",
-    #     "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-    #     "sift-15.8-0.9.bin",
-    #     preprocess_sift
-    # ),
     "Glove-6B-100": Dataset(
         "Glove-6B-100",
         "http://nlp.stanford.edu/data/glove.6B.zip",
@@ -564,12 +477,12 @@ DATASETS = {
     #    "wiki-10k.bin",
     #    preprocess_wiki_builder(10000),
     #),
-    "AOL": Dataset(
-        "AOL",
-        "http://www.cim.mcgill.ca/~dudek/206/Logs/AOL-user-ct-collection/aol-data.tar.gz",
-        "AOL.bin",
-        preprocess_aol,
-    ),
+    # "AOL": Dataset(
+    #     "AOL",
+    #     "http://www.cim.mcgill.ca/~dudek/206/Logs/AOL-user-ct-collection/aol-data.tar.gz",
+    #     "AOL.bin",
+    #     preprocess_aol,
+    # ),
     "Orkut": Dataset(
         "Orkut",
         "http://socialnetworks.mpi-sws.mpg.de/data/orkut-groupmemberships.txt.gz",
@@ -582,111 +495,15 @@ DATASETS = {
         "Livejournal.bin",
         preprocess_livejournal,
     ),
-    "GNews": Dataset(
-        "GNews",
-        "",
-        "GoogleNews-vectors-negative300.bin",
-        lambda a, b: print("Preprocessing unimplemented")
-    )
+    # "GNews": Dataset(
+    #     "GNews",
+    #     "",
+    #     "GoogleNews-vectors-negative300.bin",
+    #     lambda a, b: print("Preprocessing unimplemented")
+    # )
 }
 
-# Derived datasets
-
 derived_datasets = []
-for r in [0.5,0.7,0.9]:
-    d = DerivedDataset(
-        'Livejournal-diverse-{}-3M'.format(r),
-        'Livejournal-diverse-{}-3000000.bin'.format(r),
-        DATASETS['Livejournal'],
-        preprocess_diverse
-    )
-    derived_datasets.append(d)
-
-    d = DerivedDataset(
-        'Orkut-diverse-{}-3M'.format(r),
-        'Orkut-diverse-{}-3000000.bin'.format(r),
-        DATASETS['Orkut'],
-        preprocess_diverse
-    )
-    derived_datasets.append(d)
-
-    d = DerivedDataset(
-        'AOL-diverse-{}-3M'.format(r),
-        'AOL-diverse-{}-3000000.bin'.format(r),
-        DATASETS['AOL'],
-        preprocess_diverse
-    )
-    derived_datasets.append(d)
-
-    d = DerivedDataset(
-        'Glove-27-diverse-{}-3M'.format(r),
-        'Glove-27-diverse-{}-3000000.bin'.format(r),
-        DATASETS['Glove-27-200'],
-        preprocess_diverse
-    )
-    derived_datasets.append(d)
-
-derived_datasets.append(DerivedDataset(
-    'SIFT-100nn-0.5-sample-200000',
-    'sift-100nn-0.5-sample-200000.bin',
-    DATASETS['SIFT-100nn-0.5'],
-    sample_dataset
-))
-derived_datasets.append(DerivedDataset(
-    'Glove-sample-200000',
-    'Glove-sample-200000.bin',
-    DATASETS['Glove-27-200'],
-    sample_dataset
-))
-derived_datasets.append(DerivedDataset(
-    'AOL-sample-200000',
-    'AOL-sample-200000.bin',
-    DATASETS['AOL'],
-    sample_dataset
-))
-derived_datasets.append(DerivedDataset(
-    'Orkut-sample-200000',
-    'Orkut-sample-200000.bin',
-    DATASETS['Orkut'],
-    sample_dataset
-))
-derived_datasets.append(DerivedDataset(
-    'Livejournal-sample-200000', 
-    'Livejournal-sample-200000.bin',
-    DATASETS['Livejournal'],
-    sample_dataset
-))
-
-derived_datasets.append(DerivedDataset(
-    'SIFT-100nn-0.5-sample-500000',
-    'sift-100nn-0.5-sample-500000.bin',
-    DATASETS['SIFT-100nn-0.5'],
-    sample_dataset
-))
-derived_datasets.append(DerivedDataset(
-    'Glove-sample-500000',
-    'Glove-sample-500000.bin',
-    DATASETS['Glove-27-200'],
-    sample_dataset
-))
-derived_datasets.append(DerivedDataset(
-    'AOL-sample-500000',
-    'AOL-sample-500000.bin',
-    DATASETS['AOL'],
-    sample_dataset
-))
-derived_datasets.append(DerivedDataset(
-    'Orkut-sample-500000',
-    'Orkut-sample-500000.bin',
-    DATASETS['Orkut'],
-    sample_dataset
-))
-derived_datasets.append(DerivedDataset(
-    'Livejournal-sample-500000', 
-    'Livejournal-sample-500000.bin',
-    DATASETS['Livejournal'],
-    sample_dataset
-))
 
 # Sampled datasets
 for size in [200000, 400000, 800000]:
@@ -702,12 +519,12 @@ for size in [200000, 400000, 800000]:
         DATASETS['Glove-27-200'],
         sample_dataset
     ))
-    derived_datasets.append(DerivedDataset(
-        'AOL-sample-{}'.format(size),
-        'AOL-sample-{}.bin'.format(size),
-        DATASETS['AOL'],
-        sample_dataset
-    ))
+    # derived_datasets.append(DerivedDataset(
+    #     'AOL-sample-{}'.format(size),
+    #     'AOL-sample-{}.bin'.format(size),
+    #     DATASETS['AOL'],
+    #     sample_dataset
+    # ))
     derived_datasets.append(DerivedDataset(
         'Orkut-sample-{}'.format(size),
         'Orkut-sample-{}.bin'.format(size),
@@ -721,37 +538,6 @@ for size in [200000, 400000, 800000]:
         sample_dataset
     ))
 
-
-derived_datasets.append(DerivedDataset(
-    'Livejournal-diverse-exp-{}-3M'.format(0.5),
-    'Livejournal-diverse-exp-{}-3000000.bin'.format(0.5),
-    DATASETS['Livejournal'],
-    preprocess_diverse_expansion
-))
-derived_datasets.append(DerivedDataset(
-    'Orkut-diverse-exp-{}-3M'.format(0.5),
-    'Orkut-diverse-exp-{}-3000000.bin'.format(0.5),
-    DATASETS['Orkut'],
-    preprocess_diverse_expansion
-))
-derived_datasets.append(DerivedDataset(
-    'AOL-diverse-exp-{}-3M'.format(0.5),
-    'AOL-diverse-exp-{}-3000000.bin'.format(0.5),
-    DATASETS['AOL'],
-    preprocess_diverse_expansion
-))
-#derived_datasets.append(DerivedDataset(
-    #'wiki-10k-diverse-exp-{}-3M'.format(0.5),
-    #'wiki-10k-diverse-exp-{}-3000000.bin'.format(0.5),
-    #DATASETS['wiki-10k'],
-    #preprocess_diverse_expansion
-#))
-derived_datasets.append(DerivedDataset(
-    'Glove-27-diverse-exp-{}-3M'.format(0.5),
-    'Glove-27-diverse-exp-{}-3000000.bin'.format(0.5),
-    DATASETS['Glove-27-200'],
-    preprocess_diverse_expansion
-))
 
 # inflated datasets
 derived_datasets.append(DerivedDataset(
@@ -779,37 +565,6 @@ derived_datasets.append(DerivedDataset(
     inflate
 ))
 
-
-# derived_datasets.append(DerivedDataset(
-#     'Livejournal-diverse-extreme-{}'.format(0.5),
-#     'Livejournal-diverse-extreme-{}-300000.bin'.format(0.5),
-#     DATASETS['Livejournal'],
-#     preprocess_diverse_expansion
-# ))
-# derived_datasets.append(DerivedDataset(
-#     'Orkut-diverse-extreme-{}'.format(0.5),
-#     'Orkut-diverse-extreme-{}-300000.bin'.format(0.5),
-#     DATASETS['Orkut'],
-#     preprocess_diverse_expansion
-# ))
-# derived_datasets.append(DerivedDataset(
-#     'AOL-diverse-extreme-{}'.format(0.5),
-#     'AOL-diverse-extreme-{}-300000.bin'.format(0.5),
-#     DATASETS['AOL'],
-#     preprocess_diverse_expansion
-# ))
-#derived_datasets.append(DerivedDataset(
-#    'wiki-10k-diverse-extreme-{}'.format(0.5),
-#    'wiki-10k-diverse-extreme-{}-300000.bin'.format(0.5),
-#    DATASETS['wiki-10k'],
-#    preprocess_diverse_expansion
-#))
-# derived_datasets.append(DerivedDataset(
-#     'Glove-27-diverse-extreme-{}'.format(0.5),
-#     'Glove-27-diverse-extreme-{}-300000.bin'.format(0.5),
-#     DATASETS['Glove-27-200'],
-#     preprocess_diverse_expansion
-# ))
 
 for d in derived_datasets:
     DATASETS[d.name] = d
