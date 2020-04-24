@@ -8,9 +8,9 @@ pub trait InnerProduct {
     fn norm_2(a: &Self) -> f64 {
         Self::inner_product(a, a).sqrt()
     }
-    fn cosine(a: &Self, b: &Self) -> f64 {
-        Self::inner_product(a, b) / (Self::norm_2(a) * Self::norm_2(b))
-    }
+    // fn cosine(a: &Self, b: &Self) -> f64 {
+    //     Self::inner_product(a, b) / (Self::norm_2(a) * Self::norm_2(b))
+    // }
 }
 
 impl InnerProduct for Vec<f32> {
@@ -41,6 +41,7 @@ impl InnerProduct for Vec<f32> {
 }
 
 impl InnerProduct for Vector {
+    /// For normalized vectors, this is equivalent to the cosine distance
     fn inner_product(a: &Vector, b: &Vector) -> f64 {
         InnerProduct::inner_product(a.data(), &b.data())
     }
@@ -49,9 +50,9 @@ impl InnerProduct for Vector {
         1.0
     }
 
-    fn cosine(a: &Vector, b: &Vector) -> f64 {
-        Self::inner_product(a, b)
-    }
+    // fn cosine(a: &Vector, b: &Vector) -> f64 {
+    //     Self::inner_product(a, b)
+    // }
 }
 
 pub trait Jaccard {
@@ -74,10 +75,10 @@ mod tests {
 
     #[test]
     fn test1() {
-        let a: Vec<f32> = vec![1f32, 2.0, 1f32, 1f32];
-        let b: Vec<f32> = vec![1f32, 2.0, 1f32, 1f32];
+        let a = Vector::normalized(vec![1f32, 2.0, 1f32, 1f32]);
+        let b = Vector::normalized(vec![1f32, 2.0, 1f32, 1f32]);
         let expected = 1.0;
-        let actual = generic_dist(&a, &b, InnerProduct::cosine);
+        let actual = generic_dist(&a, &b, InnerProduct::inner_product);
         println!("Actual distance is {}", actual);
         assert!((expected - actual).abs() < 10e-10_f64)
     }

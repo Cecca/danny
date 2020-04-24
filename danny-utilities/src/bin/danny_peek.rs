@@ -103,7 +103,7 @@ fn main() {
 
     match measure.as_ref() {
         "jaccard" => run::<BagOfWords, _>(&input, &ids, Jaccard::jaccard),
-        "cosine" => run::<Vector, _>(&input, &ids, InnerProduct::cosine),
+        "cosine" => run::<Vector, _>(&input, &ids, InnerProduct::inner_product),
         _ => panic!("Unsupported measure"),
     };
 }
