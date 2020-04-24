@@ -130,7 +130,7 @@ def preprocess_glove_6b(download_file, final_output):
                 "-o",
                 output,
                 "-t",
-                "unit-norm-vector",
+                "vector-normalized",
                 "-n",
                 "40",
             ]
@@ -283,7 +283,7 @@ def preprocess_sift(download_file, final_output):
             "-o",
             final_output,
             "-t",
-            "unit-norm-vector",
+            "vector",
             "-n",
             "40",
         ],
@@ -416,7 +416,7 @@ def preprocess_livejournal(download_file, final_output):
 
 
 def preprocess_diverse(base_path, filepath):
-    datatype = "unit-norm-vector" if "glove" in base_path else "bag-of-words"
+    datatype = "vector-normalized" if "glove" in base_path else "bag-of-words"
     pre, ext = os.path.splitext(filepath)
     tokens = pre.split("-")
     similarity_range = tokens[-2]
