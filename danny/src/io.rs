@@ -12,9 +12,16 @@ use std::fs::create_dir;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
+
+pub enum ContentType {
+    Vector,
+    NormalizedVector,
+    BagOfWords,
+}
 
 pub trait ReadBinaryFile
 where
@@ -32,6 +39,37 @@ where
             .map(|entry| entry.expect("Problem reading entry").path())
             .count()
     }
+    fn content_type<P: AsRef<Path>>(path: P) -> ContentType {
+        let path = path.as_ref().to_path_buf();
+        assert!(path.is_dir());
+        let file = path
+            .read_dir()
+            .expect("Problem reading directory")
+            .next()
+            .expect("Problem reading next entry")
+            .expect("Problem reading entry")
+            .path();
+        let file = File::open(file).expect("Problem opening file");
+
+        let mut r = BufReader::new(&file);
+        if has_content_type::<UnitNormVector>(&file) {
+            ContentType::NormalizedVector
+        } else if has_content_type::<VectorWithNorm>(&file) {
+            ContentType::Vector
+        } else if has_content_type::<BagOfWords>(&file) {
+            ContentType::BagOfWords
+        } else {
+            panic!("could not determine the content type")
+        }
+    }
+}
+
+fn has_content_type<T>(f: &File) -> bool
+where
+    for<'de> T: Deserialize<'de> + std::marker::Sized,
+{
+    let mut r = BufReader::new(f);
+    bincode::deserialize_from::<_, (u32, T)>(&mut r).is_ok()
 }
 
 impl<T> ReadBinaryFile for T
