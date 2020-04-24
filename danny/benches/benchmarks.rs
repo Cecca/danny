@@ -16,18 +16,18 @@ use rand_xorshift::XorShiftRng;
 fn bench_inner_product(c: &mut Criterion) {
     c.bench_function("inner product 300 dimensions", |bencher| {
         let mut rng = XorShiftRng::seed_from_u64(124);
-        let a = UnitNormVector::random_normal(300, &mut rng);
-        let b = UnitNormVector::random_normal(300, &mut rng);
-        bencher.iter(|| UnitNormVector::inner_product(&a, &b));
+        let a = Vector::random_normal(300, &mut rng);
+        let b = Vector::random_normal(300, &mut rng);
+        bencher.iter(|| Vector::inner_product(&a, &b));
     });
 
     c.bench_function_over_inputs(
         "several dimensions",
         |bencher, &&dim| {
             let mut rng = XorShiftRng::seed_from_u64(124);
-            let a = UnitNormVector::random_normal(dim, &mut rng);
-            let b = UnitNormVector::random_normal(dim, &mut rng);
-            bencher.iter(|| UnitNormVector::inner_product(&a, &b));
+            let a = Vector::random_normal(dim, &mut rng);
+            let b = Vector::random_normal(dim, &mut rng);
+            bencher.iter(|| Vector::inner_product(&a, &b));
         },
         &[2, 4, 5, 32, 33, 300, 303],
     );
@@ -36,7 +36,7 @@ fn bench_inner_product(c: &mut Criterion) {
 fn bench_hyperplane(c: &mut Criterion) {
     c.bench_function("hyperplane 300 dimensions, k=16", |bencher| {
         let mut rng = XorShiftRng::seed_from_u64(124);
-        let a = UnitNormVector::random_normal(300, &mut rng);
+        let a = Vector::random_normal(300, &mut rng);
         let hasher = Hyperplane::new(16, 300, &mut rng);
         bencher.iter(|| hasher.hash(&a));
     });

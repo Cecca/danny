@@ -40,7 +40,7 @@ fn main() {
     // TODO Add normalize flag
     match matches.value_of("TYPE").unwrap() {
         "unit-norm-vector" => {
-            read_write::<UnitNormVector>(input, output.clone(), chunks);
+            read_write::<Vector>(input, output.clone(), chunks);
         }
         "bag-of-words" => {
             read_write::<BagOfWords>(input, output, chunks);

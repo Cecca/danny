@@ -52,7 +52,7 @@ pub fn content_type<P: AsRef<Path>>(path: P) -> ContentType {
         .path();
     let file = File::open(file).expect("Problem opening file");
 
-    if has_content_type::<UnitNormVector>(&file) {
+    if has_content_type::<Vector>(&file) {
         ContentType::Vector
     } else if has_content_type::<BagOfWords>(&file) {
         ContentType::BagOfWords
@@ -312,7 +312,7 @@ where
     fn from_line(line: &str) -> Option<Self>;
 }
 
-impl ReadDataFile for UnitNormVector {
+impl ReadDataFile for Vector {
     fn from_line(line: &str) -> Option<Self> {
         let data: Vec<f32> = line
             .split_whitespace()
@@ -322,7 +322,7 @@ impl ReadDataFile for UnitNormVector {
                     .unwrap_or_else(|_| panic!("Error parsing floating point number `{}`", s))
             })
             .collect();
-        Some(UnitNormVector::new(data))
+        Some(Vector::new(data))
     }
 }
 

@@ -40,16 +40,16 @@ impl InnerProduct for Vec<f32> {
     }
 }
 
-impl InnerProduct for UnitNormVector {
-    fn inner_product(a: &UnitNormVector, b: &UnitNormVector) -> f64 {
+impl InnerProduct for Vector {
+    fn inner_product(a: &Vector, b: &Vector) -> f64 {
         InnerProduct::inner_product(a.data(), &b.data())
     }
 
-    fn norm_2(_a: &UnitNormVector) -> f64 {
+    fn norm_2(_a: &Vector) -> f64 {
         1.0
     }
 
-    fn cosine(a: &UnitNormVector, b: &UnitNormVector) -> f64 {
+    fn cosine(a: &Vector, b: &Vector) -> f64 {
         Self::inner_product(a, b)
     }
 }

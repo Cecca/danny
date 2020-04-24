@@ -140,7 +140,7 @@ fn main() {
     info!("Query ranges {:?}", ranges);
     match measure.as_ref() {
         "jaccard" => run::<BagOfWords, _>(&input, &base, ranges, Jaccard::jaccard),
-        "cosine" => run::<UnitNormVector, _>(&input, &base, ranges, InnerProduct::cosine),
+        "cosine" => run::<Vector, _>(&input, &base, ranges, InnerProduct::cosine),
         e => panic!("Unsupported measure {}", e),
     };
 }

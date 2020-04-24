@@ -70,7 +70,7 @@ fn run_bow(path: &PathBuf, output: &PathBuf, factor: usize, seed: u64) {
 }
 
 fn run_cosine(path: &PathBuf, output: &PathBuf, factor: usize, seed: u64) {
-    let dimension = UnitNormVector::peek_one(path.clone()).dim();
+    let dimension = Vector::peek_one(path.clone()).dim();
     let mut rng = rand_xorshift::XorShiftRng::seed_from_u64(seed);
     let mut data = Vec::new();
     let mut cnt = 0;
@@ -79,12 +79,12 @@ fn run_cosine(path: &PathBuf, output: &PathBuf, factor: usize, seed: u64) {
         rotations.push(rotation_matrix(dimension, &mut rng));
     }
 
-    UnitNormVector::read_binary(
+    Vector::read_binary(
         path.to_path_buf(),
         |_| true,
         |_, v| {
             for rotation in rotations.iter() {
-                let new_vec = UnitNormVector::new(multiply(v.data(), rotation));
+                let new_vec = Vector::new(multiply(v.data(), rotation));
                 data.push((cnt, new_vec));
                 cnt += 1;
             }

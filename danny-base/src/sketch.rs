@@ -27,11 +27,7 @@ pub trait FromJaccard: Sized {
 }
 
 pub trait FromCosine: Sized {
-    type SketcherType: Sketcher<Input = UnitNormVector, Output = Self>
-        + Send
-        + Sync
-        + Clone
-        + 'static;
+    type SketcherType: Sketcher<Input = Vector, Output = Self> + Send + Sync + Clone + 'static;
     fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self::SketcherType;
 }
 
@@ -58,10 +54,10 @@ pub struct Sketcher0<T, F> {
 }
 
 impl FromCosine for Sketch0 {
-    type SketcherType = Sketcher0<UnitNormVector, Hyperplane>;
+    type SketcherType = Sketcher0<Vector, Hyperplane>;
     fn from_cosine<R: Rng>(_dim: usize, _rng: &mut R) -> Self::SketcherType {
         Sketcher0 {
-            _mark_a: PhantomData::<UnitNormVector>,
+            _mark_a: PhantomData::<Vector>,
             _mark_b: PhantomData::<Hyperplane>,
         }
     }
@@ -114,7 +110,7 @@ where
 }
 
 impl FromCosine for Sketch64 {
-    type SketcherType = Sketcher64<UnitNormVector, Hyperplane>;
+    type SketcherType = Sketcher64<Vector, Hyperplane>;
     fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self::SketcherType {
         Sketcher64 {
             lsh_functions: [Hyperplane::new(32, dim, rng), Hyperplane::new(32, dim, rng)],
@@ -177,7 +173,7 @@ where
 }
 
 impl FromCosine for Sketch128 {
-    type SketcherType = Sketcher128<UnitNormVector, Hyperplane>;
+    type SketcherType = Sketcher128<Vector, Hyperplane>;
     fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self::SketcherType {
         Sketcher128 {
             lsh_functions: [
@@ -304,7 +300,7 @@ where
 }
 
 impl FromCosine for Sketch256 {
-    type SketcherType = Sketcher256<UnitNormVector, Hyperplane>;
+    type SketcherType = Sketcher256<Vector, Hyperplane>;
     fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self::SketcherType {
         Sketcher256 {
             lsh_functions: [
@@ -391,7 +387,7 @@ where
 }
 
 impl FromCosine for Sketch512 {
-    type SketcherType = Sketcher512<UnitNormVector, Hyperplane>;
+    type SketcherType = Sketcher512<Vector, Hyperplane>;
     fn from_cosine<R: Rng>(dim: usize, rng: &mut R) -> Self::SketcherType {
         Sketcher512 {
             lsh_functions: [
@@ -477,7 +473,7 @@ pub trait SketchEstimate {
     fn collision_probability_estimate<S: BitBasedSketch>(a: &S, b: &S) -> f64;
 }
 
-impl SketchEstimate for UnitNormVector {
+impl SketchEstimate for Vector {
     fn sketch_estimate<S: BitBasedSketch>(a: &S, b: &S) -> f64 {
         let p = f64::from(a.same_bits(b)) / (a.num_bits() as f64);
         (std::f64::consts::PI * (1.0 - p)).cos()
@@ -536,8 +532,8 @@ mod tests {
     fn test_simhash() {
         let samples = 1000;
         let mut rng = XorShiftRng::seed_from_u64(123);
-        let s1 = UnitNormVector::new(vec![1.0, 0.2, 0.3, 0.7]);
-        let s2 = UnitNormVector::new(vec![4.0, 0.2, 2.3, 0.7]);
+        let s1 = Vector::new(vec![1.0, 0.2, 0.3, 0.7]);
+        let s2 = Vector::new(vec![4.0, 0.2, 2.3, 0.7]);
         let similarity = InnerProduct::cosine(&s1, &s2);
         let mut sum_squared_error = 0.0;
         let mut sum_preds = 0.0;
@@ -546,7 +542,7 @@ mod tests {
             let sketcher = Sketch64::from_cosine(s1.dim(), &mut rng);
             let h1 = sketcher.sketch(&s1);
             let h2 = sketcher.sketch(&s2);
-            let predicted = UnitNormVector::sketch_estimate(&h1, &h2);
+            let predicted = Vector::sketch_estimate(&h1, &h2);
             let error = predicted - similarity;
             sum_squared_error += error * error;
             sum_preds += predicted

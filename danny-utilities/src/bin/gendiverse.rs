@@ -48,8 +48,8 @@ trait Perturb {
         R: Rng;
 }
 
-impl Perturb for UnitNormVector {
-    fn perturb<R>(&self, rng: &mut R) -> UnitNormVector
+impl Perturb for Vector {
+    fn perturb<R>(&self, rng: &mut R) -> Vector
     where
         R: Rng,
     {
@@ -59,7 +59,7 @@ impl Perturb for UnitNormVector {
             .iter()
             .map(|x| x + rng.sample(noise) as f32)
             .collect();
-        UnitNormVector::new(new_data)
+        Vector::new(new_data)
     }
 }
 
@@ -308,7 +308,7 @@ fn main() {
             range,
             seed,
         ),
-        "unit-norm-vector" => run::<UnitNormVector>(
+        "unit-norm-vector" => run::<Vector>(
             &input,
             &output,
             &difficulty_path,

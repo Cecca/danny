@@ -4,7 +4,6 @@ use rand::distributions::{Distribution, Exp, Normal, Uniform};
 use rand::Rng;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
-use std::fmt;
 use std::fmt::Debug;
 use std::hash::Hash;
 
@@ -18,15 +17,19 @@ impl Into<u64> for ElementId {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Abomonation, Default)]
-pub struct UnitNormVector {
+pub struct Vector {
     data: Vec<f32>,
 }
 
-impl UnitNormVector {
-    pub fn new(data: Vec<f32>) -> Self {
+impl Vector {
+    pub fn normalized(data: Vec<f32>) -> Self {
         let norm = InnerProduct::norm_2(&data) as f32;
         let data = data.iter().map(|x| x / norm).collect();
-        UnitNormVector { data }
+        Vector { data }
+    }
+
+    pub fn new(data: Vec<f32>) -> Self {
+        Vector { data }
     }
 
     #[allow(dead_code)]

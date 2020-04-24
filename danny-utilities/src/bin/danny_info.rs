@@ -45,8 +45,8 @@ fn main() {
             );
         }
         "cosine" => {
-            let first = UnitNormVector::peek_one(input.clone());
-            let n = <UnitNormVector as ReadBinaryFile>::num_elements(input);
+            let first = Vector::peek_one(input.clone());
+            let n = <Vector as ReadBinaryFile>::num_elements(input);
             let dim = first.dim();
             println!(
                 "Cosine similarity dataset: {} vectors, {} elements universe",

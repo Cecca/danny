@@ -32,14 +32,14 @@ where
     let mut sketcher_rng = config.get_random_generator(1);
     match content_type(&args.left_path) {
         ContentType::Vector => {
-            let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
+            let dim = Vector::peek_one(args.left_path.clone().into()).dim();
             let threshold = args.threshold;
             let sketch_bits = args.sketch_bits.expect("Sketches are mandatory");
             let sketcher = SV::from_cosine(dim, &mut sketcher_rng);
             let sketch_predicate =
                 SketchPredicate::cosine(sketch_bits, threshold, config.get_sketch_epsilon());
             let k = args.k.expect("K is needed on the command line");
-            one_round_lsh::<UnitNormVector, _, _, _, _, _, _>(
+            one_round_lsh::<Vector, _, _, _, _, _, _>(
                 &args.left_path,
                 &args.right_path,
                 threshold,
@@ -95,11 +95,11 @@ where
 
     match content_type(&args.left_path) {
         ContentType::Vector => {
-            let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
+            let dim = Vector::peek_one(args.left_path.clone().into()).dim();
             let sketcher = SV::from_cosine(dim, &mut sketcher_rng);
             let sketch_predicate =
                 SketchPredicate::cosine(sketch_bits, threshold, config.get_sketch_epsilon());
-            two_round_lsh::<UnitNormVector, _, _, _, _, _, _>(
+            two_round_lsh::<Vector, _, _, _, _, _, _>(
                 &args.left_path,
                 &args.right_path,
                 threshold,
@@ -152,11 +152,11 @@ where
 
     match content_type(&args.left_path) {
         ContentType::Vector => {
-            let dim = UnitNormVector::peek_one(args.left_path.clone().into()).dim();
+            let dim = Vector::peek_one(args.left_path.clone().into()).dim();
             let sketcher = SV::from_cosine(dim, &mut sketcher_rng);
             let sketch_predicate =
                 SketchPredicate::cosine(sketch_bits, threshold, config.get_sketch_epsilon());
-            hu_baseline::<UnitNormVector, _, _, _, _, _, _>(
+            hu_baseline::<Vector, _, _, _, _, _, _>(
                 &args.left_path,
                 &args.right_path,
                 threshold,
@@ -164,7 +164,7 @@ where
                 Hyperplane::builder(dim),
                 sketcher,
                 sketch_predicate,
-                move |a, b| UnitNormVector::cosine(a, b) >= threshold,
+                move |a, b| Vector::cosine(a, b) >= threshold,
                 &mut hasher_rng,
                 &config,
                 experiment,
@@ -264,7 +264,7 @@ fn main() {
         },
         #[cfg(feature = "all-2-all")]
         "all-2-all" => match content_type(&args.left_path) {
-            ContentType::Vector => baseline::all_pairs_parallel::<UnitNormVector, _>(
+            ContentType::Vector => baseline::all_pairs_parallel::<Vector, _>(
                 args.threshold,
                 &args.left_path,
                 &args.right_path,
@@ -281,7 +281,7 @@ fn main() {
         },
         #[cfg(feature = "seq-all-2-all")]
         "seq-all-2-all" => match content_type(&args.left_path) {
-            ContentType::Vector => baseline::sequential::<UnitNormVector, _>(
+            ContentType::Vector => baseline::sequential::<Vector, _>(
                 args.threshold,
                 &args.left_path,
                 &args.right_path,

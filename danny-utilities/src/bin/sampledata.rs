@@ -75,7 +75,7 @@ fn main() {
     let size: usize = matches.value_of("SIZE").unwrap().parse::<usize>().unwrap();
     match measure.as_ref() {
         "jaccard" => run::<BagOfWords>(&input, &output, size, seed),
-        "cosine" => run::<UnitNormVector>(&input, &output, size, seed),
+        "cosine" => run::<Vector>(&input, &output, size, seed),
         e => panic!("Unsupported measure {}", e),
     };
 }
