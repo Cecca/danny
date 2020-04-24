@@ -245,8 +245,10 @@ def preprocess_sift(download_file, final_output):
     tmp_dir = os.path.join(os.path.dirname(download_file))
     pre, ext = os.path.splitext(final_output)
     tokens = pre.split("-")
-    target_distance = float(tokens[-1])
+    target_distance = float(tokens[-2])
+    target_inner = float(tokens[-1])
     print("Target distance is", target_distance)
+    print("Target inner is", target_inner)
 
     with tarfile.open(download_file, 'r:gz') as t:
         train = _get_irisa_matrix(t, 'sift/sift_base.fvecs')
@@ -497,28 +499,40 @@ def inflate(base_path, filepath):
 
 
 DATASETS = {
-    "SIFT": Dataset(
-        "SIFT",
-        "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-        "sift.bin",
-        preprocess_sift
-    ),
-    "SIFT-5nn": Dataset(
-        "SIFT-5nn",
-        "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-        "sift-20.39.bin",
-        preprocess_sift
-    ),
-    "SIFT-30nn": Dataset(
-        "SIFT-30nn",
-        "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-        "sift-21.53.bin",
-        preprocess_sift
-    ),
-    "SIFT-100nn": Dataset(
+    # "SIFT": Dataset(
+    #     "SIFT",
+    #     "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
+    #     "sift.bin",
+    #     preprocess_sift
+    # ),
+    # "SIFT-5nn": Dataset(
+    #     "SIFT-5nn",
+    #     "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
+    #     "sift-20.39.bin",
+    #     preprocess_sift
+    # ),
+    # "SIFT-30nn": Dataset(
+    #     "SIFT-30nn",
+    #     "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
+    #     "sift-21.53.bin",
+    #     preprocess_sift
+    # ),
+    "SIFT-100nn-0.5": Dataset(
         "SIFT-100nn",
         "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-        "sift-22.34.bin",
+        "sift-15.8-0.5.bin",
+        preprocess_sift
+    ),
+    "SIFT-100nn-0.7": Dataset(
+        "SIFT-100nn",
+        "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
+        "sift-15.8-0.7.bin",
+        preprocess_sift
+    ),
+    "SIFT-100nn-0.9": Dataset(
+        "SIFT-100nn",
+        "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
+        "sift-15.8-0.9.bin",
         preprocess_sift
     ),
     "Glove-6B-100": Dataset(
