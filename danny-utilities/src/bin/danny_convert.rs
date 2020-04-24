@@ -41,6 +41,9 @@ fn main() {
         "unit-norm-vector" => {
             read_write::<UnitNormVector>(input, output.clone(), chunks);
         }
+        "vector" => {
+            read_write::<VectorWithNorm>(input, output.clone(), chunks);
+        }
         "bag-of-words" => {
             read_write::<BagOfWords>(input, output, chunks);
         }

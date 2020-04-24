@@ -226,7 +226,6 @@ impl Config {
 }
 
 pub struct CmdlineConfig {
-    pub measure: String,
     pub threshold: f64,
     pub left_path: String,
     pub right_path: String,
@@ -243,7 +242,7 @@ impl CmdlineConfig {
             (author: "Matteo Ceccarello <mcec@itu.dk>")
             (about: format!("Distributed Approximate Near Neighbours, Yo!\n\n{}", Config::help_str()).as_ref())
             (@arg ALGORITHM: -a --algorithm +takes_value "The algorithm to be used: (fixed-lsh, all-2-all)")
-            (@arg MEASURE: -m --measure +required +takes_value "The similarity measure to be used")
+            // (@arg MEASURE: -m --measure +required +takes_value "The similarity measure to be used")
             (@arg K: -k +takes_value "The number of concatenations of the hash function")
             (@arg L: -l +takes_value "The number of concatenations of the internal hash function")
             (@arg THRESHOLD: -r --range +required +takes_value "The similarity threshold")
@@ -253,10 +252,6 @@ impl CmdlineConfig {
         )
         .get_matches();
 
-        let measure = matches
-            .value_of("MEASURE")
-            .expect("measure is a required argument")
-            .to_owned();
         let threshold: f64 = matches
             .value_of("THRESHOLD")
             .expect("range is a required argument")
@@ -292,7 +287,6 @@ impl CmdlineConfig {
                 .expect("The number of bits should be an integer")
         });
         CmdlineConfig {
-            measure,
             threshold,
             left_path,
             right_path,

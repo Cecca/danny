@@ -39,28 +39,28 @@ where
             .map(|entry| entry.expect("Problem reading entry").path())
             .count()
     }
-    fn content_type<P: AsRef<Path>>(path: P) -> ContentType {
-        let path = path.as_ref().to_path_buf();
-        assert!(path.is_dir());
-        let file = path
-            .read_dir()
-            .expect("Problem reading directory")
-            .next()
-            .expect("Problem reading next entry")
-            .expect("Problem reading entry")
-            .path();
-        let file = File::open(file).expect("Problem opening file");
+}
 
-        let mut r = BufReader::new(&file);
-        if has_content_type::<UnitNormVector>(&file) {
-            ContentType::NormalizedVector
-        } else if has_content_type::<VectorWithNorm>(&file) {
-            ContentType::Vector
-        } else if has_content_type::<BagOfWords>(&file) {
-            ContentType::BagOfWords
-        } else {
-            panic!("could not determine the content type")
-        }
+pub fn content_type<P: AsRef<Path>>(path: P) -> ContentType {
+    let path = path.as_ref().to_path_buf();
+    assert!(path.is_dir());
+    let file = path
+        .read_dir()
+        .expect("Problem reading directory")
+        .next()
+        .expect("Problem reading next entry")
+        .expect("Problem reading entry")
+        .path();
+    let file = File::open(file).expect("Problem opening file");
+
+    if has_content_type::<UnitNormVector>(&file) {
+        ContentType::NormalizedVector
+    } else if has_content_type::<VectorWithNorm>(&file) {
+        ContentType::Vector
+    } else if has_content_type::<BagOfWords>(&file) {
+        ContentType::BagOfWords
+    } else {
+        panic!("could not determine the content type")
     }
 }
 
