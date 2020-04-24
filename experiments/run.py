@@ -259,7 +259,7 @@ def preprocess_sift(download_file, final_output):
     with open(tmp_file, "w") as fp:
       i = 0
       for vec in train:
-            proj = embedder.embed(vec, target_distance)
+            proj = embedder.embed(vec, target_distance, target_inner)
             fp.write(str(i))
             fp.write(" ")
             fp.write(" ".join([str(x) for x in proj]))
@@ -518,23 +518,23 @@ DATASETS = {
     #     preprocess_sift
     # ),
     "SIFT-100nn-0.5": Dataset(
-        "SIFT-100nn",
+        "SIFT-100nn-0.5",
         "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
         "sift-15.8-0.5.bin",
         preprocess_sift
     ),
-    "SIFT-100nn-0.7": Dataset(
-        "SIFT-100nn",
-        "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-        "sift-15.8-0.7.bin",
-        preprocess_sift
-    ),
-    "SIFT-100nn-0.9": Dataset(
-        "SIFT-100nn",
-        "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-        "sift-15.8-0.9.bin",
-        preprocess_sift
-    ),
+    # "SIFT-100nn-0.7": Dataset(
+    #     "SIFT-100nn-0.7",
+    #     "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
+    #     "sift-15.8-0.7.bin",
+    #     preprocess_sift
+    # ),
+    # "SIFT-100nn-0.9": Dataset(
+    #     "SIFT-100nn-0.9",
+    #     "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
+    #     "sift-15.8-0.9.bin",
+    #     preprocess_sift
+    # ),
     "Glove-6B-100": Dataset(
         "Glove-6B-100",
         "http://nlp.stanford.edu/data/glove.6B.zip",
@@ -617,9 +617,9 @@ for r in [0.5,0.7,0.9]:
     derived_datasets.append(d)
 
 derived_datasets.append(DerivedDataset(
-    'SIFT-sample-200000',
-    'sift-sample-200000.bin',
-    DATASETS['SIFT'],
+    'SIFT-100nn-0.5-sample-200000',
+    'sift-100nn-0.5-sample-200000.bin',
+    DATASETS['SIFT-100nn-0.5'],
     sample_dataset
 ))
 derived_datasets.append(DerivedDataset(
@@ -648,9 +648,9 @@ derived_datasets.append(DerivedDataset(
 ))
 
 derived_datasets.append(DerivedDataset(
-    'SIFT-sample-500000',
-    'sift-sample-500000.bin',
-    DATASETS['SIFT'],
+    'SIFT-100nn-0.5-sample-500000',
+    'sift-100nn-0.5-sample-500000.bin',
+    DATASETS['SIFT-100nn-0.5'],
     sample_dataset
 ))
 derived_datasets.append(DerivedDataset(
@@ -681,9 +681,9 @@ derived_datasets.append(DerivedDataset(
 # Sampled datasets
 for size in [200000, 400000, 800000]:
     derived_datasets.append(DerivedDataset(
-        'SIFT-sample-{}'.format(size),
-        'sift-sample-{}.bin'.format(size),
-        DATASETS['SIFT'],
+        'SIFT-100nn-0.5-sample-{}'.format(size),
+        'sift-100nn-0.5-sample-{}.bin'.format(size),
+        DATASETS['SIFT-100nn-0.5'],
         sample_dataset
     ))
     derived_datasets.append(DerivedDataset(
