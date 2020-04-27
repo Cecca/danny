@@ -2,6 +2,7 @@
 
 import shlex
 import numpy
+import numpy as np
 import datetime
 import argparse
 from sklearn.feature_extraction.text import CountVectorizer
@@ -224,19 +225,21 @@ def _get_irisa_matrix(t, fn):
     return _load_texmex_vectors(f, n, k)
 
 
+# Based on "On the Error of Random Fourier Features" by Sutherland and Schneider
+# https://arxiv.org/abs/1506.02785
 class Embedder(object):
     def __init__(self, dim_in, dim_out, seed):
         numpy.random.seed(seed)
         self.scale_factor = numpy.sqrt(2/dim_out)
-        self.shifts = numpy.random.uniform(0,2*numpy.pi, size=dim_out)
-        stddev = numpy.power(numpy.sqrt(numpy.pi), (dim_in - 1))
-        self.vecs = numpy.random.normal(scale=stddev,
-                                        size=(dim_in, dim_out))
-    def embed(self, vec, target_distance=1, target_inner=0.5):
-        v = vec / numpy.sqrt(target_distance * numpy.log(1/target_inner))
-        prods = numpy.matmul(self.vecs, v)
-        shifted = prods + self.shifts
-        return numpy.cos(shifted) * self.scale_factor
+        self.vecs = numpy.random.normal(size=(dim_out//2, dim_in))
+    def embed(self, vec):
+        prods = np.matmul(self.vecs, vec)
+        cosines = np.cos(prods)
+        sines = np.sin(prods)
+        res = np.empty(cosines.size + sines.size, dtype=cosines.dtype)
+        res[0::2] = cosines
+        res[1::2] = sines
+        return res * self.scale_factor
 
 
 def inflate_cosine(X, factor=10, seed=1234):
@@ -248,27 +251,45 @@ def inflate_cosine(X, factor=10, seed=1234):
         Y = numpy.vstack((Y, numpy.matmul(X, shift_matrix)))
     return Y
 
+def rescale_sift_data(train, n_neighbors, sim_threshold):
+    from sklearn.kernel_approximation import RBFSampler
+    from sklearn.neighbors import NearestNeighbors
+    from scipy.spatial.distance import pdist, squareform
+
+    sample = np.random.permutation(train)[:10000]
+    nn_builder = NearestNeighbors(n_neighbors=n_neighbors, metric='euclidean').fit(sample)
+    print("built nn data structure")
+    nn, _ = nn_builder.kneighbors(train)
+    print("computed nearest neighbors")
+    k_nn_dist_avg = np.mean(nn[:,-1])
+    # scale_factor = (k_nn_dist_avg / np.sqrt(2*np.log(1/sim)))
+    scale_factor = (k_nn_dist_avg / (2*np.log(1/sim_threshold)))
+    return train / scale_factor
+
 # From ann-benchmarks
 def preprocess_sift(download_file, final_output):
     import tarfile
     tmp_dir = os.path.join(os.path.dirname(download_file))
     pre, ext = os.path.splitext(final_output)
     tokens = pre.split("-")
-    target_distance = float(tokens[-2])
+    target_neighbors = int(tokens[-2])
     target_inner = float(tokens[-1])
-    print("Target distance is", target_distance)
+    print("Target neigbors is", target_neighbors)
     print("Target inner is", target_inner)
 
     with tarfile.open(download_file, 'r:gz') as t:
         train = _get_irisa_matrix(t, 'sift/sift_base.fvecs')
         test = _get_irisa_matrix(t, 'sift/sift_query.fvecs')
-    embedder = Embedder(128,128,123)
+    print("Rescaling data")
+    train = rescale_sift_data(train, target_neighbors, target_inner)
+
+    embedder = Embedder(128,128,2198579145)
     tmp_file = os.path.join(tmp_dir, "sift-temp.txt")
     print("Embed the vectors")
     with open(tmp_file, "w") as fp:
       i = 0
       for vec in train:
-            proj = embedder.embed(vec, target_distance, target_inner)
+            proj = embedder.embed(vec)
             fp.write(str(i))
             fp.write(" ")
             fp.write(" ".join([str(x) for x in proj]))
@@ -449,7 +470,7 @@ DATASETS = {
     "SIFT-100nn-0.5": Dataset(
         "SIFT-100nn-0.5",
         "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-        "sift-15.8-0.5.bin",
+        "sift-100-0.5.bin",
         preprocess_sift
     ),
     "Glove-6B-100": Dataset(
