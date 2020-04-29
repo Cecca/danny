@@ -2,6 +2,7 @@
 
 import shlex
 import numpy
+import numpy as np
 import datetime
 import argparse
 from sklearn.feature_extraction.text import CountVectorizer
@@ -130,7 +131,7 @@ def preprocess_glove_6b(download_file, final_output):
                 "-o",
                 output,
                 "-t",
-                "unit-norm-vector",
+                "vector-normalized",
                 "-n",
                 "40",
             ]
@@ -224,19 +225,21 @@ def _get_irisa_matrix(t, fn):
     return _load_texmex_vectors(f, n, k)
 
 
+# Based on "On the Error of Random Fourier Features" by Sutherland and Schneider
+# https://arxiv.org/abs/1506.02785
 class Embedder(object):
     def __init__(self, dim_in, dim_out, seed):
         numpy.random.seed(seed)
         self.scale_factor = numpy.sqrt(2/dim_out)
-        self.shifts = numpy.random.uniform(0,2*numpy.pi, size=dim_out)
-        stddev = numpy.power(numpy.sqrt(numpy.pi), (dim_in - 1))
-        self.vecs = numpy.random.normal(scale=stddev,
-                                        size=(dim_in, dim_out))
-    def embed(self, vec, target_distance=1, target_inner=0.5):
-        v = vec / numpy.sqrt(target_distance * numpy.log(1/target_inner))
-        prods = numpy.matmul(self.vecs, v)
-        shifted = prods + self.shifts
-        return numpy.cos(shifted) * self.scale_factor
+        self.vecs = numpy.random.normal(size=(dim_out//2, dim_in))
+    def embed(self, vec):
+        prods = np.matmul(self.vecs, vec)
+        cosines = np.cos(prods)
+        sines = np.sin(prods)
+        res = np.empty(cosines.size + sines.size, dtype=cosines.dtype)
+        res[0::2] = cosines
+        res[1::2] = sines
+        return res * self.scale_factor
 
 
 def inflate_cosine(X, factor=10, seed=1234):
@@ -248,31 +251,50 @@ def inflate_cosine(X, factor=10, seed=1234):
         Y = numpy.vstack((Y, numpy.matmul(X, shift_matrix)))
     return Y
 
+def rescale_sift_data(train, n_neighbors, sim_threshold):
+    from sklearn.kernel_approximation import RBFSampler
+    from sklearn.neighbors import NearestNeighbors
+    from scipy.spatial.distance import pdist, squareform
+
+    sample = np.random.permutation(train)[:10000]
+    nn_builder = NearestNeighbors(n_neighbors=n_neighbors, metric='euclidean').fit(sample)
+    print("built nn data structure")
+    nn, _ = nn_builder.kneighbors(train)
+    print("computed nearest neighbors")
+    k_nn_dist_avg = np.mean(nn[:,-1])
+    # scale_factor = (k_nn_dist_avg / np.sqrt(2*np.log(1/sim)))
+    scale_factor = (k_nn_dist_avg / (2*np.log(1/sim_threshold)))
+    return train / scale_factor
+
 # From ann-benchmarks
 def preprocess_sift(download_file, final_output):
     import tarfile
     tmp_dir = os.path.join(os.path.dirname(download_file))
     pre, ext = os.path.splitext(final_output)
     tokens = pre.split("-")
-    target_distance = float(tokens[-2])
+    target_neighbors = int(tokens[-2])
     target_inner = float(tokens[-1])
-    print("Target distance is", target_distance)
+    print("Target neigbors is", target_neighbors)
     print("Target inner is", target_inner)
 
     with tarfile.open(download_file, 'r:gz') as t:
         train = _get_irisa_matrix(t, 'sift/sift_base.fvecs')
         test = _get_irisa_matrix(t, 'sift/sift_query.fvecs')
-    embedder = Embedder(128,128,123)
+    print("Rescaling data")
+    train = rescale_sift_data(train, target_neighbors, target_inner)
+
+    embedder = Embedder(128,128,2198579145)
     tmp_file = os.path.join(tmp_dir, "sift-temp.txt")
     print("Embed the vectors")
     with open(tmp_file, "w") as fp:
       i = 0
       for vec in train:
-            proj = embedder.embed(vec, target_distance, target_inner)
+            proj = embedder.embed(vec)
             fp.write(str(i))
             fp.write(" ")
             fp.write(" ".join([str(x) for x in proj]))
             fp.write("\n")
+            i += 1
     print("Convert the file to binary")
     subprocess.run(
         [
@@ -282,7 +304,7 @@ def preprocess_sift(download_file, final_output):
             "-o",
             final_output,
             "-t",
-            "unit-norm-vector",
+            "vector-normalized",
             "-n",
             "40",
         ],
@@ -414,65 +436,7 @@ def preprocess_livejournal(download_file, final_output):
     )
 
 
-def preprocess_diverse(base_path, filepath):
-    datatype = "unit-norm-vector" if "glove" in base_path else "bag-of-words"
-    pre, ext = os.path.splitext(filepath)
-    tokens = pre.split("-")
-    similarity_range = tokens[-2]
-    size = tokens[-1]
-    pre, ext = os.path.splitext(base_path)
-    lid_path = pre + ".lid"
-    if not os.path.exists(lid_path):
-        print("Missing lid file for dataset", base_path)
-        print("Aborting!")
-        sys.exit(1)
-    subprocess.run(
-        [
-            "gendiverse",
-            "-t",
-            datatype,
-            "-s",
-            str(size),
-            "-r",
-            str(similarity_range),
-            base_path,
-            lid_path,
-            filepath,
-        ]
-    )
-
-def preprocess_diverse_expansion(base_path, filepath):
-    datatype = "unit-norm-vector" if "glove" in base_path else "bag-of-words"
-    pre, ext = os.path.splitext(filepath)
-    extreme = "extreme" in filepath
-    tokens = pre.split("-")
-    similarity_range = tokens[-2]
-    size = tokens[-1]
-    pre, ext = os.path.splitext(base_path)
-    exp_path = pre + ".exp"
-    if not os.path.exists(exp_path):
-        print("Missing expansion file for dataset", base_path)
-        print("Aborting!")
-        sys.exit(1)
-    subprocess.run(
-        [
-            "gendiverse",
-            "-t",
-            datatype,
-            "-s",
-            str(size),
-            "-r",
-            str(similarity_range),
-            "-g",
-            "extreme" if extreme else "random",
-            base_path,
-            exp_path,
-            filepath,
-        ]
-    )
-
 def sample_dataset(base_path, filepath):
-    measure = "cosine" if ("glove" in base_path or "sift" in base_path) else "jaccard"
     pre, ext = os.path.splitext(filepath)
     tokens = pre.split("-")
     size = tokens[-1]
@@ -481,8 +445,6 @@ def sample_dataset(base_path, filepath):
             "sampledata",
             "--size",
             str(size),
-            "--measure",
-            measure,
             base_path,
             filepath,
         ]
@@ -490,7 +452,6 @@ def sample_dataset(base_path, filepath):
 
 
 def inflate(base_path, filepath):
-    measure = "cosine" if ("glove" in base_path or "sift" in base_path) else "jaccard"
     pre, ext = os.path.splitext(filepath)
     tokens = pre.split("-")
     inflation = tokens[-1]
@@ -499,8 +460,6 @@ def inflate(base_path, filepath):
             "inflate",
             "--factor",
             str(inflation),
-            "--measure",
-            measure,
             base_path,
             filepath,
         ]
@@ -508,42 +467,12 @@ def inflate(base_path, filepath):
 
 
 DATASETS = {
-    # "SIFT": Dataset(
-    #     "SIFT",
-    #     "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-    #     "sift.bin",
-    #     preprocess_sift
-    # ),
-    # "SIFT-5nn": Dataset(
-    #     "SIFT-5nn",
-    #     "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-    #     "sift-20.39.bin",
-    #     preprocess_sift
-    # ),
-    # "SIFT-30nn": Dataset(
-    #     "SIFT-30nn",
-    #     "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-    #     "sift-21.53.bin",
-    #     preprocess_sift
-    # ),
     "SIFT-100nn-0.5": Dataset(
         "SIFT-100nn-0.5",
         "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-        "sift-15.8-0.5.bin",
+        "sift-100-0.5.bin",
         preprocess_sift
     ),
-    # "SIFT-100nn-0.7": Dataset(
-    #     "SIFT-100nn-0.7",
-    #     "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-    #     "sift-15.8-0.7.bin",
-    #     preprocess_sift
-    # ),
-    # "SIFT-100nn-0.9": Dataset(
-    #     "SIFT-100nn-0.9",
-    #     "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
-    #     "sift-15.8-0.9.bin",
-    #     preprocess_sift
-    # ),
     "Glove-6B-100": Dataset(
         "Glove-6B-100",
         "http://nlp.stanford.edu/data/glove.6B.zip",
@@ -563,12 +492,12 @@ DATASETS = {
     #    "wiki-10k.bin",
     #    preprocess_wiki_builder(10000),
     #),
-    "AOL": Dataset(
-        "AOL",
-        "http://www.cim.mcgill.ca/~dudek/206/Logs/AOL-user-ct-collection/aol-data.tar.gz",
-        "AOL.bin",
-        preprocess_aol,
-    ),
+    # "AOL": Dataset(
+    #     "AOL",
+    #     "http://www.cim.mcgill.ca/~dudek/206/Logs/AOL-user-ct-collection/aol-data.tar.gz",
+    #     "AOL.bin",
+    #     preprocess_aol,
+    # ),
     "Orkut": Dataset(
         "Orkut",
         "http://socialnetworks.mpi-sws.mpg.de/data/orkut-groupmemberships.txt.gz",
@@ -581,111 +510,15 @@ DATASETS = {
         "Livejournal.bin",
         preprocess_livejournal,
     ),
-    "GNews": Dataset(
-        "GNews",
-        "",
-        "GoogleNews-vectors-negative300.bin",
-        lambda a, b: print("Preprocessing unimplemented")
-    )
+    # "GNews": Dataset(
+    #     "GNews",
+    #     "",
+    #     "GoogleNews-vectors-negative300.bin",
+    #     lambda a, b: print("Preprocessing unimplemented")
+    # )
 }
 
-# Derived datasets
-
 derived_datasets = []
-for r in [0.5,0.7,0.9]:
-    d = DerivedDataset(
-        'Livejournal-diverse-{}-3M'.format(r),
-        'Livejournal-diverse-{}-3000000.bin'.format(r),
-        DATASETS['Livejournal'],
-        preprocess_diverse
-    )
-    derived_datasets.append(d)
-
-    d = DerivedDataset(
-        'Orkut-diverse-{}-3M'.format(r),
-        'Orkut-diverse-{}-3000000.bin'.format(r),
-        DATASETS['Orkut'],
-        preprocess_diverse
-    )
-    derived_datasets.append(d)
-
-    d = DerivedDataset(
-        'AOL-diverse-{}-3M'.format(r),
-        'AOL-diverse-{}-3000000.bin'.format(r),
-        DATASETS['AOL'],
-        preprocess_diverse
-    )
-    derived_datasets.append(d)
-
-    d = DerivedDataset(
-        'Glove-27-diverse-{}-3M'.format(r),
-        'Glove-27-diverse-{}-3000000.bin'.format(r),
-        DATASETS['Glove-27-200'],
-        preprocess_diverse
-    )
-    derived_datasets.append(d)
-
-derived_datasets.append(DerivedDataset(
-    'SIFT-100nn-0.5-sample-200000',
-    'sift-100nn-0.5-sample-200000.bin',
-    DATASETS['SIFT-100nn-0.5'],
-    sample_dataset
-))
-derived_datasets.append(DerivedDataset(
-    'Glove-sample-200000',
-    'Glove-sample-200000.bin',
-    DATASETS['Glove-27-200'],
-    sample_dataset
-))
-derived_datasets.append(DerivedDataset(
-    'AOL-sample-200000',
-    'AOL-sample-200000.bin',
-    DATASETS['AOL'],
-    sample_dataset
-))
-derived_datasets.append(DerivedDataset(
-    'Orkut-sample-200000',
-    'Orkut-sample-200000.bin',
-    DATASETS['Orkut'],
-    sample_dataset
-))
-derived_datasets.append(DerivedDataset(
-    'Livejournal-sample-200000', 
-    'Livejournal-sample-200000.bin',
-    DATASETS['Livejournal'],
-    sample_dataset
-))
-
-derived_datasets.append(DerivedDataset(
-    'SIFT-100nn-0.5-sample-500000',
-    'sift-100nn-0.5-sample-500000.bin',
-    DATASETS['SIFT-100nn-0.5'],
-    sample_dataset
-))
-derived_datasets.append(DerivedDataset(
-    'Glove-sample-500000',
-    'Glove-sample-500000.bin',
-    DATASETS['Glove-27-200'],
-    sample_dataset
-))
-derived_datasets.append(DerivedDataset(
-    'AOL-sample-500000',
-    'AOL-sample-500000.bin',
-    DATASETS['AOL'],
-    sample_dataset
-))
-derived_datasets.append(DerivedDataset(
-    'Orkut-sample-500000',
-    'Orkut-sample-500000.bin',
-    DATASETS['Orkut'],
-    sample_dataset
-))
-derived_datasets.append(DerivedDataset(
-    'Livejournal-sample-500000', 
-    'Livejournal-sample-500000.bin',
-    DATASETS['Livejournal'],
-    sample_dataset
-))
 
 # Sampled datasets
 for size in [200000, 400000, 800000]:
@@ -701,12 +534,12 @@ for size in [200000, 400000, 800000]:
         DATASETS['Glove-27-200'],
         sample_dataset
     ))
-    derived_datasets.append(DerivedDataset(
-        'AOL-sample-{}'.format(size),
-        'AOL-sample-{}.bin'.format(size),
-        DATASETS['AOL'],
-        sample_dataset
-    ))
+    # derived_datasets.append(DerivedDataset(
+    #     'AOL-sample-{}'.format(size),
+    #     'AOL-sample-{}.bin'.format(size),
+    #     DATASETS['AOL'],
+    #     sample_dataset
+    # ))
     derived_datasets.append(DerivedDataset(
         'Orkut-sample-{}'.format(size),
         'Orkut-sample-{}.bin'.format(size),
@@ -720,37 +553,6 @@ for size in [200000, 400000, 800000]:
         sample_dataset
     ))
 
-
-derived_datasets.append(DerivedDataset(
-    'Livejournal-diverse-exp-{}-3M'.format(0.5),
-    'Livejournal-diverse-exp-{}-3000000.bin'.format(0.5),
-    DATASETS['Livejournal'],
-    preprocess_diverse_expansion
-))
-derived_datasets.append(DerivedDataset(
-    'Orkut-diverse-exp-{}-3M'.format(0.5),
-    'Orkut-diverse-exp-{}-3000000.bin'.format(0.5),
-    DATASETS['Orkut'],
-    preprocess_diverse_expansion
-))
-derived_datasets.append(DerivedDataset(
-    'AOL-diverse-exp-{}-3M'.format(0.5),
-    'AOL-diverse-exp-{}-3000000.bin'.format(0.5),
-    DATASETS['AOL'],
-    preprocess_diverse_expansion
-))
-#derived_datasets.append(DerivedDataset(
-    #'wiki-10k-diverse-exp-{}-3M'.format(0.5),
-    #'wiki-10k-diverse-exp-{}-3000000.bin'.format(0.5),
-    #DATASETS['wiki-10k'],
-    #preprocess_diverse_expansion
-#))
-derived_datasets.append(DerivedDataset(
-    'Glove-27-diverse-exp-{}-3M'.format(0.5),
-    'Glove-27-diverse-exp-{}-3000000.bin'.format(0.5),
-    DATASETS['Glove-27-200'],
-    preprocess_diverse_expansion
-))
 
 # inflated datasets
 derived_datasets.append(DerivedDataset(
@@ -778,37 +580,6 @@ derived_datasets.append(DerivedDataset(
     inflate
 ))
 
-
-# derived_datasets.append(DerivedDataset(
-#     'Livejournal-diverse-extreme-{}'.format(0.5),
-#     'Livejournal-diverse-extreme-{}-300000.bin'.format(0.5),
-#     DATASETS['Livejournal'],
-#     preprocess_diverse_expansion
-# ))
-# derived_datasets.append(DerivedDataset(
-#     'Orkut-diverse-extreme-{}'.format(0.5),
-#     'Orkut-diverse-extreme-{}-300000.bin'.format(0.5),
-#     DATASETS['Orkut'],
-#     preprocess_diverse_expansion
-# ))
-# derived_datasets.append(DerivedDataset(
-#     'AOL-diverse-extreme-{}'.format(0.5),
-#     'AOL-diverse-extreme-{}-300000.bin'.format(0.5),
-#     DATASETS['AOL'],
-#     preprocess_diverse_expansion
-# ))
-#derived_datasets.append(DerivedDataset(
-#    'wiki-10k-diverse-extreme-{}'.format(0.5),
-#    'wiki-10k-diverse-extreme-{}-300000.bin'.format(0.5),
-#    DATASETS['wiki-10k'],
-#    preprocess_diverse_expansion
-#))
-# derived_datasets.append(DerivedDataset(
-#     'Glove-27-diverse-extreme-{}'.format(0.5),
-#     'Glove-27-diverse-extreme-{}-300000.bin'.format(0.5),
-#     DATASETS['Glove-27-200'],
-#     preprocess_diverse_expansion
-# ))
 
 for d in derived_datasets:
     DATASETS[d.name] = d

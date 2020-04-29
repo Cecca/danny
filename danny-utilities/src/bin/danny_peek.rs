@@ -80,7 +80,6 @@ fn main() {
         (version: "0.1")
         (author: "Matteo Ceccarello <mcec@itu.dk>")
         (about: "Prints some vectors of the dataset")
-        (@arg MEASURE: -m +takes_value +required "The measure")
         (@arg IDS: --ids +takes_value +required "Comma separated list of IDS")
         (@arg INPUT: +required "The input path")
     )
@@ -99,11 +98,9 @@ fn main() {
         .split(',')
         .map(|token| token.parse::<u64>().expect("Problem parsing id to u32"))
         .collect();
-    let measure: String = matches.value_of("MEASURE").unwrap().to_owned();
 
-    match measure.as_ref() {
-        "jaccard" => run::<BagOfWords, _>(&input, &ids, Jaccard::jaccard),
-        "cosine" => run::<UnitNormVector, _>(&input, &ids, InnerProduct::cosine),
-        _ => panic!("Unsupported measure"),
+    match content_type(&input) {
+        ContentType::BagOfWords => run::<BagOfWords, _>(&input, &ids, Jaccard::jaccard),
+        ContentType::Vector => run::<Vector, _>(&input, &ids, InnerProduct::inner_product),
     };
 }

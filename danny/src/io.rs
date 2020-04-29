@@ -12,9 +12,15 @@ use std::fs::create_dir;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
+
+pub enum ContentType {
+    Vector,
+    BagOfWords,
+}
 
 pub trait ReadBinaryFile
 where
@@ -32,6 +38,35 @@ where
             .map(|entry| entry.expect("Problem reading entry").path())
             .count()
     }
+}
+
+pub fn content_type<P: AsRef<Path>>(path: P) -> ContentType {
+    let path = path.as_ref().to_path_buf();
+    assert!(path.is_dir());
+    let file = path
+        .read_dir()
+        .expect("Problem reading directory")
+        .next()
+        .expect("Problem reading next entry")
+        .expect("Problem reading entry")
+        .path();
+    let file = File::open(file).expect("Problem opening file");
+
+    if has_content_type::<Vector>(&file) {
+        ContentType::Vector
+    } else if has_content_type::<BagOfWords>(&file) {
+        ContentType::BagOfWords
+    } else {
+        panic!("could not determine the content type")
+    }
+}
+
+fn has_content_type<T>(f: &File) -> bool
+where
+    for<'de> T: Deserialize<'de> + std::marker::Sized,
+{
+    let mut r = BufReader::new(f);
+    bincode::deserialize_from::<_, (u32, T)>(&mut r).is_ok()
 }
 
 impl<T> ReadBinaryFile for T
@@ -277,7 +312,7 @@ where
     fn from_line(line: &str) -> Option<Self>;
 }
 
-impl ReadDataFile for VectorWithNorm {
+impl ReadDataFile for Vector {
     fn from_line(line: &str) -> Option<Self> {
         let data: Vec<f32> = line
             .split_whitespace()
@@ -287,13 +322,7 @@ impl ReadDataFile for VectorWithNorm {
                     .unwrap_or_else(|_| panic!("Error parsing floating point number `{}`", s))
             })
             .collect();
-        Some(VectorWithNorm::new(data))
-    }
-}
-
-impl ReadDataFile for UnitNormVector {
-    fn from_line(line: &str) -> Option<Self> {
-        VectorWithNorm::from_line(line).map(Into::into)
+        Some(Vector::new(data))
     }
 }
 

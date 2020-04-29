@@ -20,12 +20,9 @@ fn main() {
         (version: "0.1")
         (author: "Matteo Ceccarello <mcec@itu.dk>")
         (about: "Sample the given dataset")
-        (@arg MEASURE: -m --measure +takes_value +required "The measure")
         (@arg INPUT: +required "The input path")
     )
     .get_matches();
-
-    let seed = 14598724;
 
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Info)
@@ -33,9 +30,8 @@ fn main() {
         .init();
 
     let input: PathBuf = matches.value_of("INPUT").unwrap().into();
-    let measure: String = matches.value_of("MEASURE").unwrap().to_owned();
-    match measure.as_ref() {
-        "jaccard" => {
+    match content_type(&input) {
+        ContentType::BagOfWords => {
             let first = BagOfWords::peek_one(input.clone());
             let n = <BagOfWords as ReadBinaryFile>::num_elements(input);
             let dim = first.universe;
@@ -44,16 +40,14 @@ fn main() {
                 n, dim
             );
         }
-        "cosine" => {
-            let first = UnitNormVector::peek_one(input.clone());
-            let n = <UnitNormVector as ReadBinaryFile>::num_elements(input);
+        ContentType::Vector => {
+            let first = Vector::peek_one(input.clone());
+            let n = <Vector as ReadBinaryFile>::num_elements(input);
             let dim = first.dim();
             println!(
                 "Cosine similarity dataset: {} vectors, {} elements universe",
                 n, dim
             );
-            unimplemented!()
         }
-        e => panic!("Unsupported measure {}", e),
     };
 }

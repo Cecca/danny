@@ -57,7 +57,9 @@ where
         let k_right = ((k as f64) / 2.0).floor() as usize;
         let coll_prob_left = F::probability_at_range(range).powi(k_left as i32);
         let coll_prob_right = F::probability_at_range(range).powi(k_right as i32);
-        let repetitions = ((1_f64 - recall.sqrt()).ln().powi(2) / ((1_f64 - coll_prob_left).ln() * (1_f64 - coll_prob_right).ln())) as usize;
+        let repetitions = ((1_f64 - recall.sqrt()).ln().powi(2)
+            / ((1_f64 - coll_prob_left).ln() * (1_f64 - coll_prob_right).ln()))
+            as usize;
         let part_repetitions = (repetitions as f64).sqrt().ceil() as usize;
         let mut hashers = Vec::new();
         for _ in 0..part_repetitions {
@@ -236,7 +238,7 @@ where
 #[derive(Clone)]
 pub struct Hyperplane {
     k: usize,
-    planes: Vec<UnitNormVector>,
+    planes: Vec<Vector>,
 }
 
 impl Hyperplane {
@@ -255,7 +257,7 @@ impl Hyperplane {
             for _ in 0..dim {
                 plane.push(gaussian.sample(rng) as f32);
             }
-            let plane = UnitNormVector::new(plane);
+            let plane = Vector::new(plane);
             planes.push(plane);
         }
         Hyperplane { k, planes }
@@ -271,10 +273,10 @@ impl Hyperplane {
 }
 
 impl LSHFunction for Hyperplane {
-    type Input = UnitNormVector;
+    type Input = Vector;
     type Output = u32;
 
-    fn hash(&self, v: &UnitNormVector) -> u32 {
+    fn hash(&self, v: &Vector) -> u32 {
         let mut h = 0u32;
         for plane in self.planes.iter() {
             if InnerProduct::inner_product(plane, v) >= 0_f64 {
@@ -357,9 +359,9 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(123);
         let k = 20;
         let hasher = Hyperplane::new(k, 4, &mut rng);
-        let a = UnitNormVector::new(vec![0.0, 1.0, 3.0, 1.0]);
+        let a = Vector::new(vec![0.0, 1.0, 3.0, 1.0]);
         let ha = hasher.hash(&a);
-        let b = UnitNormVector::new(vec![1.0, 1.0, 3.0, 1.0]);
+        let b = Vector::new(vec![1.0, 1.0, 3.0, 1.0]);
         let hb = hasher.hash(&b);
 
         println!("{:?}", ha);
@@ -369,8 +371,8 @@ mod tests {
 
         let dim = 300;
         for _ in 0..10 {
-            let a = UnitNormVector::random_normal(dim, &mut rng);
-            let b = UnitNormVector::random_normal(dim, &mut rng);
+            let a = Vector::random_normal(dim, &mut rng);
+            let b = Vector::random_normal(dim, &mut rng);
             let cos = InnerProduct::cosine(&a, &b);
             println!("Cosine between the vectors is {}", cos);
             assert!(cos >= -1.0 && cos <= 1.0);
