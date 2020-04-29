@@ -304,7 +304,7 @@ def preprocess_sift(download_file, final_output):
             "-o",
             final_output,
             "-t",
-            "vector",
+            "vector-normalized",
             "-n",
             "40",
         ],
