@@ -50,7 +50,6 @@ pub fn content_type<P: AsRef<Path>>(path: P) -> ContentType {
         .expect("Problem reading next entry")
         .expect("Problem reading entry")
         .path();
-    let file = File::open(file).expect("Problem opening file");
 
     if has_content_type::<Vector>(&file) {
         ContentType::Vector
@@ -61,11 +60,12 @@ pub fn content_type<P: AsRef<Path>>(path: P) -> ContentType {
     }
 }
 
-fn has_content_type<T>(f: &File) -> bool
+fn has_content_type<T>(f: &PathBuf) -> bool
 where
     for<'de> T: Deserialize<'de> + std::marker::Sized,
 {
-    let mut r = BufReader::new(f);
+    let file = File::open(f).expect("Problem opening file");
+    let mut r = BufReader::new(file);
     bincode::deserialize_from::<_, (u32, T)>(&mut r).is_ok()
 }
 
