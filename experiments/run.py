@@ -134,7 +134,8 @@ def preprocess_glove_6b(download_file, final_output):
                 "vector-normalized",
                 "-n",
                 "40",
-            ]
+            ],
+            check=True
         )
 
 
@@ -200,7 +201,8 @@ def _preprocess_wiki(vocab_size, download_file, final_output):
             "bag-of-words",
             "-n",
             "40",
-        ]
+        ],
+        check=True
     )
 
 def _load_texmex_vectors(f, n, k):
@@ -309,6 +311,7 @@ def preprocess_sift(download_file, final_output):
             "40",
         ],
         cwd=tmp_dir,
+        check=True
     )
 
 
@@ -328,13 +331,14 @@ def preprocess_aol(download_file, final_output):
     """As provided by Mann et al."""
     directory = os.path.dirname(download_file)
     print("Unpacking")
-    subprocess.run(["tar", "xzvf", download_file], cwd=directory)
+    subprocess.run(["tar", "xzvf", download_file], cwd=directory, check=True)
     print("Extracting raw data")
     subprocess.run(
         "{} {}/AOL-user-ct-collection/user-ct-test-collection-*.txt.gz > aol-data.txt".format(
             AOL_DATA, directory
         ),
         shell=True,
+        check=True,
         cwd=directory,
     )
     print("Creating data")
@@ -343,12 +347,14 @@ def preprocess_aol(download_file, final_output):
             CREATE_RAW
         ),
         shell=True,
+        check=True,
         cwd=directory,
     )
     print("Shuffling")
     subprocess.run(
         "{} aol-data-white-dedup-raw.txt > tmp.txt".format(SHUF_LENGTH),
         shell=True,
+        check=True,
         cwd=directory,
     )
     print("Converting to binary")
@@ -365,24 +371,26 @@ def preprocess_aol(download_file, final_output):
             "40",
         ],
         cwd=directory,
+        check=True
     )
 
 
 def preprocess_orkut(download_file, final_output):
     directory = os.path.dirname(download_file)
     subprocess.run(
-        "cat {} | gunzip > tt.txt".format(download_file), cwd=directory, shell=True
+        "cat {} | gunzip > tt.txt".format(download_file), cwd=directory, shell=True, check=True
     )
     subprocess.run(
-        "{} users tt.txt > orkut.out".format(ORKUT_PY), cwd=directory, shell=True
+        "{} users tt.txt > orkut.out".format(ORKUT_PY), cwd=directory, shell=True, check=True
     )
     subprocess.run(
         "{} --bywhitespace orkut.out orkut-userswithgroups-raw.txt".format(CREATE_RAW),
         cwd=directory,
         shell=True,
+        check=True
     )
     subprocess.run(
-        "uniq orkut-userswithgroups-raw.txt > orkut.tmp", cwd=directory, shell=True
+        "uniq orkut-userswithgroups-raw.txt > orkut.tmp", cwd=directory, shell=True, check=True
     )
     subprocess.run(
         [
@@ -396,6 +404,7 @@ def preprocess_orkut(download_file, final_output):
             "-n",
             "40",
         ],
+        check=True,
         cwd=directory,
     )
 
@@ -473,12 +482,6 @@ DATASETS = {
         "sift-100-0.5.bin",
         preprocess_sift
     ),
-    "Glove-6B-100": Dataset(
-        "Glove-6B-100",
-        "http://nlp.stanford.edu/data/glove.6B.zip",
-        "glove.6B.100d.bin",
-        preprocess_glove_6b,
-    ),
     "Glove-27-200": Dataset(
         # This dataset is the Glove-2m dataset in ANN-benchmarks
         "Glove-27-200",
@@ -486,18 +489,6 @@ DATASETS = {
         "glove.twitter.27B.200d.bin",
         preprocess_glove_6b,
     ),
-    #"wiki-10k": Dataset(
-    #    "wiki-10k",
-    #    "https://dumps.wikimedia.org/enwiki/20190220/enwiki-20190220-pages-articles-multistream.xml.bz2",
-    #    "wiki-10k.bin",
-    #    preprocess_wiki_builder(10000),
-    #),
-    # "AOL": Dataset(
-    #     "AOL",
-    #     "http://www.cim.mcgill.ca/~dudek/206/Logs/AOL-user-ct-collection/aol-data.tar.gz",
-    #     "AOL.bin",
-    #     preprocess_aol,
-    # ),
     "Orkut": Dataset(
         "Orkut",
         "http://socialnetworks.mpi-sws.mpg.de/data/orkut-groupmemberships.txt.gz",
@@ -510,12 +501,6 @@ DATASETS = {
         "Livejournal.bin",
         preprocess_livejournal,
     ),
-    # "GNews": Dataset(
-    #     "GNews",
-    #     "",
-    #     "GoogleNews-vectors-negative300.bin",
-    #     lambda a, b: print("Preprocessing unimplemented")
-    # )
 }
 
 derived_datasets = []
@@ -534,12 +519,6 @@ for size in [200000, 400000, 800000]:
         DATASETS['Glove-27-200'],
         sample_dataset
     ))
-    # derived_datasets.append(DerivedDataset(
-    #     'AOL-sample-{}'.format(size),
-    #     'AOL-sample-{}.bin'.format(size),
-    #     DATASETS['AOL'],
-    #     sample_dataset
-    # ))
     derived_datasets.append(DerivedDataset(
         'Orkut-sample-{}'.format(size),
         'Orkut-sample-{}.bin'.format(size),
@@ -555,30 +534,31 @@ for size in [200000, 400000, 800000]:
 
 
 # inflated datasets
-derived_datasets.append(DerivedDataset(
-    'Livejournal-inflated-5',
-    'Livejournal-inflated-5.bin',
-    DATASETS['Livejournal'],
-    inflate
-))
-derived_datasets.append(DerivedDataset(
-    'Orkut-inflated-5',
-    'Orkut-inflated-5.bin',
-    DATASETS['Orkut'],
-    inflate
-))
-derived_datasets.append(DerivedDataset(
-    'Livejournal-inflated-10',
-    'Livejournal-inflated-10.bin',
-    DATASETS['Livejournal'],
-    inflate
-))
-derived_datasets.append(DerivedDataset(
-    'Orkut-inflated-10',
-    'Orkut-inflated-10.bin',
-    DATASETS['Orkut'],
-    inflate
-))
+for factor in [2,5,10]:
+    derived_datasets.append(DerivedDataset(
+        'Livejournal-inflated-{}'.format(factor),
+        'Livejournal-inflated-{}.bin'.format(factor),
+        DATASETS['Livejournal'],
+        inflate
+    ))
+    derived_datasets.append(DerivedDataset(
+        'Orkut-inflated-{}'.format(factor),
+        'Orkut-inflated-{}.bin'.format(factor),
+        DATASETS['Orkut'],
+        inflate
+    ))
+    derived_datasets.append(DerivedDataset(
+        'Glove-inflated-{}'.format(factor),
+        'Glove-inflated-{}.bin'.format(factor),
+        DATASETS['Glove-27-200'],
+        inflate
+    ))
+    derived_datasets.append(DerivedDataset(
+        'SIFT-100nn-0.5-inflated-{}'.format(factor),
+        'sift-100nn-0.5-inflated-{}.bin'.format(factor),
+        DATASETS['SIFT-100nn-0.5'],
+        inflate
+    ))
 
 
 for d in derived_datasets:
