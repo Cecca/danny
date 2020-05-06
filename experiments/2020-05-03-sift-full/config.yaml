@@ -9,50 +9,50 @@ environment:
   DANNY_RECALL: 0.8
 experiments:
 
-  - name: SIFT fixed
-    tags:
-      - glove
-      - cosine
-    environment:
-      DANNY_SEED:
-        - 131245
-    parameters:
-      --algorithm: ["one-round-lsh"]
-      --range: [0.5, 0.7,0.9]
-      -k: [3,4,5,6,7,8,9,10,11,12,13,14,15]
-      --sketch-bits: [0,64,128,256,512]
-    arguments:
-      - ["{{ dataset('SIFT-100nn-0.5-sample-200000') }}", "{{ dataset('SIFT-100nn-0.5-sample-200000') }}"]
+  # - name: SIFT fixed
+  #   tags:
+  #     - glove
+  #     - cosine
+  #   environment:
+  #     DANNY_SEED:
+  #       - 131245
+  #   parameters:
+  #     --algorithm: ["one-round-lsh"]
+  #     --range: [0.5, 0.7,0.9]
+  #     -k: [3,4,5,6,7,8,9,10,11,12,13,14,15]
+  #     --sketch-bits: [0,64,128,256,512]
+  #   arguments:
+  #     - ["{{ dataset('SIFT-100nn-0.5-sample-200000') }}", "{{ dataset('SIFT-100nn-0.5-sample-200000') }}"]
 
-  - name: Hu et al SIFT (small k)
-    tags:
-      - glove
-      - cosine
-    environment:
-      DANNY_SEED:
-        - 131245
-    parameters:
-      --algorithm: ["hu-et-al"]
-      --range: [0.5, 0.7,0.9]
-      -k: [3,4,5,6,7,8,9,10]
-      --sketch-bits: [0,64,128,256,512]
-    arguments:
-      - ["{{ dataset('SIFT-100nn-0.5-sample-200000') }}", "{{ dataset('SIFT-100nn-0.5-sample-200000') }}"]
+#   - name: Hu et al SIFT (small k)
+#     tags:
+#       - glove
+#       - cosine
+#     environment:
+#       DANNY_SEED:
+#         - 131245
+#     parameters:
+#       --algorithm: ["hu-et-al"]
+#       --range: [0.5, 0.7,0.9]
+#       -k: [3,4,5,6,7,8,9,10]
+#       --sketch-bits: [0,64,128,256,512]
+#     arguments:
+#       - ["{{ dataset('SIFT-100nn-0.5-sample-200000') }}", "{{ dataset('SIFT-100nn-0.5-sample-200000') }}"]
 
-  - name: SIFT Hu et al, large k
-    tags:
-      - glove
-      - cosine
-    environment:
-      DANNY_SEED:
-        - 131245
-    parameters:
-      --algorithm: ["hu-et-al"]
-      --range: [0.7,0.9]
-      -k: [11,12,13,14,15]
-      --sketch-bits: [0,64,128,256,512]
-    arguments:
-      - ["{{ dataset('SIFT-100nn-0.5-sample-200000') }}", "{{ dataset('SIFT-100nn-0.5-sample-200000') }}"]
+#   - name: SIFT Hu et al, large k
+#     tags:
+#       - glove
+#       - cosine
+#     environment:
+#       DANNY_SEED:
+#         - 131245
+#     parameters:
+#       --algorithm: ["hu-et-al"]
+#       --range: [0.7,0.9]
+#       -k: [11,12,13,14,15]
+#       --sketch-bits: [0,64,128,256,512]
+#     arguments:
+#       - ["{{ dataset('SIFT-100nn-0.5-sample-200000') }}", "{{ dataset('SIFT-100nn-0.5-sample-200000') }}"]
 
 
 {% for k in [3,4,5,6,7,8,9,10,11,12,13,14,15] %}
@@ -73,8 +73,8 @@ experiments:
     arguments:
       - ["{{ dataset('SIFT-100nn-0.5-sample-200000') }}", "{{ dataset('SIFT-100nn-0.5-sample-200000') }}"]
 
-{% endfor %}
-{% endfor %}
+# {% endfor %}
+# {% endfor %}
 
 
 
