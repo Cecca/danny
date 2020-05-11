@@ -307,7 +307,7 @@ fn main() {
         let baselines = Baselines::new(&config);
         let recall = baselines
             .recall(&args.left_path, &args.right_path, args.threshold, count)
-            .expect("Could not compute the recall! Missing entry in the baseline file?");
+            .unwrap_or(-1.0);
         let speedup = baselines
             .speedup(
                 &args.left_path,
@@ -315,7 +315,7 @@ fn main() {
                 args.threshold,
                 total_time as f64 / 1000.0,
             )
-            .expect("Could not compute the speedup! Missing entry in the baseline file?");
+            .unwrap_or(-1.0);
         info!(
             "Pairs above similarity {} are {} (time {:?}, recall {}, speedup {})",
             args.threshold, count, total_time_d, recall, speedup

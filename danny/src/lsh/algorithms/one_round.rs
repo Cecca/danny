@@ -217,6 +217,7 @@ where
                                 right_vectors.remove(&t).expect("missing right vectors");
                             let repetitions = hasher.repetitions();
                             let mut cnt = 0;
+                            info!("Starting {} repetitions", repetitions);
                             for rep in 0..repetitions {
                                 let _pg = ProfileGuard::new(logger.clone(), rep, 0, "repetition");
                                 let start = Instant::now();
