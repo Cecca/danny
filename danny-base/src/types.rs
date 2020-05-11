@@ -16,9 +16,19 @@ impl Into<u64> for ElementId {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Abomonation, Default)]
+#[derive(Serialize, Deserialize, Clone, Abomonation, Default)]
 pub struct Vector {
     data: Vec<f32>,
+}
+
+impl std::fmt::Debug for Vector {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "Vector({:?}..)",
+            self.data.iter().take(5).collect::<Vec<&f32>>()
+        )
+    }
 }
 
 impl Vector {

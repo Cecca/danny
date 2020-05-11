@@ -19,7 +19,7 @@ use std::path::PathBuf;
 fn rotation_matrix<R: Rng>(n: usize, rng: &mut R) -> Vec<Vec<f32>> {
     let mut out = Vec::new();
     let scale = 1.0 / (n as f64).sqrt();
-    let normal = Normal::new(0.0, 0.0);
+    let normal = Normal::new(0.0, 1.0);
     for _ in 0..n {
         out.push(
             normal
@@ -84,7 +84,7 @@ fn run_cosine(path: &PathBuf, output: &PathBuf, factor: usize, seed: u64) {
         |_| true,
         |_, v| {
             for rotation in rotations.iter() {
-                let new_vec = Vector::new(multiply(v.data(), rotation));
+                let new_vec = Vector::normalized(multiply(v.data(), rotation));
                 data.push((cnt, new_vec));
                 cnt += 1;
             }
