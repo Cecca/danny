@@ -1,0 +1,25 @@
+---
+environment:
+  DANNY_THREADS: 8
+  DANNY_HOSTS: "sss00:2001,sss01:2001,sss02:2001,sss03:2001,sss04:2001"
+  DANNY_BASELINES_PATH: "/mnt/fast_storage/users/mcec/baselines.csv"
+  DANNY_DATA_DIR: /mnt/fast_storage/users/mcec
+  DANNY_SKETCH_EPSILON: 0.01
+  DANNY_REPETITION_BATCH: 200000
+experiments:
+
+  - name: SIFT
+    environment:
+      DANNY_SEED:
+        - 131245
+      DANNY_RECALL: [0.5, 0.8, 0.9]
+    parameters:
+      --algorithm: ["one-round-lsh", "two-round-lsh", "hu-et-al"]
+      --range: [0.5, 0.7, 0.9]
+      --measure: cosine
+      -k: 7
+      -l: 7
+      --sketch-bits: 0
+    arguments:
+      - ["{{ dataset('SIFT-100nn-0.5-sample-200000') }}", "{{ dataset('SIFT-100nn-0.5-sample-200000') }}"]
+
