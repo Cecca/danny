@@ -16,7 +16,6 @@ experiments:
     parameters:
       --algorithm: ["one-round-lsh", "two-round-lsh", "hu-et-al"]
       --range: [0.5, 0.7, 0.9]
-      --measure: cosine
       -k: 7
       -l: 7
       --sketch-bits: 0
