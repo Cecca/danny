@@ -129,11 +129,6 @@ impl<K: Ord, V> Joiner<K, V> {
         self.sort_inner();
         let iter = JoinIter::new(&self.left, &self.right);
         for (l_slice, r_slice) in iter {
-            info!(
-                "Joining bucket of size {} x {}",
-                l_slice.len(),
-                r_slice.len()
-            );
             f(&l_slice[0].0, l_slice, r_slice);
         }
     }
