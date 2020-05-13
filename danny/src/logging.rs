@@ -129,18 +129,14 @@ impl std::fmt::Display for NetworkSummary {
 
 impl NetworkSummary {
     pub fn report(&self, experiment: &mut Experiment) {
-        // for (iface, diff) in self.interfaces.iter() {
-        // experiment.append(
-        //     "network",
-        //     row!(
-        //         "hostname" => self.hostname.clone(),
-        //         "interface" => iface.clone(),
-        //         "transmitted" => diff.transmitted,
-        //         "received" => diff.received
-        //     ),
-        // );
-        // }
-        unimplemented!()
+        for (iface, diff) in self.interfaces.iter() {
+            experiment.append_network_info(
+                self.hostname.clone(),
+                iface.clone(),
+                diff.transmitted,
+                diff.received,
+            );
+        }
     }
 
     /// sets up a small dataflow to exchange information about the network exchanges
@@ -567,81 +563,3 @@ impl FrozenExecutionSummary {
         // }
     }
 }
-
-// pub struct ProgressLogger {
-//     start: Instant,
-//     last: Instant,
-//     interval: Duration,
-//     count: u64,
-//     items: String,
-//     expected: Option<u64>,
-// }
-
-// fn f64_to_strtime(seconds: f64) -> String {
-//     if seconds >= 60.0 * 60.0 {
-//         format!("{:.2} hours", seconds / (60.0 * 60.0))
-//     } else if seconds >= 60.0 {
-//         format!("{:.2} minutes", seconds / 60.0)
-//     } else {
-//         format!("{:.2} seconds", seconds)
-//     }
-// }
-
-// impl ProgressLogger {
-//     pub fn new(interval: Duration, items: String, expected: Option<u64>) -> Self {
-//         ProgressLogger {
-//             start: Instant::now(),
-//             last: Instant::now(),
-//             interval,
-//             count: 0,
-//             items,
-//             expected,
-//         }
-//     }
-
-//     pub fn add(&mut self, cnt: u64) {
-//         self.count += cnt;
-//         let now = Instant::now();
-//         if now - self.last > self.interval {
-//             let elapsed = now - self.start;
-//             let elapsed = elapsed.as_secs() as f64 + f64::from(elapsed.subsec_millis()) / 1000.0;
-//             let throughput = self.count as f64 / elapsed;
-//             match self.expected {
-//                 Some(expected) => {
-//                     let estimated = (expected - self.count) as f64 / throughput;
-//                     info!(
-//                         "{:?} :: {} {} :: {} {}/sec :: estimated {} ({})",
-//                         elapsed,
-//                         self.count,
-//                         self.items,
-//                         throughput,
-//                         self.items,
-//                         f64_to_strtime(estimated),
-//                         proc_mem!()
-//                     )
-//                 }
-//                 None => info!(
-//                     "{:?} :: {} {} :: {} {}/sec ({})",
-//                     elapsed,
-//                     self.count,
-//                     self.items,
-//                     throughput,
-//                     self.items,
-//                     proc_mem!()
-//                 ),
-//             }
-//             self.last = now;
-//         }
-//     }
-
-//     pub fn done(self) {
-//         let now = Instant::now();
-//         let elapsed = now - self.start;
-//         let elapsed = elapsed.as_secs() as f64 + f64::from(elapsed.subsec_millis()) / 1000.0;
-//         let throughput = self.count as f64 / elapsed;
-//         info!(
-//             "Completed {:?} :: {} {} :: {} {}/sec",
-//             elapsed, self.count, self.items, throughput, self.items
-//         );
-//     }
-// }

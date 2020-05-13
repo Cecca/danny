@@ -432,7 +432,7 @@ fn count_distinct<G: Scope>(stream: &Stream<G, (u64, u64)>) -> Stream<G, usize> 
 
 fn run(left_path: PathBuf, right_path: PathBuf, range: f64, num_groups: u32, config: Config) {
     unimplemented!("Report using SQLite");
-    let mut experiment = Experiment::from_env(&config);
+    let mut experiment = Experiment::from_config(config.clone());
     // .tag("algorithm", "Vernica_join")
     // .tag("num_groups", num_groups)
     // .tag("left", left_path.to_str().unwrap())
@@ -554,7 +554,7 @@ fn main() {
     let config = Config::get();
     init_logging(&config);
     let timeout = Duration::from_secs(60 * 60);
-    let mut timed_out_experiment = Experiment::from_env(&config);
+    let mut timed_out_experiment = Experiment::from_config(config.clone());
     unimplemented!("append SQLite tables");
     // .tag("algorithm", "Vernica_join")
     // .tag("num_groups", num_groups)

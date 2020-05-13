@@ -1,11 +1,7 @@
-// extern crate bzip2;
-
 use crate::config::*;
 use crate::version;
-// use bzip2::read::BzDecoder;
-// use bzip2::write::BzEncoder;
-// use bzip2::Compression;
 use chrono::prelude::*;
+use rusqlite::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -14,25 +10,27 @@ use std::io::BufReader;
 use std::io::Write;
 use std::path::PathBuf;
 
-#[derive(Serialize)]
 pub struct Experiment {
-    // tags: HashMap<String, Value>,
-// tables: HashMap<String, Vec<HashMap<String, Value>>>,
-}
-
-impl Default for Experiment {
-    fn default() -> Experiment {
-        Experiment::new()
-    }
+    date: DateTime<Utc>,
+    config: Config,
+    // Table with Counter name, step, and count
+    step_counters: Vec<(String, u32, u64)>,
+    // Hostname, interface, transmitted, received
+    network: Vec<(String, String, usize, usize)>,
+    output_size: Option<usize>,
+    total_time_ms: Option<u64>,
 }
 
 impl Experiment {
-    pub fn new() -> Experiment {
-        unimplemented!("Reimplement")
-    }
-
-    pub fn from_config(config: &Config) -> Experiment {
-        unimplemented!()
+    pub fn from_config(config: Config) -> Experiment {
+        Self {
+            date: Utc::now(),
+            config,
+            step_counters: Vec::new(),
+            network: Vec::new(),
+            output_size: None,
+            total_time_ms: None,
+        }
         // let experiment = Experiment::new()
         //     .tag("threads_per_worker", config.threads)
         //     .tag("num_hosts", config.get_num_hosts())
@@ -68,37 +66,39 @@ impl Experiment {
         // // }
     }
 
-    pub fn from_env(config: &Config) -> Experiment {
-        panic!("to remove")
-        // Experiment::new()
-        //     .tag("threads_per_worker", config.threads)
-        //     .tag("hosts", config.hosts.clone())
-        //     .tag("num_hosts", config.get_num_hosts())
-        //     .tag("total_threads", config.get_total_workers())
-        //     .tag("seed", config.seed)
-        //     .tag("sketch_epsilon", config.sketch_epsilon)
-        //     .tag("git_revision", version::short_sha())
-        //     .tag("git_commit_date", version::commit_date())
+    pub fn set_output_size(&mut self, output_size: usize) {
+        self.output_size.replace(output_size);
     }
 
-    // pub fn tag<T>(mut self, name: &str, value: T) -> Self
-    // where
-    //     T: Into<Value>,
-    // {
-    //     self.tags.insert(name.to_owned(), value.into());
-    //     self
-    // }
+    pub fn set_total_time_ms(&mut self, total_time_ms: u64) {
+        self.total_time_ms.replace(total_time_ms);
+    }
+    pub fn append_step_counter(&mut self, kind: String, step: u32, count: u64) {
+        self.step_counters.push((kind, step, count));
+    }
 
-    // pub fn add_tag<T>(&mut self, name: &str, value: T)
-    // where
-    //     T: Into<Value>,
-    // {
-    //     self.tags.insert(name.to_owned(), value.into());
-    // }
+    pub fn append_network_info(
+        &mut self,
+        host: String,
+        iface: String,
+        transmitted: usize,
+        received: usize,
+    ) {
+        self.network.push((host, iface, transmitted, received));
+    }
 
-    // pub fn append(&mut self, table: &str, row: HashMap<String, Value>) {
-    //     unimplemented!()
-    // }
+    fn sha(&self) -> String {
+        use sha2::Digest;
+        let datestr = self.date.to_rfc2822();
+        let mut sha = sha2::Sha256::new();
+        sha.input(datestr);
+        // I know that the following is implementation-dependent, but I just need
+        // to have a identifier to join different tables created in this run.
+        sha.input(format!("{:?}", self.config));
+        sha.input(format!("{:?}", self.step_counters));
+
+        format!("{:x}", sha.result())[..6].to_owned()
+    }
 
     pub fn save(self) {
         unimplemented!()
@@ -115,101 +115,55 @@ impl Experiment {
         // file.write_all(b"\n").expect("Error writing final newline");
         // info!("Results file written");
     }
-
-    // fn get_header_and_writer<'a, I>(
-    //     table_name: &str,
-    //     header_names: Option<I>,
-    // ) -> (Vec<String>, BzEncoder<File>)
-    // where
-    //     I: Iterator<Item = &'a String>,
-    // {
-    //     // Test if the csv file exists
-    //     let mut path = PathBuf::new();
-    //     path.set_file_name(table_name);
-    //     path.set_extension("csv.bz2");
-    //     if path.exists() {
-    //         // read the header
-    //         let header: Vec<String> = {
-    //             let f = File::open(&path).expect("Error opening csv file");
-    //             let reader = BzDecoder::new(f);
-    //             let reader = BufReader::new(reader);
-    //             reader
-    //                 .lines()
-    //                 .next()
-    //                 .expect("empty file")
-    //                 .expect("error reading first line")
-    //                 .split(",")
-    //                 .map(|s| s.trim().to_owned())
-    //                 .collect()
-    //         };
-    //         let file = OpenOptions::new()
-    //             .append(true)
-    //             .open(path)
-    //             .expect("Error opening file");
-    //         let writer = BzEncoder::new(file, Compression::Best);
-    //         // let writer = BufWriter::new(file);
-    //         (header, writer)
-    //     } else {
-    //         // write the header
-    //         let file = OpenOptions::new()
-    //             .create(true)
-    //             .write(true)
-    //             .open(path)
-    //             .expect("Error opening file to write header");
-    //         let tmp: Vec<String> = header_names
-    //             .expect("Header names should be provided!")
-    //             .cloned()
-    //             .collect();
-    //         let header = tmp.join(",");
-    //         let mut writer = BzEncoder::new(file, Compression::Best);
-    //         writeln!(writer, "{}", header).expect("error writing header");
-    //         writer.flush().expect("error flushing file");
-    //         drop(writer);
-    //         Self::get_header_and_writer::<I>(table_name, None)
-    //     }
-    // }
-
-    pub fn save_csv(self) {
-        unimplemented!("Use SQLite");
-        // // serialize tables one at a time
-        // for (name, table) in self.tables.iter() {
-        //     let (header, mut writer) = Self::get_header_and_writer(
-        //         name,
-        //         Some(self.tags.keys().chain(table.iter().next().unwrap().keys())),
-        //     );
-        //     for row in table {
-        //         let mut names = header.iter();
-        //         let mut opt_col_name = names.next();
-        //         while let Some(col_name) = opt_col_name {
-        //             let value = row
-        //                 .get(col_name)
-        //                 .or_else(|| self.tags.get(col_name))
-        //                 .unwrap_or_else(|| panic!("Cannot find value for key {}", col_name));
-        //             let str_value = serde_json::to_string(value).expect("Error converting value");
-        //             write!(writer, "{}", str_value).expect("error writing value");
-        //             opt_col_name = names.next();
-        //             if opt_col_name.is_some() {
-        //                 //write the comma
-        //                 write!(writer, ",").expect("error writing comma");
-        //             }
-        //         }
-        //         writeln!(writer, "").expect("error writing newline");
-        //     }
-        //     writer.flush().expect("error flushing file");
-        //     drop(writer);
-        // }
-    }
 }
 
-#[macro_export]
-macro_rules! row(
-    { $($key:expr => $value:expr),+ } => {
-        {
-            let mut m: HashMap<String, Value> = ::std::collections::HashMap::new();
-                $(
-                    m.insert($key.to_owned(), $value.into());
-                )+
-            m
-        }
-    };
-);
+fn create_tables_if_needed(conn: &Connection) {
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS result (
+            sha           TEXT PRIMARY KEY,
+            date          TEXT NOT NULL,
+            threshold     REAL NOT NULL,
+            algorithm     TEXT NOT NULL,
+            k             INTEGER,
+            k2            INTEGER,
+            sketch_bits   INTEGER,
+            threads       INTEGER,
+            hosts         TEXT NOT NULL,
+            sketch_epsilon  REAL NOT NULL,
+            required_recall  REAL NOT NULL,
+            no_dedup      BOOL,
+            no_verify     BOOL,
+            repetition_batch    INTEGER,
+            left_path      TEXT NOT NULL,
+            right_path      TEXT NOT NULL,
+
+            total_time_ms    INTEGER,
+            output_size      INTEGER,
+            recall           REAL,
+            speedup          REAL
+            )",
+        params![],
+    )
+    .expect("Error creating main table");
+
+    // conn.execute(
+    //     "CREATE VIEW IF NOT EXISTS main_recent AS
+    //     SELECT sha, max(date) AS date, seed, threads, hosts, dataset, algorithm, parameters, diameter, total_time_ms
+    //     FROM main
+    //     GROUP BY seed, threads, hosts, dataset, algorithm, parameters",
+    //     params![]
+    // )
+    // .expect("Error creating the main_recent view");
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS counters (
+            sha       TEXT NOT NULL,
+            kind   TEXT NOT NULL,
+            step      INTEGER NOT NULL,
+            count     INTEGER NOT NULL,
+            FOREIGN KEY (sha) REFERENCES main (sha)
+            )",
+        params![],
+    )
+    .expect("error creating counters table");
+}
