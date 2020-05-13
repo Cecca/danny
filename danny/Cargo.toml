@@ -29,6 +29,7 @@ abomonation = "0.7"
 abomonation_derive = "0.3"
 rusqlite = "0.23"
 argh = "0.1"
+base64 = "0.11"
 clap = "2.32" # FIXME remove this dependency
 envy = "0.3"  # FIXME remove this dependency
 serde = "1"
