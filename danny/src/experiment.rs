@@ -16,9 +16,9 @@ pub struct Experiment {
     // Table with Counter name, step, and count
     step_counters: Vec<(String, u32, u64)>,
     // Hostname, interface, transmitted, received
-    network: Vec<(String, String, usize, usize)>,
-    output_size: Option<usize>,
-    total_time_ms: Option<u64>,
+    network: Vec<(String, String, u32, u32)>,
+    output_size: Option<u32>,
+    total_time_ms: Option<u32>,
 }
 
 impl Experiment {
@@ -66,12 +66,12 @@ impl Experiment {
         // // }
     }
 
-    pub fn set_output_size(&mut self, output_size: usize) {
+    pub fn set_output_size(&mut self, output_size: u32) {
         self.output_size.replace(output_size);
     }
 
     pub fn set_total_time_ms(&mut self, total_time_ms: u64) {
-        self.total_time_ms.replace(total_time_ms);
+        self.total_time_ms.replace(total_time_ms as u32);
     }
     pub fn append_step_counter(&mut self, kind: String, step: u32, count: u64) {
         self.step_counters.push((kind, step, count));
@@ -84,7 +84,7 @@ impl Experiment {
         transmitted: usize,
         received: usize,
     ) {
-        self.network.push((host, iface, transmitted, received));
+        self.network.push((host, iface, transmitted as u32, received as u32));
     }
 
     fn sha(&self) -> String {
@@ -99,21 +99,94 @@ impl Experiment {
 
         format!("{:x}", sha.result())[..6].to_owned()
     }
+    fn get_db_path() -> std::path::PathBuf {
+        let mut path = std::env::home_dir().expect("unable to get home directory");
+        path.push("danny-results.sqlite");
+        path
+    }
 
     pub fn save(self) {
-        unimplemented!()
-        // let json_str =
-        //     serde_json::to_string(&self).expect("Error converting the experiment to string");
-        // info!("Writing result file");
-        // let mut file = OpenOptions::new()
-        //     .create(true)
-        //     .append(true)
-        //     .open("results.json")
-        //     .expect("Error opening file");
-        // file.write_all(json_str.as_bytes())
-        //     .expect("Error writing data");
-        // file.write_all(b"\n").expect("Error writing final newline");
-        // info!("Results file written");
+        let sha = self.sha();
+        let dbpath = Self::get_db_path();
+        let mut conn = Connection::open(dbpath).expect("error connecting to the database");
+        create_tables_if_needed(&conn);
+
+        let recall: Option<f64> = None;
+        let speedup: Option<f64> = None;
+
+        let tx = conn.transaction().expect("problem starting transaction");
+
+        {
+            // Insert into main table
+            tx.execute(
+                "INSERT INTO main (
+                    sha,
+                    date,
+                    threshold,
+                    algorithm,
+                    k,
+                    k2,
+                    sketch_bits,
+                    threads,
+                    hosts,
+                    sketch_epsilon,
+                    required_recall,
+                    no_dedup,
+                    no_verify,
+                    repetition_batch,
+                    left_path,
+                    right_path,
+
+                    total_time_ms,
+                    output_size,
+                    recall,
+                    speedup
+                )
+                 VALUES (
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20
+                 )",
+                params![
+                    sha, 
+                    self.date.to_rfc3339(),
+                    self.config.threshold,
+                    self.config.algorithm,
+                    self.config.k.map(|k| k as u32),
+                    self.config.k2.map(|k2| k2 as u32),
+                    self.config.sketch_bits as u32,
+                    self.config.threads as u32,
+                    self.config.hosts_string(),
+                    self.config.sketch_epsilon,
+                    self.config.recall,
+                    self.config.no_dedup,
+                    self.config.no_verify,
+                    self.config.repetition_batch as u32,
+                    self.config.left_path,
+                    self.config.right_path,
+                    self.total_time_ms,
+                    self.output_size,
+                    recall,
+                    speedup
+                    ],
+            )
+            .expect("error inserting into main table");
+
+            // TODO Insert into counters table
+            // let mut stmt = tx
+            //     .prepare(
+            //         "INSERT INTO counters ( sha, kind, step, count
+            //         ) VALUES ( ?1, ?2, ?3, ?45 )",
+            //     )
+            //     .expect("failed to prepare statement");
+            // for (kind, step, count) in self.step_counters.iter() {
+            //     stmt.execute(params![sha, kind, step, *count as u32])
+            //         .expect("Failure to insert into counters table");
+            // }
+
+            // TODO: insert into network table
+        }
+
+        tx.commit().expect("error committing insertions");
+        conn.close().expect("error inserting into the database");
     }
 }
 

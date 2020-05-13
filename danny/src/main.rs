@@ -318,7 +318,7 @@ fn main() {
             "pairs above similarity {} are {} (time {:?})",
             config.threshold, count, total_time_d
         );
-        experiment.set_output_size(count);
+        experiment.set_output_size(count as u32);
         experiment.set_total_time_ms(total_time);
         experiment.save();
     }
