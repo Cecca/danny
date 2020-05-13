@@ -9,21 +9,14 @@ extern crate env_logger;
 extern crate log_panics;
 #[macro_use]
 extern crate serde_derive;
-extern crate envy;
 extern crate serde;
-#[macro_use]
-extern crate clap;
 #[macro_use]
 extern crate abomonation_derive;
 extern crate chrono;
 extern crate core;
-extern crate probabilistic_collections;
 extern crate rand;
 extern crate rand_xorshift;
-extern crate serde_json;
 extern crate siphasher;
-extern crate smallbitvec;
-extern crate statrs;
 extern crate timely;
 
 #[macro_use]

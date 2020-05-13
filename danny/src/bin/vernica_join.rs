@@ -17,7 +17,6 @@ use danny::logging::*;
 use danny::operators::Route;
 use danny_base::measure::*;
 use danny_base::types::*;
-use serde_json::Value;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -432,12 +431,13 @@ fn count_distinct<G: Scope>(stream: &Stream<G, (u64, u64)>) -> Stream<G, usize> 
 }
 
 fn run(left_path: PathBuf, right_path: PathBuf, range: f64, num_groups: u32, config: Config) {
-    let mut experiment = Experiment::from_env(&config)
-        .tag("algorithm", "Vernica_join")
-        .tag("num_groups", num_groups)
-        .tag("left", left_path.to_str().unwrap())
-        .tag("right", right_path.to_str().unwrap())
-        .tag("threshold", range);
+    unimplemented!("Report using SQLite");
+    let mut experiment = Experiment::from_env(&config);
+    // .tag("algorithm", "Vernica_join")
+    // .tag("num_groups", num_groups)
+    // .tag("left", left_path.to_str().unwrap())
+    // .tag("right", right_path.to_str().unwrap())
+    // .tag("threshold", range);
 
     let start = Instant::now();
     let left_path_2 = left_path.clone();
@@ -517,11 +517,12 @@ fn run(left_path: PathBuf, right_path: PathBuf, range: f64, num_groups: u32, con
             "Pairs above similarity {} are {} (time {:?}, recall {}, speedup {})",
             range, matching_count, total_time_d, recall, speedup
         );
-        experiment.append(
-            "result",
-            row!("timed_out" => false, "output_size" => matching_count, "total_time_ms" => total_time, "recall" => recall, "speedup" => speedup),
-        );
-        experiment.save();
+        // experiment.append(
+        //     "result",
+        //     row!("timed_out" => false, "output_size" => matching_count, "total_time_ms" => total_time, "recall" => recall, "speedup" => speedup),
+        // );
+        // experiment.save();
+        unimplemented!("use sqlite")
     }
 }
 
@@ -553,16 +554,17 @@ fn main() {
     let config = Config::get();
     init_logging(&config);
     let timeout = Duration::from_secs(60 * 60);
-    let mut timed_out_experiment = Experiment::from_env(&config)
-        .tag("algorithm", "Vernica_join")
-        .tag("num_groups", num_groups)
-        .tag("left", input_left.to_str().unwrap())
-        .tag("right", input_right.to_str().unwrap())
-        .tag("threshold", range);
-    timed_out_experiment.append(
-        "result",
-        row!("timed_out" => true, "total_time_ms" => timeout.as_millis() as u64),
-    );
+    let mut timed_out_experiment = Experiment::from_env(&config);
+    unimplemented!("append SQLite tables");
+    // .tag("algorithm", "Vernica_join")
+    // .tag("num_groups", num_groups)
+    // .tag("left", input_left.to_str().unwrap())
+    // .tag("right", input_right.to_str().unwrap())
+    // .tag("threshold", range);
+    // timed_out_experiment.append(
+    //     "result",
+    //     row!("timed_out" => true, "total_time_ms" => timeout.as_millis() as u64),
+    // );
 
     start_terminator(timeout, move || {
         timed_out_experiment.save();

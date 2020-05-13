@@ -1,7 +1,6 @@
 use crate::config::*;
 use crate::experiment::Experiment;
 use env_logger::Builder;
-use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
 use std::hash::Hash;
@@ -130,17 +129,18 @@ impl std::fmt::Display for NetworkSummary {
 
 impl NetworkSummary {
     pub fn report(&self, experiment: &mut Experiment) {
-        for (iface, diff) in self.interfaces.iter() {
-            experiment.append(
-                "network",
-                row!(
-                    "hostname" => self.hostname.clone(),
-                    "interface" => iface.clone(),
-                    "transmitted" => diff.transmitted,
-                    "received" => diff.received
-                ),
-            );
-        }
+        // for (iface, diff) in self.interfaces.iter() {
+        // experiment.append(
+        //     "network",
+        //     row!(
+        //         "hostname" => self.hostname.clone(),
+        //         "interface" => iface.clone(),
+        //         "transmitted" => diff.transmitted,
+        //         "received" => diff.received
+        //     ),
+        // );
+        // }
+        unimplemented!()
     }
 
     /// sets up a small dataflow to exchange information about the network exchanges
@@ -501,69 +501,70 @@ pub struct FrozenExecutionSummary {
 }
 
 /// Abstracts boilerplate code in dumping tables to the experiment
-macro_rules! append_step_counter {
-    ( $self: ident, $experiment: ident, $step:expr, $name:ident ) => {
-        $self.$name.iter().find(|(s, _)| s == $step).map(|(_, count)| {
-            $experiment.append(
-                "step_counters",
-                row!("step" => *$step, "worker" => $self.worker_id, "kind" => stringify!($name), "count" => *count),
-            );
-        });
-    };
-}
+// macro_rules! append_step_counter {
+//     ( $self: ident, $experiment: ident, $step:expr, $name:ident ) => {
+//         $self.$name.iter().find(|(s, _)| s == $step).map(|(_, count)| {
+//             // $experiment.append(
+//             //     "step_counters",
+//             //     row!("step" => *$step, "worker" => $self.worker_id, "kind" => stringify!($name), "count" => *count),
+//             // );
+//         });
+//     };
+// }
 
 impl FrozenExecutionSummary {
     pub fn add_to_experiment(&self, experiment: &mut Experiment) {
-        let mut steps = std::collections::HashSet::new();
-        steps.extend(self.load.iter().map(|p| p.0));
-        steps.extend(self.received_hashes.iter().map(|p| p.0));
-        steps.extend(self.sketch_discarded.iter().map(|p| p.0));
-        steps.extend(self.distinct_pairs.iter().map(|p| p.0));
-        steps.extend(self.duplicates_discarded.iter().map(|p| p.0));
-        steps.extend(self.generated_pairs.iter().map(|p| p.0));
-        steps.extend(self.generated_hashes.iter().map(|p| p.0));
-        for step in steps.iter() {
-            append_step_counter!(self, experiment, step, load);
-            append_step_counter!(self, experiment, step, received_hashes);
-            append_step_counter!(self, experiment, step, sketch_discarded);
-            append_step_counter!(self, experiment, step, distinct_pairs);
-            append_step_counter!(self, experiment, step, duplicates_discarded);
-            append_step_counter!(self, experiment, step, generated_pairs);
-            append_step_counter!(self, experiment, step, generated_hashes);
-        }
-        let mut hist = std::collections::BTreeMap::new();
-        for (level, count) in self.adaptive_histogram.iter() {
-            experiment.append(
-                "adaptive_histogram",
-                row!("level" => *level, "count" => *count, "worker" => self.worker_id),
-            );
-            hist.insert(*level, *count);
-        }
-        if !hist.is_empty() {
-            info!(" Adaptive hist: {:?}", hist);
-            info!(" Points with no collisions: {}", self.adaptive_no_collision);
-            info!(" Sampled points: {}", self.adaptive_sampled_points);
-            experiment.append(
-                "adaptive_counts",
-                row!("count" => self.adaptive_no_collision, "name" => "no_collision", "worker" => self.worker_id),
-            );
-            experiment.append(
-                "adaptive_counts",
-                row!("count" => self.adaptive_sampled_points, "name" => "sampled_points", "worker" => self.worker_id),
-            );
-        }
-        for ((step, depth, name), duration) in self.profile.iter() {
-            experiment.append(
-                "profile",
-                row!(
-                    "step" => *step,
-                    "depth" => *depth,
-                    "name" => name.clone(),
-                    "duration" => duration.as_millis() as u64,
-                    "worker" => self.worker_id
-                ),
-            );
-        }
+        unimplemented!("use sqlite")
+        // let mut steps = std::collections::HashSet::new();
+        // steps.extend(self.load.iter().map(|p| p.0));
+        // steps.extend(self.received_hashes.iter().map(|p| p.0));
+        // steps.extend(self.sketch_discarded.iter().map(|p| p.0));
+        // steps.extend(self.distinct_pairs.iter().map(|p| p.0));
+        // steps.extend(self.duplicates_discarded.iter().map(|p| p.0));
+        // steps.extend(self.generated_pairs.iter().map(|p| p.0));
+        // steps.extend(self.generated_hashes.iter().map(|p| p.0));
+        // for step in steps.iter() {
+        //     append_step_counter!(self, experiment, step, load);
+        //     append_step_counter!(self, experiment, step, received_hashes);
+        //     append_step_counter!(self, experiment, step, sketch_discarded);
+        //     append_step_counter!(self, experiment, step, distinct_pairs);
+        //     append_step_counter!(self, experiment, step, duplicates_discarded);
+        //     append_step_counter!(self, experiment, step, generated_pairs);
+        //     append_step_counter!(self, experiment, step, generated_hashes);
+        // }
+        // let mut hist = std::collections::BTreeMap::new();
+        // for (level, count) in self.adaptive_histogram.iter() {
+        //     // experiment.append(
+        //     //     "adaptive_histogram",
+        //     //     row!("level" => *level, "count" => *count, "worker" => self.worker_id),
+        //     // );
+        //     hist.insert(*level, *count);
+        // }
+        // if !hist.is_empty() {
+        //     info!(" Adaptive hist: {:?}", hist);
+        //     info!(" Points with no collisions: {}", self.adaptive_no_collision);
+        //     info!(" Sampled points: {}", self.adaptive_sampled_points);
+        //     // experiment.append(
+        //     //     "adaptive_counts",
+        //     //     row!("count" => self.adaptive_no_collision, "name" => "no_collision", "worker" => self.worker_id),
+        //     // );
+        //     // experiment.append(
+        //     //     "adaptive_counts",
+        //     //     row!("count" => self.adaptive_sampled_points, "name" => "sampled_points", "worker" => self.worker_id),
+        //     // );
+        // }
+        // for ((step, depth, name), duration) in self.profile.iter() {
+        //     // experiment.append(
+        //     //     "profile",
+        //     //     row!(
+        //     //         "step" => *step,
+        //     //         "depth" => *depth,
+        //     //         "name" => name.clone(),
+        //     //         "duration" => duration.as_millis() as u64,
+        //     //         "worker" => self.worker_id
+        //     //     ),
+        //     // );
+        // }
     }
 }
 

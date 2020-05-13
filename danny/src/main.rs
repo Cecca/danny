@@ -15,7 +15,6 @@ use danny_base::lsh::*;
 use danny_base::measure::*;
 use danny_base::sketch::*;
 use danny_base::types::*;
-use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::Debug;
 
@@ -316,10 +315,11 @@ fn main() {
             "Pairs above similarity {} are {} (time {:?}, recall {}, speedup {})",
             config.threshold, count, total_time_d, recall, speedup
         );
-        experiment.append(
-            "result",
-            row!("output_size" => count, "total_time_ms" => total_time, "recall" => recall, "speedup" => speedup),
-        );
-        experiment.save_csv();
+        // experiment.append(
+        //     "result",
+        //     row!("output_size" => count, "total_time_ms" => total_time, "recall" => recall, "speedup" => speedup),
+        // );
+        // experiment.save_csv();
+        unimplemented!("use sqlite")
     }
 }
