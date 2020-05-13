@@ -1,3 +1,4 @@
+use argh::FromArgs;
 use core::any::Any;
 use rand::rngs::StdRng;
 use rand::RngCore;
@@ -225,79 +226,68 @@ impl Config {
     }
 }
 
+/// command line configuration for DANNY
+#[derive(FromArgs)]
 pub struct CmdlineConfig {
+    /// the similarity threshold
+    #[argh(option)]
     pub threshold: f64,
-    pub left_path: String,
-    pub right_path: String,
+
+    /// the algortihm to be used
+    #[argh(option)]
     pub algorithm: String,
+
+    /// the value of k for lsh algorithms
+    #[argh(option)]
     pub k: Option<usize>,
+
+    /// the value of k2 for lsh algorithms
+    #[argh(option)]
     pub k2: Option<usize>,
-    pub sketch_bits: Option<usize>,
+
+    /// the number of sketch bits for lsh algorithms
+    #[argh(option, default = "5")]
+    pub sketch_bits: usize,
+
+    /// don't set this manually
+    #[argh(option)]
+    pub process_id: Option<usize>,
+
+    /// number of threads to use
+    #[argh(option)]
+    pub threads: usize,
+
+    /// the hosts to run on
+    #[argh(option)]
+    pub hosts: Vec<String>,
+
+    /// the seed for the random number generator
+    #[argh(option)]
+    pub seed: u64,
+
+    /// the number of bits to use for sketches
+    #[argh(option)]
+    pub sketch_epsilon: f64,
+
+    /// the required recall for lsh algorithms
+    #[argh(option)]
+    pub recall: f64,
+
+    // #[serde(default = "Config::default_no_dedup")]
+    // pub no_dedup: bool,
+    // #[serde(default = "Config::default_no_verify")]
+    // pub no_verify: bool,
+    /// the left dataset to be joined
+    #[argh(positional)]
+    pub left_path: String,
+
+    /// the right dataset to be joined
+    #[argh(positional)]
+    pub right_path: String,
 }
 
 impl CmdlineConfig {
     pub fn get() -> CmdlineConfig {
-        let matches = clap_app!(danny =>
-            (version: "0.1")
-            (author: "Matteo Ceccarello <mcec@itu.dk>")
-            (about: format!("Distributed Approximate Near Neighbours, Yo!\n\n{}", Config::help_str()).as_ref())
-            (@arg ALGORITHM: -a --algorithm +takes_value "The algorithm to be used: (fixed-lsh, all-2-all)")
-            // (@arg MEASURE: -m --measure +required +takes_value "The similarity measure to be used")
-            (@arg K: -k +takes_value "The number of concatenations of the hash function")
-            (@arg L: -l +takes_value "The number of concatenations of the internal hash function")
-            (@arg THRESHOLD: -r --range +required +takes_value "The similarity threshold")
-            (@arg BITS: --("sketch-bits") +takes_value "The number of bits to use for sketching")
-            (@arg LEFT: +required "Path to the left hand side of the join")
-            (@arg RIGHT: +required "Path to the right hand side of the join")
-        )
-        .get_matches();
-
-        let threshold: f64 = matches
-            .value_of("THRESHOLD")
-            .expect("range is a required argument")
-            .parse()
-            .expect("Cannot convert the threshold into a f64");
-        let left_path = matches
-            .value_of("LEFT")
-            .expect("left is a required argument")
-            .to_owned();
-        let right_path = matches
-            .value_of("RIGHT")
-            .expect("right is a required argument")
-            .to_owned();
-        let algorithm = matches
-            .value_of("ALGORITHM")
-            .unwrap_or("all-2-all")
-            .to_owned();
-        let k2 = matches.value_of("L").map(|k_str| {
-            let _k = k_str
-                .parse::<usize>()
-                .expect("L should be an unsigned integer");
-            _k
-        });
-        let k = matches.value_of("K").map(|k_str| {
-            let _k = k_str
-                .parse::<usize>()
-                .expect("k should be an unsigned integer");
-            _k
-        });
-        let sketch_bits = matches.value_of("BITS").map(|bits_str| {
-            bits_str
-                .parse::<usize>()
-                .expect("The number of bits should be an integer")
-        });
-        CmdlineConfig {
-            threshold,
-            left_path,
-            right_path,
-            algorithm,
-            k,
-            k2,
-            sketch_bits,
-        }
-    }
-
-    pub fn get_sketch_bits(&self) -> usize {
-        self.sketch_bits.unwrap_or(1024)
+        argh::from_env()
     }
 }

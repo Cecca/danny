@@ -27,8 +27,10 @@ danny-base = { path = "../danny-base" }
 timely = "0.8"
 abomonation = "0.7"
 abomonation_derive = "0.3"
-clap = "2.32"
-envy = "0.3"
+rusqlite = "0.23"
+argh = "0.1"
+clap = "2.32" # FIXME remove this dependency
+envy = "0.3"  # FIXME remove this dependency
 serde = "1"
 serde_derive = "1"
 serde_json = "1.0"

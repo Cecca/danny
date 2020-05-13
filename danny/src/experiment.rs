@@ -65,11 +65,11 @@ impl Experiment {
         } else {
             experiment
         };
-        if cmdline.sketch_bits.is_some() {
-            experiment.tag("sketch_bits", cmdline.get_sketch_bits())
-        } else {
-            experiment
-        }
+        // if cmdline.sketch_bits.is_some() {
+        experiment.tag("sketch_bits", cmdline.sketch_bits)
+        // } else {
+        //     experiment
+        // }
     }
 
     pub fn from_env(config: &Config) -> Experiment {

@@ -34,7 +34,7 @@ where
         ContentType::Vector => {
             let dim = Vector::peek_one(args.left_path.clone().into()).dim();
             let threshold = args.threshold;
-            let sketch_bits = args.sketch_bits.expect("Sketches are mandatory");
+            let sketch_bits = args.sketch_bits;
             let sketcher = SV::from_cosine(dim, &mut sketcher_rng);
             let sketch_predicate =
                 SketchPredicate::cosine(sketch_bits, threshold, config.get_sketch_epsilon());
@@ -56,7 +56,7 @@ where
         ContentType::BagOfWords => {
             let k = args.k.expect("K is needed on the command line");
             let threshold = args.threshold;
-            let sketch_bits = args.sketch_bits.expect("Sketch bits are mandatory");
+            let sketch_bits = args.sketch_bits;
             let sketcher = SV::from_jaccard(&mut sketcher_rng);
             let sketch_predicate =
                 SketchPredicate::jaccard(sketch_bits, threshold, config.get_sketch_epsilon());
@@ -89,7 +89,7 @@ where
     let mut hasher_rng = config.get_random_generator(0);
     let mut sketcher_rng = config.get_random_generator(1);
     let threshold = args.threshold;
-    let sketch_bits = args.sketch_bits.expect("Sketches are mandatory");
+    let sketch_bits = args.sketch_bits;
     let k = args.k.expect("K is needed on the command line");
     let k2 = args.k2.expect("k2 is needed on the command line");
 
@@ -117,7 +117,7 @@ where
         ContentType::BagOfWords => {
             let k = args.k.expect("K is needed on the command line");
             let threshold = args.threshold;
-            let sketch_bits = args.sketch_bits.expect("Sketch bits are mandatory");
+            let sketch_bits = args.sketch_bits;
             let sketcher = SV::from_jaccard(&mut sketcher_rng);
             let sketch_predicate =
                 SketchPredicate::jaccard(sketch_bits, threshold, config.get_sketch_epsilon());
@@ -147,7 +147,7 @@ where
     let mut hasher_rng = config.get_random_generator(0);
     let mut sketcher_rng = config.get_random_generator(1);
     let threshold = args.threshold;
-    let sketch_bits = args.sketch_bits.expect("Sketches are mandatory");
+    let sketch_bits = args.sketch_bits;
     let k = args.k.expect("K is needed on the command line");
 
     match content_type(&args.left_path) {
@@ -172,7 +172,7 @@ where
         }
         ContentType::BagOfWords => {
             let threshold = args.threshold;
-            let sketch_bits = args.sketch_bits.expect("Sketch bits are mandatory");
+            let sketch_bits = args.sketch_bits;
             let sketcher = SV::from_jaccard(&mut sketcher_rng);
             let sketch_predicate =
                 SketchPredicate::jaccard(sketch_bits, threshold, config.get_sketch_epsilon());
@@ -211,55 +211,55 @@ fn main() {
     let count: usize = match args.algorithm.as_ref() {
         #[cfg(feature = "one-round-lsh")]
         "one-round-lsh" => match args.sketch_bits {
-            Some(0) | None => run_one_round_lsh::<Sketch0>(&args, &config, &mut experiment),
+            0 => run_one_round_lsh::<Sketch0>(&args, &config, &mut experiment),
             #[cfg(feature = "sketching")]
-            Some(64) => run_one_round_lsh::<Sketch64>(&args, &config, &mut experiment),
+            64 => run_one_round_lsh::<Sketch64>(&args, &config, &mut experiment),
             #[cfg(feature = "sketching")]
-            Some(128) => run_one_round_lsh::<Sketch128>(&args, &config, &mut experiment),
+            128 => run_one_round_lsh::<Sketch128>(&args, &config, &mut experiment),
             #[cfg(feature = "sketching")]
-            Some(256) => run_one_round_lsh::<Sketch256>(&args, &config, &mut experiment),
+            256 => run_one_round_lsh::<Sketch256>(&args, &config, &mut experiment),
             #[cfg(feature = "sketching")]
-            Some(512) => run_one_round_lsh::<Sketch512>(&args, &config, &mut experiment),
-            Some(bits) => panic!("Unsupported number of sketch bits: {}", bits),
+            512 => run_one_round_lsh::<Sketch512>(&args, &config, &mut experiment),
+            bits => panic!("Unsupported number of sketch bits: {}", bits),
         },
         #[cfg(feature = "two-round-lsh")]
         "two-round-lsh" => match args.sketch_bits {
-            Some(0) | None => run_two_round_lsh::<Sketch0>(&args, &config, &mut experiment),
+            0 => run_two_round_lsh::<Sketch0>(&args, &config, &mut experiment),
             #[cfg(feature = "sketching")]
-            Some(64) => run_two_round_lsh::<Sketch64>(&args, &config, &mut experiment),
+            64 => run_two_round_lsh::<Sketch64>(&args, &config, &mut experiment),
             #[cfg(feature = "sketching")]
-            Some(128) => run_two_round_lsh::<Sketch128>(&args, &config, &mut experiment),
+            128 => run_two_round_lsh::<Sketch128>(&args, &config, &mut experiment),
             #[cfg(feature = "sketching")]
-            Some(256) => run_two_round_lsh::<Sketch256>(&args, &config, &mut experiment),
+            256 => run_two_round_lsh::<Sketch256>(&args, &config, &mut experiment),
             #[cfg(feature = "sketching")]
-            Some(512) => run_two_round_lsh::<Sketch512>(&args, &config, &mut experiment),
-            Some(bits) => panic!("Unsupported number of sketch bits: {}", bits),
+            512 => run_two_round_lsh::<Sketch512>(&args, &config, &mut experiment),
+            bits => panic!("Unsupported number of sketch bits: {}", bits),
         },
         #[cfg(feature = "hu-et-al")]
         "hu-et-al" => match content_type(&args.left_path) {
             ContentType::Vector => match args.sketch_bits {
-                Some(0) | None => run_hu_et_al::<Sketch0>(&args, &config, &mut experiment),
+                0 => run_hu_et_al::<Sketch0>(&args, &config, &mut experiment),
                 #[cfg(feature = "sketching")]
-                Some(64) => run_hu_et_al::<Sketch64>(&args, &config, &mut experiment),
+                64 => run_hu_et_al::<Sketch64>(&args, &config, &mut experiment),
                 #[cfg(feature = "sketching")]
-                Some(128) => run_hu_et_al::<Sketch128>(&args, &config, &mut experiment),
+                128 => run_hu_et_al::<Sketch128>(&args, &config, &mut experiment),
                 #[cfg(feature = "sketching")]
-                Some(256) => run_hu_et_al::<Sketch256>(&args, &config, &mut experiment),
+                256 => run_hu_et_al::<Sketch256>(&args, &config, &mut experiment),
                 #[cfg(feature = "sketching")]
-                Some(512) => run_hu_et_al::<Sketch512>(&args, &config, &mut experiment),
-                Some(bits) => panic!("Unsupported number of sketch bits: {}", bits),
+                512 => run_hu_et_al::<Sketch512>(&args, &config, &mut experiment),
+                bits => panic!("Unsupported number of sketch bits: {}", bits),
             },
             ContentType::BagOfWords => match args.sketch_bits {
-                Some(0) | None => run_hu_et_al::<Sketch0>(&args, &config, &mut experiment),
+                0 => run_hu_et_al::<Sketch0>(&args, &config, &mut experiment),
                 #[cfg(feature = "sketching")]
-                Some(64) => run_hu_et_al::<Sketch64>(&args, &config, &mut experiment),
+                64 => run_hu_et_al::<Sketch64>(&args, &config, &mut experiment),
                 #[cfg(feature = "sketching")]
-                Some(128) => run_hu_et_al::<Sketch128>(&args, &config, &mut experiment),
+                128 => run_hu_et_al::<Sketch128>(&args, &config, &mut experiment),
                 #[cfg(feature = "sketching")]
-                Some(256) => run_hu_et_al::<Sketch256>(&args, &config, &mut experiment),
+                256 => run_hu_et_al::<Sketch256>(&args, &config, &mut experiment),
                 #[cfg(feature = "sketching")]
-                Some(512) => run_hu_et_al::<Sketch512>(&args, &config, &mut experiment),
-                Some(bits) => panic!("Unsupported number of sketch bits: {}", bits),
+                512 => run_hu_et_al::<Sketch512>(&args, &config, &mut experiment),
+                bits => panic!("Unsupported number of sketch bits: {}", bits),
             },
         },
         #[cfg(feature = "all-2-all")]
