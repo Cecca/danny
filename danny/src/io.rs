@@ -360,22 +360,22 @@ pub fn load_vectors<D>(
 where
     for<'de> D: Deserialize<'de> + ReadBinaryFile + Sync + Send + Clone + 'static,
 {
-    let timely_builder = config.get_timely_builder();
     let (send_coords, recv_coords) = channel();
     let send_coords = Arc::new(Mutex::new(send_coords));
 
-    timely::execute::execute_from(timely_builder.0, timely_builder.1, move |worker| {
-        let index = worker.index();
-        let peers = worker.peers() as u64;
-        let send_coords = send_coords.lock().unwrap().clone();
-        let matrix_coords =
-            MatrixDescription::for_workers(peers as usize).row_major_to_pair(index as u64);
-        debug!("Sending coordinates {:?}", matrix_coords);
-        send_coords
-            .send(matrix_coords)
-            .expect("Error while pushing into coordinates channel");
-    })
-    .unwrap();
+    config
+        .execute(move |worker| {
+            let index = worker.index();
+            let peers = worker.peers() as u64;
+            let send_coords = send_coords.lock().unwrap().clone();
+            let matrix_coords =
+                MatrixDescription::for_workers(peers as usize).row_major_to_pair(index as u64);
+            debug!("Sending coordinates {:?}", matrix_coords);
+            send_coords
+                .send(matrix_coords)
+                .expect("Error while pushing into coordinates channel");
+        })
+        .unwrap();
 
     let total_workers = config.get_total_workers();
     let matrix_desc = MatrixDescription::for_workers(total_workers);

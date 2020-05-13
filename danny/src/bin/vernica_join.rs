@@ -439,49 +439,49 @@ fn run(left_path: PathBuf, right_path: PathBuf, range: f64, num_groups: u32, con
         .tag("right", right_path.to_str().unwrap())
         .tag("threshold", range);
 
-    let timely_builder = config.get_timely_builder();
     let start = Instant::now();
     let left_path_2 = left_path.clone();
     let right_path_2 = right_path.clone();
 
-    let result = timely::execute::execute_from(timely_builder.0, timely_builder.1, move |worker| {
-        let (mut input_left, mut input_right, probe, captured) =
-            worker.dataflow::<u32, _, _>(move |scope| {
-                let mut probe = ProbeHandle::<u32>::new();
-                let (input_left, stream_left) = scope.new_input();
-                let (input_right, stream_right) = scope.new_input();
+    let result = config
+        .execute(move |worker| {
+            let (mut input_left, mut input_right, probe, captured) =
+                worker.dataflow::<u32, _, _>(move |scope| {
+                    let mut probe = ProbeHandle::<u32>::new();
+                    let (input_left, stream_left) = scope.new_input();
+                    let (input_right, stream_right) = scope.new_input();
 
-                let ranks = rank_tokens(&stream_left.concat(&stream_right));
-                let by_tokens_left = by_prefix_token(&stream_left, &ranks, range, num_groups);
-                let by_tokens_right = by_prefix_token(&stream_right, &ranks, range, num_groups);
-                let filtered = filter_candidates(&by_tokens_left, &by_tokens_right, range);
+                    let ranks = rank_tokens(&stream_left.concat(&stream_right));
+                    let by_tokens_left = by_prefix_token(&stream_left, &ranks, range, num_groups);
+                    let by_tokens_right = by_prefix_token(&stream_right, &ranks, range, num_groups);
+                    let filtered = filter_candidates(&by_tokens_left, &by_tokens_right, range);
 
-                let captured = count_distinct(&filtered).probe_with(&mut probe).capture();
+                    let captured = count_distinct(&filtered).probe_with(&mut probe).capture();
 
-                (input_left, input_right, probe, captured)
-            });
-        info!("Created dataflow");
+                    (input_left, input_right, probe, captured)
+                });
+            info!("Created dataflow");
 
-        let worker_id = worker.index();
-        let num_workers = worker.peers();
-        BagOfWords::read_binary(
-            left_path.clone(),
-            |l| l % num_workers == worker_id,
-            |idx, bow| input_left.send((idx, bow)),
-        );
-        BagOfWords::read_binary(
-            right_path.clone(),
-            |l| l % num_workers == worker_id,
-            |idx, bow| input_right.send((idx, bow)),
-        );
-        input_left.close();
-        input_right.close();
+            let worker_id = worker.index();
+            let num_workers = worker.peers();
+            BagOfWords::read_binary(
+                left_path.clone(),
+                |l| l % num_workers == worker_id,
+                |idx, bow| input_left.send((idx, bow)),
+            );
+            BagOfWords::read_binary(
+                right_path.clone(),
+                |l| l % num_workers == worker_id,
+                |idx, bow| input_right.send((idx, bow)),
+            );
+            input_left.close();
+            input_right.close();
 
-        worker.step_while(|| !probe.done());
-        info!("Finished stepping");
-        captured
-    })
-    .expect("Problems running the dataflow");
+            worker.step_while(|| !probe.done());
+            info!("Finished stepping");
+            captured
+        })
+        .expect("Problems running the dataflow");
 
     let mut matching_count = 0usize;
     for guard in result.join() {

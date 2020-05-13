@@ -118,33 +118,33 @@ impl Config {
         self.process_id.unwrap_or(0) == 0
     }
 
-    pub fn get_timely_builder(&self) -> (Vec<GenericBuilder>, Box<dyn Any + 'static>) {
-        // let timely_config = if self.hosts.len() > 1 {
-        //     let hosts: Vec<String> = self.hosts.clone();
-        //     info!(
-        //         "Running on {:?}, using {} threads in each process",
-        //         hosts, self.threads
-        //     );
-        //     TimelyConfig::Cluster {
-        //         threads: self.threads,
-        //         process: self.process_id.expect("process id must be set"),
-        //         addresses: hosts,
-        //         report: false,
-        //         log_fn: Box::new(|_| None),
-        //     }
-        // } else if self.threads > 1 {
-        //     println!("Running on {} threads", self.threads);
-        //     TimelyConfig::Process(self.threads)
-        // } else {
-        //     println!("Running on a single thread");
-        //     TimelyConfig::Thread
-        // };
-        // match timely_config.try_build() {
-        //     Ok(pair) => pair,
-        //     Err(msg) => panic!("Error while configuring timely: {}", msg),
-        // }
-        unimplemented!("REMOVE")
-    }
+    // pub fn get_timely_builder(&self) -> (Vec<GenericBuilder>, Box<dyn Any + 'static>) {
+    //     // let timely_config = if self.hosts.len() > 1 {
+    //     //     let hosts: Vec<String> = self.hosts.clone();
+    //     //     info!(
+    //     //         "Running on {:?}, using {} threads in each process",
+    //     //         hosts, self.threads
+    //     //     );
+    //     //     TimelyConfig::Cluster {
+    //     //         threads: self.threads,
+    //     //         process: self.process_id.expect("process id must be set"),
+    //     //         addresses: hosts,
+    //     //         report: false,
+    //     //         log_fn: Box::new(|_| None),
+    //     //     }
+    //     // } else if self.threads > 1 {
+    //     //     println!("Running on {} threads", self.threads);
+    //     //     TimelyConfig::Process(self.threads)
+    //     // } else {
+    //     //     println!("Running on a single thread");
+    //     //     TimelyConfig::Thread
+    //     // };
+    //     // match timely_config.try_build() {
+    //     //     Ok(pair) => pair,
+    //     //     Err(msg) => panic!("Error while configuring timely: {}", msg),
+    //     // }
+    //     unimplemented!("REMOVE")
+    // }
 
     pub fn get_random_generator(&self, instance: usize) -> XorShiftRng {
         let mut seeder = StdRng::seed_from_u64(self.seed);
@@ -185,7 +185,7 @@ impl Config {
         }
     }
 
-    fn execute<T, F>(&self, func: F) -> Result<WorkerGuards<T>, ExecError>
+    pub fn execute<T, F>(&self, func: F) -> Result<WorkerGuards<T>, ExecError>
     where
         T: Send + 'static,
         F: Fn(&mut Worker<Allocator>) -> T + Send + Sync + 'static,
@@ -305,7 +305,7 @@ fn parse_hosts(arg: &str) -> Result<Hosts, String> {
 }
 
 #[derive(Debug)]
-enum ExecError {
+pub enum ExecError {
     /// Not actually an error
     RemoteExecution,
     /// Actually an error, with message

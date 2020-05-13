@@ -137,7 +137,6 @@ where
     let no_dedup = config.no_dedup;
     let no_verify = config.no_verify;
 
-    let timely_builder = config.get_timely_builder();
     // This channel is used to get the results
     let (output_send_ch, recv) = channel();
     let output_send_ch = Arc::new(Mutex::new(output_send_ch));
@@ -155,7 +154,7 @@ where
     );
     let (global_left, global_right) = load_vectors(left_path, right_path, &config);
 
-    timely::execute::execute_from(timely_builder.0, timely_builder.1, move |mut worker| {
+    config.execute(move |mut worker| {
         let global_left = Arc::clone(&global_left);
         let global_right = Arc::clone(&global_right);
         let hasher = Arc::clone(&hasher);
