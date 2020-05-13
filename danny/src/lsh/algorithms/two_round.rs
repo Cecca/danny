@@ -60,7 +60,7 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let individual_recall = config.get_recall().sqrt();
+    let individual_recall = config.recall.sqrt();
 
     let hasher = TensorCollection::new(k, range, individual_recall, hash_function_builder.clone(), rng);
     let hasher = Arc::new(hasher);
@@ -68,9 +68,9 @@ where
     let hasher_intern = TensorCollection::new(k2, range, individual_recall, hash_function_builder, rng);
     let hasher_intern = Arc::new(hasher_intern);
 
-    let repetition_batch = config.get_repetition_batch();
+    let repetition_batch = config.repetition_batch;
 
-    println!("{}", config.get_recall());
+    println!("{}", config.recall);
 
     debug!(
         "Left dataset has {} points, right has {}",

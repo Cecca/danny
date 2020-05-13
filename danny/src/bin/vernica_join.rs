@@ -552,22 +552,21 @@ fn main() {
 
     let config = Config::get();
     init_logging(&config);
-    if let Some(timeout) = config.get_timeout() {
-        let mut timed_out_experiment = Experiment::from_env(&config)
-            .tag("algorithm", "Vernica_join")
-            .tag("num_groups", num_groups)
-            .tag("left", input_left.to_str().unwrap())
-            .tag("right", input_right.to_str().unwrap())
-            .tag("threshold", range);
-        timed_out_experiment.append(
-            "result",
-            row!("timed_out" => true, "total_time_ms" => timeout.as_millis() as u64),
-        );
+    let timeout = Duration::from_secs(60 * 60);
+    let mut timed_out_experiment = Experiment::from_env(&config)
+        .tag("algorithm", "Vernica_join")
+        .tag("num_groups", num_groups)
+        .tag("left", input_left.to_str().unwrap())
+        .tag("right", input_right.to_str().unwrap())
+        .tag("threshold", range);
+    timed_out_experiment.append(
+        "result",
+        row!("timed_out" => true, "total_time_ms" => timeout.as_millis() as u64),
+    );
 
-        start_terminator(timeout, move || {
-            timed_out_experiment.save();
-        });
-    }
+    start_terminator(timeout, move || {
+        timed_out_experiment.save();
+    });
 
     info!("Starting");
     run(input_left, input_right, range, num_groups, config);

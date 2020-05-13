@@ -145,7 +145,7 @@ where
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
-    let hasher = TensorCollection::new(k, range, config.get_recall(), hash_function_builder, rng);
+    let hasher = TensorCollection::new(k, range, config.recall, hash_function_builder, rng);
     let hasher = Arc::new(hasher);
 
     debug!(

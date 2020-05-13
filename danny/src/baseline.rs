@@ -28,45 +28,46 @@ pub struct Baselines {
 
 impl Baselines {
     pub fn new(config: &Config) -> Self {
-        let path = config.get_baselines_path();
-        info!("Reading baseline from {:?}", path);
-        let mut baselines = Vec::new();
-        if let Ok(file) = File::open(path.clone()) {
-            let file = BufReader::new(file);
-            for line in file.lines() {
-                let line = line.expect("Problem reading line");
-                let mut tokens = line.split(',');
-                let left = tokens
-                    .next()
-                    .expect("There should be the left path")
-                    .to_owned();
-                let right = tokens
-                    .next()
-                    .expect("There should be the right path")
-                    .to_owned();
-                let range: f64 = tokens
-                    .next()
-                    .expect("There should be the range")
-                    .parse()
-                    .expect("Problem parsing range");
-                let count: usize = tokens
-                    .next()
-                    .expect("There should be the count")
-                    .parse()
-                    .expect("Problem parsing the count");
-                let seconds: u64 = tokens
-                    .next()
-                    .expect("There should be the number of seconds")
-                    .parse()
-                    .expect("Problem parsing the seconds");
-                let version: String = tokens
-                    .next()
-                    .expect("There should be the git version")
-                    .to_owned();
-                baselines.push((left, right, range, count, seconds, version));
-            }
-        };
-        Baselines { path, baselines }
+        unimplemented!("use SQLite")
+        // let path = config.get_baselines_path();
+        // info!("Reading baseline from {:?}", path);
+        // let mut baselines = Vec::new();
+        // if let Ok(file) = File::open(path.clone()) {
+        //     let file = BufReader::new(file);
+        //     for line in file.lines() {
+        //         let line = line.expect("Problem reading line");
+        //         let mut tokens = line.split(',');
+        //         let left = tokens
+        //             .next()
+        //             .expect("There should be the left path")
+        //             .to_owned();
+        //         let right = tokens
+        //             .next()
+        //             .expect("There should be the right path")
+        //             .to_owned();
+        //         let range: f64 = tokens
+        //             .next()
+        //             .expect("There should be the range")
+        //             .parse()
+        //             .expect("Problem parsing range");
+        //         let count: usize = tokens
+        //             .next()
+        //             .expect("There should be the count")
+        //             .parse()
+        //             .expect("Problem parsing the count");
+        //         let seconds: u64 = tokens
+        //             .next()
+        //             .expect("There should be the number of seconds")
+        //             .parse()
+        //             .expect("Problem parsing the seconds");
+        //         let version: String = tokens
+        //             .next()
+        //             .expect("There should be the git version")
+        //             .to_owned();
+        //         baselines.push((left, right, range, count, seconds, version));
+        //     }
+        // };
+        // Baselines { path, baselines }
     }
 
     #[allow(clippy::float_cmp)]

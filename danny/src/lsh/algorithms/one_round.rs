@@ -114,7 +114,7 @@ where
     let hasher = Arc::new(TensorCollection::new(
         k,
         range,
-        config.get_recall(),
+        config.recall,
         hash_function_builder,
         rng,
     ));

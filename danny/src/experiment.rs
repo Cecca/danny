@@ -36,28 +36,28 @@ impl Experiment {
         Experiment { tags, tables }
     }
 
-    pub fn from_config(config: &Config, cmdline: &CmdlineConfig) -> Experiment {
+    pub fn from_config(config: &Config) -> Experiment {
         let experiment = Experiment::new()
-            .tag("threads_per_worker", config.get_threads())
+            .tag("threads_per_worker", config.threads)
             .tag("num_hosts", config.get_num_hosts())
             .tag("total_threads", config.get_total_workers())
-            .tag("seed", config.get_seed())
-            .tag("sketch_epsilon", config.get_sketch_epsilon())
-            .tag("required_recall", config.get_recall())
+            .tag("seed", config.seed)
+            .tag("sketch_epsilon", config.sketch_epsilon)
+            .tag("required_recall", config.recall)
             .tag("no_dedup", config.no_dedup)
             .tag("no_verify", config.no_verify)
             // .tag("measure", cmdline.measure.clone())
-            .tag("threshold", cmdline.threshold)
-            .tag("left_path", cmdline.left_path.clone())
-            .tag("right_path", cmdline.right_path.clone())
-            .tag("algorithm", cmdline.algorithm.clone())
+            .tag("threshold", config.threshold)
+            .tag("left_path", config.left_path.clone())
+            .tag("right_path", config.right_path.clone())
+            .tag("algorithm", config.algorithm.clone())
             .tag("git_revision", version::short_sha())
             .tag("git_commit_date", version::commit_date());
-        let experiment = if cmdline.k.is_some() {
-            let k_str = cmdline.k.unwrap().to_string().clone();
+        let experiment = if config.k.is_some() {
+            let k_str = config.k.unwrap().to_string().clone();
             let exp = experiment.tag("k", k_str);
-            if cmdline.k2.is_some() {
-                let k2_str = cmdline.k2.unwrap().to_string().clone();
+            if config.k2.is_some() {
+                let k2_str = config.k2.unwrap().to_string().clone();
                 exp.tag("k2", k2_str)
             } else {
                 exp
@@ -66,22 +66,23 @@ impl Experiment {
             experiment
         };
         // if cmdline.sketch_bits.is_some() {
-        experiment.tag("sketch_bits", cmdline.sketch_bits)
+        experiment.tag("sketch_bits", config.sketch_bits)
         // } else {
         //     experiment
         // }
     }
 
     pub fn from_env(config: &Config) -> Experiment {
-        Experiment::new()
-            .tag("threads_per_worker", config.get_threads())
-            .tag("hosts", config.get_hosts().clone())
-            .tag("num_hosts", config.get_num_hosts())
-            .tag("total_threads", config.get_total_workers())
-            .tag("seed", config.get_seed())
-            .tag("sketch_epsilon", config.get_sketch_epsilon())
-            .tag("git_revision", version::short_sha())
-            .tag("git_commit_date", version::commit_date())
+        panic!("to remove")
+        // Experiment::new()
+        //     .tag("threads_per_worker", config.threads)
+        //     .tag("hosts", config.hosts.clone())
+        //     .tag("num_hosts", config.get_num_hosts())
+        //     .tag("total_threads", config.get_total_workers())
+        //     .tag("seed", config.seed)
+        //     .tag("sketch_epsilon", config.sketch_epsilon)
+        //     .tag("git_revision", version::short_sha())
+        //     .tag("git_commit_date", version::commit_date())
     }
 
     pub fn tag<T>(mut self, name: &str, value: T) -> Self
