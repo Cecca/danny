@@ -29,9 +29,9 @@ pub mod io;
 pub mod join;
 pub mod lsh;
 pub mod operators;
-pub mod version {
-    include!(concat!(env!("OUT_DIR"), "/version.rs"));
-}
+// pub mod version {
+//     include!(concat!(env!("OUT_DIR"), "/version.rs"));
+// }
 
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;

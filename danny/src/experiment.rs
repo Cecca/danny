@@ -43,7 +43,8 @@ impl Experiment {
         transmitted: usize,
         received: usize,
     ) {
-        self.network.push((host, iface, transmitted as u32, received as u32));
+        self.network
+            .push((host, iface, transmitted as u32, received as u32));
     }
 
     fn sha(&self) -> String {
@@ -71,24 +72,72 @@ impl Experiment {
         conn
     }
 
-    pub fn get_baseline(&self) -> Option<(u32, u32)> {
+    pub fn already_run(&self) -> Option<String> {
         let conn = Self::get_conn();
-        conn.query_row("
-            SELECT total_time_ms, output_size 
+        conn.query_row(
+            "
+            SELECT sha
             FROM result
             WHERE left_path = ?1
               AND right_path = ?2
               AND threshold = ?3
-              AND algorithm = 'all-2-all'", 
+              AND algorithm = 'all-2-all'",
             params![
                 self.config.left_path,
                 self.config.right_path,
                 self.config.threshold
             ],
-            |row| Ok((row.get(0).expect("error getting time"), row.get(1).expect("error getting count")))
+            |row| Ok(row.get(0).expect("error getting sha")),
         )
-         .optional()
-         .expect("error running query")
+        .optional()
+        .expect("error running query")
+    }
+
+    pub fn get_baseline(&self) -> Option<(u32, u32)> {
+        let conn = Self::get_conn();
+        conn.query_row(
+            "
+            SELECT total_time_ms, output_size 
+            FROM result
+            WHERE threshold == ?1
+              AND algorithm == ?2
+              AND k == ?3
+              AND k2 == ?4
+              AND sketch_bits == ?5
+              AND threads == ?6
+              AND hosts == ?7
+              AND sketch_epsilon == ?8
+              AND required_recall == ?9
+              AND no_dedup == ?10
+              AND no_verify == ?11
+              AND repetition_batch == ?12
+              AND left_path == ?13
+              AND right_path == ?14",
+            params![
+                self.config.threshold,
+                self.config.algorithm,
+                self.config.k.map(|k| k as u32),
+                self.config.k2.map(|k2| k2 as u32),
+                self.config.sketch_bits as u32,
+                self.config.threads as u32,
+                self.config.hosts_string(),
+                self.config.sketch_epsilon,
+                self.config.recall,
+                self.config.no_dedup,
+                self.config.no_verify,
+                self.config.repetition_batch as u32,
+                self.config.left_path,
+                self.config.right_path,
+            ],
+            |row| {
+                Ok((
+                    row.get(0).expect("error getting time"),
+                    row.get(1).expect("error getting count"),
+                ))
+            },
+        )
+        .optional()
+        .expect("error running query")
     }
 
     pub fn save(self) {
@@ -100,7 +149,7 @@ impl Experiment {
 
         let (recall, speedup) = if let Some((base_time, base_count)) = self.get_baseline() {
             let recall = output_size as f64 / base_count as f64;
-            let speedup =  base_time as f64 / total_time_ms as f64;
+            let speedup = base_time as f64 / total_time_ms as f64;
             info!("Recall {} and speedup {}", recall, speedup);
             (Some(recall), Some(speedup))
         } else {
@@ -115,6 +164,7 @@ impl Experiment {
             tx.execute(
                 "INSERT INTO result (
                     sha,
+                    code_version,
                     date,
                     threshold,
                     algorithm,
@@ -137,10 +187,11 @@ impl Experiment {
                     speedup
                 )
                  VALUES (
-                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21
                  )",
                 params![
-                    sha, 
+                    sha,
+                    env!("VERGEN_SHA_SHORT"),
                     self.date.to_rfc3339(),
                     self.config.threshold,
                     self.config.algorithm,
@@ -164,20 +215,26 @@ impl Experiment {
             )
             .expect("error inserting into main table");
 
-            let mut stmt = tx.prepare(
-                "INSERT INTO counters ( sha, kind, step, count )
-                 VALUES ( ?1, ?2, ?3, ?4 )"
-            ).expect("failed to prepare statement");
+            let mut stmt = tx
+                .prepare(
+                    "INSERT INTO counters ( sha, kind, step, count )
+                 VALUES ( ?1, ?2, ?3, ?4 )",
+                )
+                .expect("failed to prepare statement");
             for (kind, step, count) in self.step_counters.iter() {
-                stmt.execute(params![sha, kind, step, count]).expect("failure in inserting network information");
+                stmt.execute(params![sha, kind, step, count])
+                    .expect("failure in inserting network information");
             }
 
-            let mut stmt = tx.prepare(
-                "INSERT INTO network ( sha, hostname, interface, transmitted, received )
-                 VALUES ( ?1, ?2, ?3, ?4, ?5 )"
-            ).expect("failed to prepare statement");
+            let mut stmt = tx
+                .prepare(
+                    "INSERT INTO network ( sha, hostname, interface, transmitted, received )
+                 VALUES ( ?1, ?2, ?3, ?4, ?5 )",
+                )
+                .expect("failed to prepare statement");
             for (hostname, interface, transmitted, received) in self.network.iter() {
-                stmt.execute(params![sha, hostname, interface, transmitted, received]).expect("failure in inserting network information");
+                stmt.execute(params![sha, hostname, interface, transmitted, received])
+                    .expect("failure in inserting network information");
             }
         }
 
@@ -190,6 +247,7 @@ fn create_tables_if_needed(conn: &Connection) {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS result (
             sha              TEXT PRIMARY KEY,
+            code_version     TEXT,
             date             TEXT NOT NULL,
             threshold        REAL NOT NULL,
             algorithm        TEXT NOT NULL,
@@ -215,14 +273,17 @@ fn create_tables_if_needed(conn: &Connection) {
     )
     .expect("Error creating main table");
 
-    // conn.execute(
-    //     "CREATE VIEW IF NOT EXISTS main_recent AS
-    //     SELECT sha, max(date) AS date, seed, threads, hosts, dataset, algorithm, parameters, diameter, total_time_ms
-    //     FROM main
-    //     GROUP BY seed, threads, hosts, dataset, algorithm, parameters",
-    //     params![]
-    // )
-    // .expect("Error creating the main_recent view");
+    conn.execute(
+        "CREATE VIEW IF NOT EXISTS result_recent AS
+        SELECT sha, code_version, MAX(date) AS date, threshold, algorithm, k, k2, sketch_bits, threads, hosts, sketch_epsilon, required_recall, 
+               no_dedup, no_verify, repetition_batch, left_path, right_path,
+               total_time_ms, output_size, recall, speedup
+        FROM result
+        GROUP BY threshold, algorithm, k, k2, sketch_bits, threads, hosts, sketch_epsilon, required_recall, 
+                 no_dedup, no_verify, repetition_batch, left_path, right_path",
+        params![]
+    )
+    .expect("Error creating the main_recent view");
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS counters (

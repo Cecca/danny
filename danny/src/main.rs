@@ -214,6 +214,11 @@ fn main() {
         warn!("Running with NO DUPLICATE ELIMINATION");
     }
 
+    if let Some(sha) = Experiment::from_config(config.clone()).already_run() {
+        warn!("Experiment already run (sha {}), exiting", sha);
+        return;
+    }
+
     let threshold = config.threshold;
 
     // init this gauge outside of the worker definition to have it once per machine,
