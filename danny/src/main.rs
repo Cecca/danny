@@ -296,24 +296,6 @@ fn main() {
     let total_time_d = end - start;
     let total_time = total_time_d.as_secs() * 1000 + u64::from(total_time_d.subsec_millis());
     if config.is_master() {
-        // let baselines = Baselines::new(&config);
-        // let recall = baselines
-        //     .recall(
-        //         &config.left_path,
-        //         &config.right_path,
-        //         config.threshold,
-        //         count,
-        //     )
-        //     .unwrap_or(-1.0);
-        unimplemented!("compute speedup and recall starting from the database");
-        // let speedup = baselines
-        //     .speedup(
-        //         &config.left_path,
-        //         &config.right_path,
-        //         config.threshold,
-        //         total_time as f64 / 1000.0,
-        //     )
-        //     .unwrap_or(-1.0);
         info!(
             "pairs above similarity {} are {} (time {:?})",
             config.threshold, count, total_time_d

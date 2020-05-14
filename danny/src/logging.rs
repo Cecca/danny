@@ -510,7 +510,7 @@ pub struct FrozenExecutionSummary {
 
 impl FrozenExecutionSummary {
     pub fn add_to_experiment(&self, experiment: &mut Experiment) {
-        unimplemented!("use sqlite")
+        // unimplemented!("use sqlite")
         // let mut steps = std::collections::HashSet::new();
         // steps.extend(self.load.iter().map(|p| p.0));
         // steps.extend(self.received_hashes.iter().map(|p| p.0));

@@ -105,21 +105,56 @@ impl Experiment {
         path
     }
 
+    fn get_conn() -> Connection {
+        let dbpath = Self::get_db_path();
+        let conn = Connection::open(dbpath).expect("error connecting to the database");
+        create_tables_if_needed(&conn);
+        conn
+    }
+
+    pub fn get_baseline(&self) -> Option<(u32, u32)> {
+        let conn = Self::get_conn();
+        conn.query_row("
+            SELECT total_time_ms, output_size 
+            FROM result
+            WHERE left_path = ?1
+              AND right_path = ?2
+              AND threshold = ?3
+              AND algorithm = 'all-2-all'", 
+            params![
+                self.config.left_path,
+                self.config.right_path,
+                self.config.threshold
+            ],
+            |row| Ok((row.get(0).expect("error getting time"), row.get(1).expect("error getting count")))
+        )
+         .optional()
+         .expect("error running query")
+    }
+
     pub fn save(self) {
         let sha = self.sha();
-        let dbpath = Self::get_db_path();
-        let mut conn = Connection::open(dbpath).expect("error connecting to the database");
-        create_tables_if_needed(&conn);
+        let mut conn = Self::get_conn();
 
-        let recall: Option<f64> = None;
-        let speedup: Option<f64> = None;
+        let output_size = self.output_size.expect("missing output size");
+        let total_time_ms = self.total_time_ms.expect("missing total time");
+
+        let (recall, speedup) = if let Some((base_time, base_count)) = self.get_baseline() {
+            let recall = output_size as f64 / base_count as f64;
+            let speedup =  base_time as f64 / total_time_ms as f64;
+            info!("Recall {} and speedup {}", recall, speedup);
+            (Some(recall), Some(speedup))
+        } else {
+            warn!("Missing baseline from the database");
+            (None, None)
+        };
 
         let tx = conn.transaction().expect("problem starting transaction");
 
         {
             // Insert into main table
             tx.execute(
-                "INSERT INTO main (
+                "INSERT INTO result (
                     sha,
                     date,
                     threshold,
@@ -166,7 +201,7 @@ impl Experiment {
                     self.output_size,
                     recall,
                     speedup
-                    ],
+                ],
             )
             .expect("error inserting into main table");
 

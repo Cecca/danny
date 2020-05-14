@@ -252,9 +252,8 @@ where
             .map(|pair| pair.1.clone().iter().sum::<usize>())
             .next() // The iterator has one item for each timestamp. We have just one timestamp, 0
             .expect("Failed to get the result out of the channel");
-        let end_time = Instant::now();
-        let elapsed = (end_time - start_time).as_secs();
-        Baselines::new(config).add(left_path, right_path, threshold, count, elapsed);
+        // let end_time = Instant::now();
+        // let elapsed = (end_time - start_time).as_secs();
         count
     } else {
         0
