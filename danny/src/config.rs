@@ -192,7 +192,7 @@ impl Config {
     {
         if self.hosts.is_some() && self.process_id.is_none() {
             let exec = std::env::args().nth(0).unwrap();
-            println!("spawning executable {:?}", exec);
+            info!("spawning executable {:?}", exec);
             // This is the top level invocation, which should spawn the processes with ssh
             let handles: Vec<std::process::Child> = self
                 .hosts
@@ -203,7 +203,7 @@ impl Config {
                 .enumerate()
                 .map(|(pid, host)| {
                     let encoded_config = self.with_process_id(pid).encode();
-                    println!("Connecting to {}", host.name);
+                    info!("Connecting to {}", host.name);
                     Command::new("ssh")
                         .arg(&host.name)
                         .arg(&exec)
@@ -214,12 +214,13 @@ impl Config {
                 .collect();
 
             for mut h in handles {
-                println!("Waiting for ssh process to finish");
+                info!("Waiting for ssh process to finish");
                 h.wait().expect("problem waiting for the ssh process");
             }
 
             None
         } else {
+            info!("Worker invocation");
             let c = match &self.hosts {
                 None => {
                     if self.threads == 1 {

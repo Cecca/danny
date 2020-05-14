@@ -270,21 +270,6 @@ fn main() {
                 &config,
             ),
         },
-        #[cfg(feature = "seq-all-2-all")]
-        "seq-all-2-all" => match content_type(&config.left_path) {
-            ContentType::Vector => baseline::sequential::<Vector, _>(
-                config.threshold,
-                &config.left_path,
-                &config.right_path,
-                InnerProduct::inner_product,
-            ),
-            ContentType::BagOfWords => baseline::sequential::<BagOfWords, _>(
-                config.threshold,
-                &config.left_path,
-                &config.right_path,
-                Jaccard::jaccard,
-            ),
-        },
         "" => panic!(), // This is here just for type checking when no features are selected
         _ => unimplemented!("Unknown algorithm {}", config.algorithm),
     };
