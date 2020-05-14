@@ -391,11 +391,9 @@ where
 
                 for (time, cnt) in sums.iter_mut() {
                     if !input.frontier().less_equal(time) {
-                        info!("sending sum for time");
                         output
                             .session(time)
                             .give(cnt.take().expect("the count is None!"));
-                        info!("sent sum for time");
                     }
                 }
 

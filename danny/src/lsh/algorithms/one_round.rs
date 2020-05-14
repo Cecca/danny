@@ -268,7 +268,7 @@ where
         })
         .stream_sum()
         .exchange(|_| 0) // Bring all the counts to the first worker
-        .inspect_time(|t, cnt| println!("count at {}: {}", t, cnt))
+        .inspect_time(|t, cnt| info!("count at {}: {}", t, cnt))
         .probe_with(&mut probe)
         .capture_into(output_send_ch);
 
