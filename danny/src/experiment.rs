@@ -183,7 +183,7 @@ impl Experiment {
                  VALUES ( ?1, ?2, ?3, ?4, ?5 )"
             ).expect("failed to prepare statement");
             for (hostname, interface, transmitted, received) in self.network.iter() {
-                stmt.execute(params![hostname, interface, transmitted, received]).expect("failure in inserting network information");
+                stmt.execute(params![sha, hostname, interface, transmitted, received]).expect("failure in inserting network information");
             }
         }
 
@@ -195,22 +195,22 @@ impl Experiment {
 fn create_tables_if_needed(conn: &Connection) {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS result (
-            sha           TEXT PRIMARY KEY,
-            date          TEXT NOT NULL,
-            threshold     REAL NOT NULL,
-            algorithm     TEXT NOT NULL,
-            k             INTEGER,
-            k2            INTEGER,
-            sketch_bits   INTEGER,
-            threads       INTEGER,
-            hosts         TEXT NOT NULL,
-            sketch_epsilon  REAL NOT NULL,
+            sha              TEXT PRIMARY KEY,
+            date             TEXT NOT NULL,
+            threshold        REAL NOT NULL,
+            algorithm        TEXT NOT NULL,
+            k                INTEGER,
+            k2               INTEGER,
+            sketch_bits      INTEGER,
+            threads          INTEGER,
+            hosts            TEXT NOT NULL,
+            sketch_epsilon   REAL NOT NULL,
             required_recall  REAL NOT NULL,
-            no_dedup      BOOL,
-            no_verify     BOOL,
-            repetition_batch    INTEGER,
-            left_path      TEXT NOT NULL,
-            right_path      TEXT NOT NULL,
+            no_dedup         BOOL,
+            no_verify        BOOL,
+            repetition_batch INTEGER,
+            left_path        TEXT NOT NULL,
+            right_path       TEXT NOT NULL,
 
             total_time_ms    INTEGER,
             output_size      INTEGER,
@@ -233,7 +233,7 @@ fn create_tables_if_needed(conn: &Connection) {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS counters (
             sha       TEXT NOT NULL,
-            kind   TEXT NOT NULL,
+            kind      TEXT NOT NULL,
             step      INTEGER NOT NULL,
             count     INTEGER NOT NULL,
             FOREIGN KEY (sha) REFERENCES result (sha)
@@ -244,9 +244,9 @@ fn create_tables_if_needed(conn: &Connection) {
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS network (
-            sha       TEXT NOT NULL,
-            hostname  TEXT NOT NULL,
-            interface INTEGER NOT NULL,
+            sha          TEXT NOT NULL,
+            hostname     TEXT NOT NULL,
+            interface    INTEGER NOT NULL,
             transmitted  INTEGER NOT NULL,
             received     INTEGER NOT NULL,
             FOREIGN KEY (sha) REFERENCES result (sha)
