@@ -1,3 +1,5 @@
+use timely::worker::Worker;
+use timely::communication::Allocator;
 use crate::config::*;
 use crate::dataset::ChunkedDataset;
 use crate::experiment::Experiment;
@@ -26,6 +28,7 @@ use timely::ExchangeData;
 
 #[allow(clippy::too_many_arguments)]
 pub fn two_round_lsh<D, F, H, B, R, S, V>(
+    worker: &mut Worker<Allocator>,
     left_path: &str,
     right_path: &str,
     range: f64,
@@ -76,135 +79,131 @@ where
         D::num_elements(left_path.into()),
         D::num_elements(right_path.into())
     );
-    let (global_left, global_right) = load_vectors(left_path, right_path, &config);
+    let (global_left, global_right) = load_vectors(worker, left_path, right_path, &config);
 
-    config.execute( move |mut worker| {
-        let global_left = Arc::clone(&global_left);
-        let global_right = Arc::clone(&global_right);
-        let hasher = Arc::clone(&hasher);
-        let hasher_intern = Arc::clone(&hasher_intern);
-        let execution_summary = init_event_logging(&worker);
-        let output_send_ch = output_send_ch
-            .lock()
-            .expect("Cannot get lock on output channel")
-            .clone();
-        let sim_pred = sim_pred.clone();
-        let sketch_pred = sketch_pred.clone();
+    let global_left = Arc::clone(&global_left);
+    let global_right = Arc::clone(&global_right);
+    let hasher = Arc::clone(&hasher);
+    let hasher_intern = Arc::clone(&hasher_intern);
+    let execution_summary = init_event_logging(&worker);
+    let output_send_ch = output_send_ch
+        .lock()
+        .expect("Cannot get lock on output channel")
+        .clone();
+    let sim_pred = sim_pred.clone();
+    let sketch_pred = sketch_pred.clone();
 
-        let sketcher = sketcher.clone();
-        let sketcher = Arc::new(sketcher);
+    let sketcher = sketcher.clone();
+    let sketcher = Arc::new(sketcher);
 
-        let probe = worker.dataflow::<u32, _, _>(move |scope| {
-            let mut probe = ProbeHandle::new();
-            let matrix = MatrixDescription::for_workers(scope.peers() as usize);
-            let logger = scope.danny_logger();
+    let probe = worker.dataflow::<u32, _, _>(move |scope| {
+        let mut probe = ProbeHandle::new();
+        let matrix = MatrixDescription::for_workers(scope.peers() as usize);
+        let logger = scope.danny_logger();
 
-            let left_hashes = source_hashed_two_round(
-                scope,
-                Arc::clone(&global_left),
-                Arc::clone(&sketcher),
-                Arc::clone(&hasher),
-                Arc::clone(&hasher_intern),
-                probe.clone(),
-                repetition_batch,
-                matrix,
-                MatrixDirection::Rows,
-            );
-            let right_hashes = source_hashed_two_round(
-                scope,
-                Arc::clone(&global_right),
-                Arc::clone(&sketcher),
-                Arc::clone(&hasher),
-                Arc::clone(&hasher_intern),
-                probe.clone(),
-                repetition_batch,
-                matrix,
-                MatrixDirection::Columns,
-            );
-            info!("Starting {} internal repetitions", hasher_intern.repetitions());
-            left_hashes
-                .join_map_slice(
-                    &right_hashes,
-                    move |(outer_repetition, _hash), left_vals, right_vals| {
-                        let mut cnt = 0;
-                        let mut total = 0;
-                        let mut sketch_cnt = 0;
-                        let mut duplicate_cnt = 0;
-                        let repetitions = hasher_intern.repetitions();
-                        let mut joiner = Joiner::default();
-                        let all_to_all = left_vals.len() * right_vals.len();
-                        let start = Instant::now();
-                        for rep in 0..repetitions {
-                            //info!("In repetition {}", rep);
-                            joiner.clear();
-                            for (_, (outer_pool, inner_pool, s, v)) in left_vals.iter() {
-                                joiner.push_left(
-                                    hasher_intern.hash(inner_pool, rep),
-                                    (s, v, outer_pool, inner_pool),
-                                );
-                            }
-                            for (_, (outer_pool, inner_pool, s, v)) in right_vals.iter() {
-                                joiner.push_right(
-                                    hasher_intern.hash(inner_pool, rep),
-                                    (s, v, outer_pool, inner_pool),
-                                );
-                            }
-                            //info!("Inserting into buckets done in {:?}", Instant::now() - start);
-
-                            joiner.join_map(|_hash, l, r| {
-                                total += 1;
-                                if sketch_pred.eval(l.0, r.0) {
-                                    if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
-                                        if no_dedup || (!hasher_intern.already_seen(&l.3, &r.3, rep)
-                                            && !hasher.already_seen(&l.2, &r.2, *outer_repetition)) {
-                                            cnt += 1;
-                                        } else {
-                                            duplicate_cnt += 1;
-                                        }
-                                    } 
-                                } else {
-                                    sketch_cnt += 1;
-                                }
-                            });
-                            //info!("Repetition finished after {:?}", Instant::now() - start);
+        let left_hashes = source_hashed_two_round(
+            scope,
+            Arc::clone(&global_left),
+            Arc::clone(&sketcher),
+            Arc::clone(&hasher),
+            Arc::clone(&hasher_intern),
+            probe.clone(),
+            repetition_batch,
+            matrix,
+            MatrixDirection::Rows,
+        );
+        let right_hashes = source_hashed_two_round(
+            scope,
+            Arc::clone(&global_right),
+            Arc::clone(&sketcher),
+            Arc::clone(&hasher),
+            Arc::clone(&hasher_intern),
+            probe.clone(),
+            repetition_batch,
+            matrix,
+            MatrixDirection::Columns,
+        );
+        info!("Starting {} internal repetitions", hasher_intern.repetitions());
+        left_hashes
+            .join_map_slice(
+                &right_hashes,
+                move |(outer_repetition, _hash), left_vals, right_vals| {
+                    let mut cnt = 0;
+                    let mut total = 0;
+                    let mut sketch_cnt = 0;
+                    let mut duplicate_cnt = 0;
+                    let repetitions = hasher_intern.repetitions();
+                    let mut joiner = Joiner::default();
+                    let all_to_all = left_vals.len() * right_vals.len();
+                    let start = Instant::now();
+                    for rep in 0..repetitions {
+                        //info!("In repetition {}", rep);
+                        joiner.clear();
+                        for (_, (outer_pool, inner_pool, s, v)) in left_vals.iter() {
+                            joiner.push_left(
+                                hasher_intern.hash(inner_pool, rep),
+                                (s, v, outer_pool, inner_pool),
+                            );
                         }
-                        info!(
-                            "Candidates {} ({}): Emitted {} / Discarded {} / Duplicates {} in {:?} ({})",
-                            total,
-                            all_to_all,
-                            cnt,
-                            sketch_cnt,
-                            duplicate_cnt,
-                            Instant::now() - start,
-                            proc_mem!(),
-                        );
-                        log_event!(logger, LogEvent::GeneratedPairs(*outer_repetition, cnt));
-                        log_event!(
-                            logger,
-                            LogEvent::SketchDiscarded(*outer_repetition, sketch_cnt)
-                        );
-                        log_event!(
-                            logger,
-                            LogEvent::DuplicatesDiscarded(*outer_repetition, duplicate_cnt)
-                        );
-                        vec![cnt]
-                    },
-                )
-                .exchange(|_| 0) // Bring all the counts to the first worker
-                .probe_with(&mut probe)
-                .capture_into(output_send_ch);
-            probe
-        });
+                        for (_, (outer_pool, inner_pool, s, v)) in right_vals.iter() {
+                            joiner.push_right(
+                                hasher_intern.hash(inner_pool, rep),
+                                (s, v, outer_pool, inner_pool),
+                            );
+                        }
+                        //info!("Inserting into buckets done in {:?}", Instant::now() - start);
 
-        // Do the stepping even though it's not strictly needed: we use it to wait for the dataflow
-        // to finish
-        // worker.step_while(|| probe.less_than(&(repetitions as u32)));
-        worker.step_while(|| probe.with_frontier(|f| !f.is_empty()));
+                        joiner.join_map(|_hash, l, r| {
+                            total += 1;
+                            if sketch_pred.eval(l.0, r.0) {
+                                if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
+                                    if no_dedup || (!hasher_intern.already_seen(&l.3, &r.3, rep)
+                                        && !hasher.already_seen(&l.2, &r.2, *outer_repetition)) {
+                                        cnt += 1;
+                                    } else {
+                                        duplicate_cnt += 1;
+                                    }
+                                } 
+                            } else {
+                                sketch_cnt += 1;
+                            }
+                        });
+                        //info!("Repetition finished after {:?}", Instant::now() - start);
+                    }
+                    info!(
+                        "Candidates {} ({}): Emitted {} / Discarded {} / Duplicates {} in {:?} ({})",
+                        total,
+                        all_to_all,
+                        cnt,
+                        sketch_cnt,
+                        duplicate_cnt,
+                        Instant::now() - start,
+                        proc_mem!(),
+                    );
+                    log_event!(logger, LogEvent::GeneratedPairs(*outer_repetition, cnt));
+                    log_event!(
+                        logger,
+                        LogEvent::SketchDiscarded(*outer_repetition, sketch_cnt)
+                    );
+                    log_event!(
+                        logger,
+                        LogEvent::DuplicatesDiscarded(*outer_repetition, duplicate_cnt)
+                    );
+                    vec![cnt]
+                },
+            )
+            .exchange(|_| 0) // Bring all the counts to the first worker
+            .probe_with(&mut probe)
+            .capture_into(output_send_ch);
+        probe
+    });
 
-        collect_execution_summaries(execution_summary, send_exec_summary.clone(), &mut worker);
-    })
-    .transpose()
-    .expect("Problems with the dataflow");
+    // Do the stepping even though it's not strictly needed: we use it to wait for the dataflow
+    // to finish
+    // worker.step_while(|| probe.less_than(&(repetitions as u32)));
+    worker.step_while(|| probe.with_frontier(|f| !f.is_empty()));
+
+    collect_execution_summaries(execution_summary, send_exec_summary.clone(), worker);
 
     let network_summaries = network.map(|n| n.measure().collect_from_workers(&config));
 

@@ -15,9 +15,11 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::time::Instant;
+use timely::communication::Allocator;
 use timely::dataflow::operators::capture::Extract;
 use timely::dataflow::operators::generic::operator::source;
 use timely::dataflow::operators::*;
+use timely::worker::Worker;
 use timely::Data;
 
 #[cfg(feature = "seq-all-2-all")]
@@ -57,6 +59,7 @@ where
 
 #[cfg(feature = "all-2-all")]
 pub fn all_pairs_parallel<T, F>(
+    worker: &mut Worker<Allocator>,
     threshold: f64,
     left_path: &str,
     right_path: &str,
@@ -72,66 +75,60 @@ where
     let (output_send_ch, recv) = ::std::sync::mpsc::channel();
     let output_send_ch = Arc::new(Mutex::new(output_send_ch));
 
-    let (global_left, global_right) = load_vectors(left_path, right_path, &config);
+    let (global_left, global_right) = load_vectors(worker, left_path, right_path, &config);
 
-    config
-        .execute(move |worker| {
-            let index = worker.index();
-            let peers = worker.peers() as u64;
-            info!("Started worker {}/{}", index, peers);
-            let sim_pred = sim_pred.clone();
+    let index = worker.index();
+    let peers = worker.peers() as u64;
+    info!("Started worker {}/{}", index, peers);
+    let sim_pred = sim_pred.clone();
 
-            worker.dataflow::<u32, _, _>(|scope| {
-                let output_send_ch = output_send_ch.lock().unwrap().clone();
-                let global_left = Arc::clone(&global_left);
-                let global_right = Arc::clone(&global_right);
+    worker.dataflow::<u32, _, _>(|scope| {
+        let output_send_ch = output_send_ch.lock().unwrap().clone();
+        let global_left = Arc::clone(&global_left);
+        let global_right = Arc::clone(&global_right);
 
-                let matrix = MatrixDescription::for_workers(peers as usize);
-                let (row, col) = matrix.row_major_to_pair(index as u64);
-                source(scope, "Source", move |capability| {
-                    let mut cap = Some(capability);
-                    let left = Arc::clone(&global_left);
-                    let right = Arc::clone(&global_right);
-                    move |output| {
-                        if let Some(cap) = cap.take() {
-                            info!("Starting to count pairs (memory {})", proc_mem!());
-                            let mut count = 0usize;
-                            let mut pl = progress_logger::ProgressLogger::builder()
-                                .with_frequency(Duration::from_secs(60))
-                                .with_items_name("pairs")
-                                .with_expected_updates(
-                                    (left.chunk_len(row as usize) * right.chunk_len(col as usize))
-                                        as u64,
-                                )
-                                .start();
-                            for (_lk, lv) in left.iter_chunk(row as usize) {
-                                let mut pairs_looked = 0_u64;
-                                for (_rk, rv) in right.iter_chunk(col as usize) {
-                                    if sim_pred(lv, rv) {
-                                        count += 1;
-                                    }
-                                    pairs_looked += 1;
-                                }
-                                pl.update_light(pairs_looked);
+        let matrix = MatrixDescription::for_workers(peers as usize);
+        let (row, col) = matrix.row_major_to_pair(index as u64);
+        source(scope, "Source", move |capability| {
+            let mut cap = Some(capability);
+            let left = Arc::clone(&global_left);
+            let right = Arc::clone(&global_right);
+            move |output| {
+                if let Some(cap) = cap.take() {
+                    info!("Starting to count pairs (memory {})", proc_mem!());
+                    let mut count = 0usize;
+                    let mut pl = progress_logger::ProgressLogger::builder()
+                        .with_frequency(Duration::from_secs(60))
+                        .with_items_name("pairs")
+                        .with_expected_updates(
+                            (left.chunk_len(row as usize) * right.chunk_len(col as usize)) as u64,
+                        )
+                        .start();
+                    for (_lk, lv) in left.iter_chunk(row as usize) {
+                        let mut pairs_looked = 0_u64;
+                        for (_rk, rv) in right.iter_chunk(col as usize) {
+                            if sim_pred(lv, rv) {
+                                count += 1;
                             }
-                            pl.stop();
-
-                            info!(
-                                "Worker {} outputting count {} (memory {})",
-                                index,
-                                count,
-                                proc_mem!()
-                            );
-                            output.session(&cap).give(count);
+                            pairs_looked += 1;
                         }
+                        pl.update_light(pairs_looked);
                     }
-                })
-                .exchange(|_| 0)
-                .capture_into(output_send_ch);
-            });
+                    pl.stop();
+
+                    info!(
+                        "Worker {} outputting count {} (memory {})",
+                        index,
+                        count,
+                        proc_mem!()
+                    );
+                    output.session(&cap).give(count);
+                }
+            }
         })
-        .transpose()
-        .expect("Something went wrong with the timely dataflow execution");
+        .exchange(|_| 0)
+        .capture_into(output_send_ch);
+    });
 
     if config.is_master() {
         let count: usize = recv

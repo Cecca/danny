@@ -16,6 +16,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
+use timely::communication::Allocator;
+use timely::worker::Worker;
 
 pub enum ContentType {
     Vector,
@@ -350,6 +352,7 @@ impl ReadDataFile for BagOfWords {
 
 #[allow(clippy::type_complexity)]
 pub fn load_vectors<D>(
+    worker: &mut Worker<Allocator>,
     left_path_main: &str,
     right_path_main: &str,
     config: &Config,
@@ -360,23 +363,24 @@ pub fn load_vectors<D>(
 where
     for<'de> D: Deserialize<'de> + ReadBinaryFile + Sync + Send + Clone + 'static,
 {
-    let (send_coords, recv_coords) = channel();
-    let send_coords = Arc::new(Mutex::new(send_coords));
+    // FIXME Simplify this
+    // let (send_coords, recv_coords) = channel();
+    // let send_coords = Arc::new(Mutex::new(send_coords));
 
-    config
-        .execute(move |worker| {
-            let index = worker.index();
-            let peers = worker.peers() as u64;
-            let send_coords = send_coords.lock().unwrap().clone();
-            let matrix_coords =
-                MatrixDescription::for_workers(peers as usize).row_major_to_pair(index as u64);
-            debug!("Sending coordinates {:?}", matrix_coords);
-            send_coords
-                .send(matrix_coords)
-                .expect("Error while pushing into coordinates channel");
-        })
-        .transpose()
-        .unwrap();
+    // config
+    //     .execute(move |worker| {
+    let index = worker.index();
+    let peers = worker.peers() as u64;
+    // let send_coords = send_coords.lock().unwrap().clone();
+    let matrix_coords =
+        MatrixDescription::for_workers(peers as usize).row_major_to_pair(index as u64);
+    // debug!("Sending coordinates {:?}", matrix_coords);
+    // send_coords
+    //     .send(matrix_coords)
+    //     .expect("Error while pushing into coordinates channel");
+    // })
+    // .transpose()
+    // .unwrap();
 
     let total_workers = config.get_total_workers();
     let matrix_desc = MatrixDescription::for_workers(total_workers);
@@ -385,16 +389,12 @@ where
     let mut left_builder = ChunkedDataset::builder(matrix_desc.rows as usize);
     let mut right_builder = ChunkedDataset::builder(matrix_desc.columns as usize);
 
-    debug!("Getting coordinates");
-    for (i, j) in recv_coords.iter() {
-        // We know we will receive exactly that many messages
-        row_set.insert(i);
-        column_set.insert(j);
-    }
-    debug!("Got coordinates");
+    let (i, j) = matrix_coords;
+    row_set.insert(i);
+    column_set.insert(j);
 
-    debug!("This machine is responsible for rows: {:?}", row_set);
-    debug!("This machine is responsible for columns: {:?}", column_set);
+    debug!("This worker is responsible for rows: {:?}", row_set);
+    debug!("This worker is responsible for columns: {:?}", column_set);
     debug!("Memory before reading data {}", proc_mem!());
     ReadBinaryFile::read_binary(
         left_path_main.into(),

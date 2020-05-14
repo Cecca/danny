@@ -17,11 +17,13 @@ use std::fmt::Debug;
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+use timely::communication::Allocator;
 use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use timely::progress::Timestamp;
+use timely::worker::Worker;
 use timely::ExchangeData;
 
 pub fn source_hashed_one_round<G, T, K, D, S, F>(
@@ -112,6 +114,7 @@ where
 
 #[allow(clippy::too_many_arguments)]
 pub fn hu_baseline<D, F, H, S, V, B, R>(
+    worker: &mut Worker<Allocator>,
     left_path: &str,
     right_path: &str,
     range: f64,
@@ -152,23 +155,22 @@ where
         D::num_elements(left_path.into()),
         D::num_elements(right_path.into())
     );
-    let (global_left, global_right) = load_vectors(left_path, right_path, &config);
+    let (global_left, global_right) = load_vectors(worker, left_path, right_path, &config);
 
-    config.execute(move |mut worker| {
-        let global_left = Arc::clone(&global_left);
-        let global_right = Arc::clone(&global_right);
-        let hasher = Arc::clone(&hasher);
-        let execution_summary = init_event_logging(&worker);
-        let output_send_ch = output_send_ch
-            .lock()
-            .expect("Cannot get lock on output channel")
-            .clone();
-        let sim_pred = sim_pred.clone();
-        let sketch_predicate = sketch_predicate.clone();
-        let sketcher = sketcher.clone();
-        let sketcher = Arc::new(sketcher);
+    let global_left = Arc::clone(&global_left);
+    let global_right = Arc::clone(&global_right);
+    let hasher = Arc::clone(&hasher);
+    let execution_summary = init_event_logging(&worker);
+    let output_send_ch = output_send_ch
+        .lock()
+        .expect("Cannot get lock on output channel")
+        .clone();
+    let sim_pred = sim_pred.clone();
+    let sketch_predicate = sketch_predicate.clone();
+    let sketcher = sketcher.clone();
+    let sketcher = Arc::new(sketcher);
 
-        let probe = worker.dataflow::<u32, _, _>(move |scope| {
+    let probe = worker.dataflow::<u32, _, _>(move |scope| {
             let mut probe = ProbeHandle::new();
             let matrix = MatrixDescription::for_workers(scope.peers() as usize);
             let logger = scope.danny_logger();
@@ -247,17 +249,14 @@ where
             probe
         });
 
-        // Do the stepping even though it's not strictly needed: we use it to wait for the dataflow
-        // to finish
-        // worker.step_while(|| probe.less_than(&(repetitions as u32)));
-        worker.step_while(|| probe.with_frontier(|f| !f.is_empty()));
+    // Do the stepping even though it's not strictly needed: we use it to wait for the dataflow
+    // to finish
+    // worker.step_while(|| probe.less_than(&(repetitions as u32)));
+    worker.step_while(|| probe.with_frontier(|f| !f.is_empty()));
 
-        info!("Finished stepping");
+    info!("Finished stepping");
 
-        collect_execution_summaries(execution_summary, send_exec_summary.clone(), &mut worker);
-    })
-    .transpose()
-    .expect("Problems with the dataflow");
+    collect_execution_summaries(execution_summary, send_exec_summary.clone(), worker);
 
     info!("Collecting summaries");
 
