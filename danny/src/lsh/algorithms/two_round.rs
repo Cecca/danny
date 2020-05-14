@@ -1,3 +1,4 @@
+use danny_base::types::ElementId;
 use timely::worker::Worker;
 use timely::communication::Allocator;
 use crate::config::*;
@@ -63,6 +64,17 @@ where
     // let (send_exec_summary, recv_exec_summary) = channel();
     // let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
+    let left_vectors = Arc::new(load_for_worker::<D, _>(
+        worker.index(),
+        worker.peers(),
+        left_path,
+    ));
+    let right_vectors = Arc::new(load_for_worker::<D, _>(
+        worker.index(),
+        worker.peers(),
+        left_path,
+    ));
+
     let individual_recall = config.recall.sqrt();
 
     let hasher = TensorCollection::new(k, range, individual_recall, hash_function_builder.clone(), rng);
@@ -75,15 +87,6 @@ where
 
     println!("{}", config.recall);
 
-    debug!(
-        "Left dataset has {} points, right has {}",
-        D::num_elements(left_path.into()),
-        D::num_elements(right_path.into())
-    );
-    let (global_left, global_right) = load_vectors(worker, left_path, right_path, &config);
-
-    let global_left = Arc::clone(&global_left);
-    let global_right = Arc::clone(&global_right);
     let hasher = Arc::clone(&hasher);
     let hasher_intern = Arc::clone(&hasher_intern);
     let execution_summary = init_event_logging(&worker);
@@ -100,7 +103,7 @@ where
 
         let left_hashes = source_hashed_two_round(
             scope,
-            Arc::clone(&global_left),
+            Arc::clone(&left_vectors),
             Arc::clone(&sketcher),
             Arc::clone(&hasher),
             Arc::clone(&hasher_intern),
@@ -111,7 +114,7 @@ where
         );
         let right_hashes = source_hashed_two_round(
             scope,
-            Arc::clone(&global_right),
+            Arc::clone(&right_vectors),
             Arc::clone(&sketcher),
             Arc::clone(&hasher),
             Arc::clone(&hasher_intern),
@@ -220,9 +223,9 @@ where
     }
 }
 
-pub fn source_hashed_two_round<G, T, K, D, F, S>(
+pub fn source_hashed_two_round<G, T, D, F, S>(
     scope: &G,
-    global_vecs: Arc<ChunkedDataset<K, D>>,
+    vecs: Arc<Vec<(ElementId, D)>>,
     sketcher: Arc<S>,
     hash_fns: Arc<TensorCollection<F>>,
     hash_fns2: Arc<TensorCollection<F>>,
@@ -230,8 +233,7 @@ pub fn source_hashed_two_round<G, T, K, D, F, S>(
     repetition_batch: usize,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-) -> Stream<G, ((usize, u32), (TensorPool, TensorPool, S::Output, (K, D)))>
-// ) -> Stream<G, (u32, (K, D))>
+) -> Stream<G, ((usize, u32), (TensorPool, TensorPool, S::Output, (ElementId, D)))>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ,
@@ -239,18 +241,16 @@ where
     F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
     S: Sketcher<Input = D> + Clone + 'static,
     S::Output: SketchData + Debug,
-    K: KeyData + Debug,
 {
     let worker: u64 = scope.index() as u64;
     let logger = scope.danny_logger();
     let repetitions = hash_fns.repetitions();
-    let vecs = Arc::clone(&global_vecs);
     let mut stopwatch = RepetitionStopWatch::new("repetition", worker == 0, logger);
-    let mut bit_pools: HashMap<K, TensorPool> = HashMap::new();
-    let mut bit_pools_intern: HashMap<K, TensorPool> = HashMap::new();
+    let mut bit_pools: HashMap<ElementId, TensorPool> = HashMap::new();
+    let mut bit_pools_intern: HashMap<ElementId, TensorPool> = HashMap::new();
     info!("Computing the bit pools");
     let start = Instant::now();
-    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
+    for (k, v) in vecs.iter() {
         bit_pools.insert(*k, hash_fns.pool(v));
         bit_pools_intern.insert(*k, hash_fns2.pool(v));
     }
@@ -275,7 +275,7 @@ where
                         debug!("Repetition {} (two round LSH)", current_repetition);
                     }
                     let mut session = output.session(&cap);
-                    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
+                    for (k, v) in vecs.iter() {
                         let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
                         let s = sketcher.sketch(v);
                         session.give((
