@@ -28,7 +28,7 @@ use timely::ExchangeData;
 
 fn simple_source<G, F, D, S>(
     scope: &G,
-    vecs: Vec<(ElementId, D)>,
+    vecs: Arc<Vec<(ElementId, D)>>,
     sketcher: Arc<S>,
     hash_fns: Arc<TensorCollection<F>>,
     worker: u64,
@@ -123,14 +123,8 @@ where
         rng,
     ));
 
-    let left_vecs = load_for_worker(worker.index(), worker.peers(), left_path);
-    let right_vecs = load_for_worker(worker.index(), worker.peers(), right_path);
-
-    info!(
-        "Left part has {} points, right has {}",
-        left_vecs.len(),
-        right_vecs.len()
-    );
+    let worker_vectors = Arc::new(load_for_worker(worker.index(), worker.peers(), left_path));
+    info!("Worker has {} vectors", worker_vectors.len());
 
     let hasher = Arc::clone(&hasher);
     // let execution_summary = init_event_logging(&worker);
@@ -141,7 +135,6 @@ where
     let sketcher = Arc::new(sketcher);
     let worker_index = worker.index() as u64;
     let matrix = MatrixDescription::for_workers(worker.peers());
-    let (worker_row, worker_col) = matrix.row_major_to_pair(worker_index);
 
     let probe = worker.dataflow::<u32, _, _>(move |scope| {
         let mut probe = ProbeHandle::<u32>::new();
@@ -153,7 +146,7 @@ where
 
         let left = simple_source(
             scope,
-            left_vecs,
+            Arc::clone(&worker_vectors),
             Arc::clone(&sketcher),
             Arc::clone(&hasher),
             worker_index,
@@ -162,7 +155,7 @@ where
         );
         let right = simple_source(
             scope,
-            right_vecs,
+            Arc::clone(&worker_vectors),
             Arc::clone(&sketcher),
             Arc::clone(&hasher),
             worker_index,
@@ -217,7 +210,6 @@ where
                         for rep in 0..repetitions {
                             let _pg = ProfileGuard::new(logger.clone(), rep, 0, "repetition");
                             let start = Instant::now();
-                            // let mut bucket = Bucket::default();
                             let mut joiner = Joiner::default();
                             for (k, pool, sketch) in left_data.iter() {
                                 joiner.push_left(hasher.hash(pool, rep), (*k, *sketch, pool));
