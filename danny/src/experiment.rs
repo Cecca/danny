@@ -1,14 +1,6 @@
 use crate::config::*;
-use crate::version;
 use chrono::prelude::*;
 use rusqlite::*;
-use std::collections::HashMap;
-use std::fs::File;
-use std::fs::OpenOptions;
-use std::io::BufRead;
-use std::io::BufReader;
-use std::io::Write;
-use std::path::PathBuf;
 
 pub struct Experiment {
     date: DateTime<Utc>,
@@ -31,39 +23,6 @@ impl Experiment {
             output_size: None,
             total_time_ms: None,
         }
-        // let experiment = Experiment::new()
-        //     .tag("threads_per_worker", config.threads)
-        //     .tag("num_hosts", config.get_num_hosts())
-        //     .tag("total_threads", config.get_total_workers())
-        //     .tag("seed", config.seed)
-        //     .tag("sketch_epsilon", config.sketch_epsilon)
-        //     .tag("required_recall", config.recall)
-        //     .tag("no_dedup", config.no_dedup)
-        //     .tag("no_verify", config.no_verify)
-        //     // .tag("measure", cmdline.measure.clone())
-        //     .tag("threshold", config.threshold)
-        //     .tag("left_path", config.left_path.clone())
-        //     .tag("right_path", config.right_path.clone())
-        //     .tag("algorithm", config.algorithm.clone())
-        //     .tag("git_revision", version::short_sha())
-        //     .tag("git_commit_date", version::commit_date());
-        // let experiment = if config.k.is_some() {
-        //     let k_str = config.k.unwrap().to_string().clone();
-        //     let exp = experiment.tag("k", k_str);
-        //     if config.k2.is_some() {
-        //         let k2_str = config.k2.unwrap().to_string().clone();
-        //         exp.tag("k2", k2_str)
-        //     } else {
-        //         exp
-        //     }
-        // } else {
-        //     experiment
-        // };
-        // // if cmdline.sketch_bits.is_some() {
-        // experiment.tag("sketch_bits", config.sketch_bits)
-        // // } else {
-        // //     experiment
-        // // }
     }
 
     pub fn set_output_size(&mut self, output_size: u32) {
@@ -218,6 +177,14 @@ impl Experiment {
             // }
 
             // TODO: insert into network table
+
+            let mut stmt = tx.prepare(
+                "INSERT INTO network ( sha, hostname, interface, transmitted, received )
+                 VALUES ( ?1, ?2, ?3, ?4, ?5 )"
+            ).expect("failed to prepare statement");
+            for (hostname, interface, transmitted, received) in self.network.iter() {
+                stmt.execute(params![hostname, interface, transmitted, received]).expect("failure in inserting network information");
+            }
         }
 
         tx.commit().expect("error committing insertions");
@@ -269,6 +236,19 @@ fn create_tables_if_needed(conn: &Connection) {
             kind   TEXT NOT NULL,
             step      INTEGER NOT NULL,
             count     INTEGER NOT NULL,
+            FOREIGN KEY (sha) REFERENCES main (sha)
+            )",
+        params![],
+    )
+    .expect("error creating counters table");
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS network (
+            sha       TEXT NOT NULL,
+            hostname  TEXT NOT NULL,
+            interface INTEGER NOT NULL,
+            transmitted  INTEGER NOT NULL,
+            received     INTEGER NOT NULL,
             FOREIGN KEY (sha) REFERENCES main (sha)
             )",
         params![],

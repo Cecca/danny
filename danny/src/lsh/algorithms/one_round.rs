@@ -106,13 +106,9 @@ where
 
     let no_dedup = config.no_dedup;
     let no_verify = config.no_verify;
-    let network = NetworkGauge::start();
 
     let result = Rc::new(RefCell::new(0usize));
     let result_read = Rc::clone(&result);
-
-    // let (send_exec_summary, recv_exec_summary) = channel();
-    // let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
     let hasher = Arc::new(TensorCollection::new(
         k,
@@ -126,7 +122,6 @@ where
     let right_vectors = Arc::new(load_for_worker(worker.index(), worker.peers(), left_path));
 
     let hasher = Arc::clone(&hasher);
-    // let execution_summary = init_event_logging(&worker);
 
     let sim_pred = sim_pred.clone();
     let sketch_predicate = sketch_predicate.clone();
@@ -273,9 +268,6 @@ where
     });
 
     worker.step_while(|| !probe.done());
-
-    // info!("Collect execution summaries");
-    // collect_execution_summaries(execution_summary, send_exec_summary.clone(), worker);
 
     // info!("Collect network summaries");
     // let network_summaries = network.map(|n| n.measure().collect_from_workers(worker, &config));

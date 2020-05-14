@@ -141,47 +141,43 @@ impl NetworkSummary {
 
     /// sets up a small dataflow to exchange information about the network exchanges
     pub fn collect_from_workers(
-        self,
         worker: &mut Worker<Allocator>,
-        config: &Config,
+        summary: Option<NetworkSummary>,
     ) -> Vec<NetworkSummary> {
-        let (send, recv) = std::sync::mpsc::channel();
-        let send = Arc::new(Mutex::new(send));
-        let this = Arc::new(Mutex::new(Some(self)));
-        let send = Arc::clone(&send);
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        use timely::dataflow::channels::pact::Pipeline;
+
+        let result = Rc::new(RefCell::new(Vec::new()));
+        let result_read = Rc::clone(&result);
+
         let (mut input, probe) = worker.dataflow::<u32, _, _>(move |scope| {
-            let send = send.lock().unwrap().clone();
             let (input, stream) = scope.new_input::<NetworkSummary>();
             let mut probe = ProbeHandle::new();
             stream
                 .exchange(|_| 0)
-                .probe_with(&mut probe)
-                .capture_into(send);
+                .unary(Pipeline, "collector", move |_, _| {
+                    move |input, output| {
+                        input.for_each(|t, data| {
+                            let data = data.replace(Vec::new());
+                            result.borrow_mut().extend(data.into_iter());
+                            output.session(&t).give(());
+                        });
+                    }
+                })
+                .probe_with(&mut probe);
 
             (input, probe)
         });
-        // Use the lock to send the information about this machine just once
-        let this = this.lock().unwrap().take();
-        if this.is_some() {
-            input.send(this.unwrap());
-        }
-        input.advance_to(1);
 
-        // Who should step this?
+        if let Some(machine_summary) = summary {
+            input.send(machine_summary);
+        }
+
+        input.advance_to(1);
         worker.step_while(|| probe.less_than(&1));
 
-        let mut res = Vec::new();
-        if config.is_master() {
-            for summary in recv.iter() {
-                if let TimelyEvent::Messages(_, msgs) = summary {
-                    for summary in msgs.iter() {
-                        info!("{}", summary);
-                    }
-                    res.extend(msgs);
-                }
-            }
-        }
-        res
+        result_read.replace(Vec::new())
     }
 }
 
@@ -261,22 +257,32 @@ where
 
 pub fn collect_execution_summaries<A>(
     execution_summary: Arc<Mutex<ExecutionSummary>>,
-    send: Arc<Mutex<Sender<TimelyEvent<u32, FrozenExecutionSummary>>>>,
     worker: &mut Worker<A>,
-) where
+) -> Vec<FrozenExecutionSummary>
+where
     A: timely::communication::Allocate,
 {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    use timely::dataflow::channels::pact::Pipeline;
+    let summaries = Rc::new(RefCell::new(Vec::new()));
+    let summaries_read = Rc::clone(&summaries);
+
     let (mut input, probe) = worker.dataflow::<u32, _, _>(move |scope| {
-        let send = send
-            .lock()
-            .expect("cannot acquire lock on send channel")
-            .clone();
         let (input, stream) = scope.new_input::<FrozenExecutionSummary>();
         let mut probe = ProbeHandle::new();
         stream
             .exchange(|_| 0)
-            .probe_with(&mut probe)
-            .capture_into(send);
+            .unary(Pipeline, "collector", move |_, _| {
+                move |input, output| {
+                    input.for_each(|t, data| {
+                        let data = data.replace(Vec::new());
+                        summaries.borrow_mut().extend(data.into_iter());
+                        output.session(&t).give(());
+                    });
+                }
+            })
+            .probe_with(&mut probe);
 
         (input, probe)
     });
@@ -287,6 +293,8 @@ pub fn collect_execution_summaries<A>(
     input.send(execution_summary);
     input.advance_to(1);
     worker.step_while(|| probe.less_than(&1));
+
+    summaries_read.replace(Vec::new())
 }
 
 #[macro_export]

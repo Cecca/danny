@@ -206,6 +206,8 @@ where
 }
 
 fn main() {
+    use std::sync::{Arc, Mutex};
+
     let config = Config::get();
     init_logging(&config);
     if config.no_dedup {
@@ -214,10 +216,18 @@ fn main() {
 
     let threshold = config.threshold;
 
+    // init this gauge outside of the worker definition to have it once per machine,
+    // instead of once per thread. Furthermore, the mutex machinery allows to
+    // remove it once we are done, so that the first thread that removes it will
+    // prevent the others from returning its information multiple times.
+    let network = Arc::new(Mutex::new(Some(NetworkGauge::start())));
+
     config
         .clone()
         .execute(move |worker| {
             let mut experiment = Experiment::from_config(config.clone());
+            let execution_summary = init_event_logging(&worker);
+
             info!("Starting...");
             info!("Initial memory {}", proc_mem!());
 
@@ -303,6 +313,15 @@ fn main() {
             let total_time_d = end - start;
             let total_time =
                 total_time_d.as_secs() * 1000 + u64::from(total_time_d.subsec_millis());
+
+            let summaries = collect_execution_summaries(execution_summary, worker);
+            let network_summary = {
+                let mut network = network.lock().unwrap();
+                let network: Option<NetworkGauge> = network.take().flatten();
+                network.map(|gauge| gauge.measure())
+            };
+            let network_summaries = NetworkSummary::collect_from_workers(worker, network_summary);
+
             if worker.index() == 0 {
                 info!(
                     "pairs above similarity {} are {} (time {:?})",
@@ -310,6 +329,16 @@ fn main() {
                 );
                 experiment.set_output_size(count as u32);
                 experiment.set_total_time_ms(total_time);
+                for net_summary in network_summaries.into_iter() {
+                    for (iface, diff) in net_summary.interfaces.iter() {
+                        experiment.append_network_info(
+                            net_summary.hostname.clone(),
+                            iface.clone(),
+                            diff.transmitted,
+                            diff.received,
+                        )
+                    }
+                }
                 experiment.save();
             }
         })

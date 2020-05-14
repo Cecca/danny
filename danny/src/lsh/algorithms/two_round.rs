@@ -56,12 +56,8 @@ where
     let result = Rc::new(RefCell::new(0usize));
     let result_read = Rc::clone(&result);
 
-    let network = NetworkGauge::start();
     let no_dedup = config.no_dedup;
     let no_verify = config.no_verify;
-
-    // let (send_exec_summary, recv_exec_summary) = channel();
-    // let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
     let left_vectors = Arc::new(load_for_worker::<D, _>(
         worker.index(),
@@ -88,7 +84,6 @@ where
 
     let hasher = Arc::clone(&hasher);
     let hasher_intern = Arc::clone(&hasher_intern);
-    let execution_summary = init_event_logging(&worker);
     let sim_pred = sim_pred.clone();
     let sketch_pred = sketch_pred.clone();
 
@@ -210,10 +205,6 @@ where
     // Do the stepping even though it's not strictly needed: we use it to wait for the dataflow
     // to finish
     worker.step_while(|| probe.with_frontier(|f| !f.is_empty()));
-
-    // collect_execution_summaries(execution_summary, send_exec_summary.clone(), worker);
-
-    // let network_summaries = network.map(|n| n.measure().collect_from_workers(worker, &config));
 
     if worker.index() == 0 {
         result_read.replace(0)
