@@ -284,21 +284,22 @@ where
     let network_summaries = network.map(|n| n.measure().collect_from_workers(worker, &config));
 
     if config.is_master() {
-        let mut exec_summaries = Vec::new();
-        for summary in recv_exec_summary.iter() {
-            if let TimelyEvent::Messages(_, msgs) = summary {
-                exec_summaries.extend(msgs);
-            }
-        }
-        for summary in exec_summaries.iter() {
-            summary.add_to_experiment(experiment);
-        }
-        if network_summaries.is_some() {
-            network_summaries
-                .unwrap()
-                .iter()
-                .for_each(|n| n.report(experiment));
-        }
+        // let mut exec_summaries = Vec::new();
+        // for summary in recv_exec_summary.iter() {
+        //     if let TimelyEvent::Messages(_, msgs) = summary {
+        //         exec_summaries.extend(msgs);
+        //     }
+        // }
+        // for summary in exec_summaries.iter() {
+        //     summary.add_to_experiment(experiment);
+        // }
+        // if network_summaries.is_some() {
+        //     network_summaries
+        //         .unwrap()
+        //         .iter()
+        //         .for_each(|n| n.report(experiment));
+        // }
+        info!("Get elements out of count");
         // From `recv` we get an entry for each timestamp, containing a one-element vector with the
         // count of output pairs for a given timestamp. We sum across all the timestamps, so we need to
         // remove the duplicates
