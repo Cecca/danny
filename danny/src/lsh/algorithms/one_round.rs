@@ -110,8 +110,8 @@ where
     let (output_send_ch, recv) = channel();
     // let output_send_ch = Arc::new(Mutex::new(output_send_ch));
 
-    let (send_exec_summary, recv_exec_summary) = channel();
-    let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
+    // let (send_exec_summary, recv_exec_summary) = channel();
+    // let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
     let hasher = Arc::new(TensorCollection::new(
         k,
