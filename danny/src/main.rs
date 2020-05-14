@@ -314,7 +314,9 @@ fn main() {
                 experiment.set_total_time_ms(total_time);
                 experiment.save();
             }
+            info!("Worker done");
         })
         .transpose()
         .expect("Problems with the worker setup");
+    info!("Done");
 }
