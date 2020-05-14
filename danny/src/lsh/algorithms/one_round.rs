@@ -108,7 +108,7 @@ where
     let network = NetworkGauge::start();
     // This channel is used to get the results
     let (output_send_ch, recv) = channel();
-    let output_send_ch = Arc::new(Mutex::new(output_send_ch));
+    // let output_send_ch = Arc::new(Mutex::new(output_send_ch));
 
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
@@ -133,10 +133,10 @@ where
     // let bloom_filter = Arc::clone(&bloom_filter);
     let hasher = Arc::clone(&hasher);
     let execution_summary = init_event_logging(&worker);
-    let output_send_ch = output_send_ch
-        .lock()
-        .expect("Cannot get lock on output channel")
-        .clone();
+    // let output_send_ch = output_send_ch
+    //     .lock()
+    //     .expect("Cannot get lock on output channel")
+    //     .clone();
     let sim_pred = sim_pred.clone();
     let sketch_predicate = sketch_predicate.clone();
     let sketcher = sketcher.clone();
@@ -277,8 +277,10 @@ where
 
     worker.step_while(|| !probe.done());
 
+    info!("Collect execution summaries");
     collect_execution_summaries(execution_summary, send_exec_summary.clone(), worker);
 
+    info!("Collect network summaries");
     let network_summaries = network.map(|n| n.measure().collect_from_workers(worker, &config));
 
     if config.is_master() {
