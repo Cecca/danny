@@ -236,7 +236,7 @@ fn create_tables_if_needed(conn: &Connection) {
             kind   TEXT NOT NULL,
             step      INTEGER NOT NULL,
             count     INTEGER NOT NULL,
-            FOREIGN KEY (sha) REFERENCES main (sha)
+            FOREIGN KEY (sha) REFERENCES result (sha)
             )",
         params![],
     )
@@ -249,7 +249,7 @@ fn create_tables_if_needed(conn: &Connection) {
             interface INTEGER NOT NULL,
             transmitted  INTEGER NOT NULL,
             received     INTEGER NOT NULL,
-            FOREIGN KEY (sha) REFERENCES main (sha)
+            FOREIGN KEY (sha) REFERENCES result (sha)
             )",
         params![],
     )
