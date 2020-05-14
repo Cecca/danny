@@ -78,6 +78,11 @@ pub struct Config {
     #[argh(option, default = "1")]
     pub repetition_batch: usize,
 
+    /// wether to run again the given configuration, 
+    /// even if already present in the database
+    #[argh(switch)]
+    pub rerun: bool,
+
     /// the left dataset to be joined
     #[argh(positional)]
     pub left_path: String,

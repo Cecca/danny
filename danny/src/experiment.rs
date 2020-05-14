@@ -101,6 +101,9 @@ impl Experiment {
     }
 
     pub fn already_run(&self) -> Option<String> {
+        if self.config.rerun {
+            return None;
+        }
         let conn = Self::get_conn();
         conn.query_row(
             "SELECT sha FROM result WHERE params_sha == ?1",
