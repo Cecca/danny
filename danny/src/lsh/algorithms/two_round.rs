@@ -51,13 +51,14 @@ where
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
     B: Fn(usize, &mut R) -> H + Sized + Send + Sync + Clone + 'static,
 {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    let result = Rc::new(RefCell::new(0usize));
+    let result_read = Rc::clone(&result);
+
     let network = NetworkGauge::start();
     let no_dedup = config.no_dedup;
     let no_verify = config.no_verify;
-
-    // This channel is used to get the results
-    let (output_send_ch, recv) = channel();
-    let output_send_ch = Arc::new(Mutex::new(output_send_ch));
 
     let (send_exec_summary, recv_exec_summary) = channel();
     let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
@@ -86,10 +87,6 @@ where
     let hasher = Arc::clone(&hasher);
     let hasher_intern = Arc::clone(&hasher_intern);
     let execution_summary = init_event_logging(&worker);
-    let output_send_ch = output_send_ch
-        .lock()
-        .expect("Cannot get lock on output channel")
-        .clone();
     let sim_pred = sim_pred.clone();
     let sketch_pred = sketch_pred.clone();
 
@@ -193,8 +190,18 @@ where
                 },
             )
             .exchange(|_| 0) // Bring all the counts to the first worker
-            .probe_with(&mut probe)
-            .capture_into(output_send_ch);
+            .unary(timely::dataflow::channels::pact::Pipeline, "count collection", move |_, _| {
+                move |input, output| {
+                    input.for_each(|t, data| {
+                        let data = data.replace(Vec::new());
+                        for c in data.into_iter() {
+                            *result.borrow_mut() += c;
+                        }
+                        output.session(&t).give(());
+                    });
+                }
+            })
+            .probe_with(&mut probe);
         probe
     });
 
@@ -207,32 +214,23 @@ where
 
     let network_summaries = network.map(|n| n.measure().collect_from_workers(worker, &config));
 
-    if config.is_master() {
-        let mut exec_summaries = Vec::new();
-        for summary in recv_exec_summary.iter() {
-            if let TimelyEvent::Messages(_, msgs) = summary {
-                exec_summaries.extend(msgs);
-            }
-        }
-        for summary in exec_summaries.iter() {
-            summary.add_to_experiment(experiment);
-        }
-        if network_summaries.is_some() {
-            network_summaries
-                .unwrap()
-                .iter()
-                .for_each(|n| n.report(experiment));
-        }
-        // From `recv` we get an entry for each timestamp, containing a one-element vector with the
-        // count of output pairs for a given timestamp. We sum across all the timestamps, so we need to
-        // remove the duplicates
-        let count: u64 = recv
-            .extract()
-            .iter()
-            .map(|pair| pair.1.clone().iter().sum::<usize>())
-            .sum::<usize>() as u64;
-
-        count as usize
+    if worker.index() == 0 {
+        // let mut exec_summaries = Vec::new();
+        // for summary in recv_exec_summary.iter() {
+        //     if let TimelyEvent::Messages(_, msgs) = summary {
+        //         exec_summaries.extend(msgs);
+        //     }
+        // }
+        // for summary in exec_summaries.iter() {
+        //     summary.add_to_experiment(experiment);
+        // }
+        // if network_summaries.is_some() {
+        //     network_summaries
+        //         .unwrap()
+        //         .iter()
+        //         .for_each(|n| n.report(experiment));
+        // }
+        result_read.replace(0)
     } else {
         0
     }

@@ -70,10 +70,12 @@ where
     for<'de> T: Deserialize<'de> + ReadDataFile + Data + Sync + Send + Clone + Abomonation + Debug,
     F: Fn(&T, &T) -> bool + Send + Clone + Sync + 'static,
 {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    let result = Rc::new(RefCell::new(0usize));
+    let result_read = Rc::clone(&result);
+
     let start_time = Instant::now();
-    // This channel is used to get the results
-    let (output_send_ch, recv) = ::std::sync::mpsc::channel();
-    let output_send_ch = Arc::new(Mutex::new(output_send_ch));
 
     let (global_left, global_right) = load_vectors(worker, left_path, right_path, &config);
 
@@ -83,7 +85,6 @@ where
     let sim_pred = sim_pred.clone();
 
     worker.dataflow::<u32, _, _>(|scope| {
-        let output_send_ch = output_send_ch.lock().unwrap().clone();
         let global_left = Arc::clone(&global_left);
         let global_right = Arc::clone(&global_right);
 
@@ -127,19 +128,25 @@ where
             }
         })
         .exchange(|_| 0)
-        .capture_into(output_send_ch);
+        .unary(
+            timely::dataflow::channels::pact::Pipeline,
+            "count collection",
+            move |_, _| {
+                move |input, output| {
+                    input.for_each(|t, data| {
+                        let data = data.replace(Vec::new());
+                        for c in data.into_iter() {
+                            *result.borrow_mut() += c;
+                        }
+                        output.session(&t).give(());
+                    });
+                }
+            },
+        );
     });
 
-    if config.is_master() {
-        let count: usize = recv
-            .extract()
-            .iter()
-            .map(|pair| pair.1.clone().iter().sum::<usize>())
-            .next() // The iterator has one item for each timestamp. We have just one timestamp, 0
-            .expect("Failed to get the result out of the channel");
-        // let end_time = Instant::now();
-        // let elapsed = (end_time - start_time).as_secs();
-        count
+    if worker.index() == 0 {
+        result_read.replace(0)
     } else {
         0
     }
