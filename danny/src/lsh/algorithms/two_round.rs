@@ -203,6 +203,7 @@ where
 
         collect_execution_summaries(execution_summary, send_exec_summary.clone(), &mut worker);
     })
+    .transpose()
     .expect("Problems with the dataflow");
 
     let network_summaries = network.map(|n| n.measure().collect_from_workers(&config));

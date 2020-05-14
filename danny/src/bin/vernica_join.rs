@@ -481,14 +481,17 @@ fn run(left_path: PathBuf, right_path: PathBuf, range: f64, num_groups: u32, con
             info!("Finished stepping");
             captured
         })
+        .transpose()
         .expect("Problems running the dataflow");
 
     let mut matching_count = 0usize;
-    for guard in result.join() {
-        let result = guard.expect("Error getting the result").extract();
-        if !result.is_empty() {
-            let sum: usize = result.into_iter().flat_map(|pair| pair.1).sum::<usize>();
-            matching_count += sum;
+    if let Some(result) = result {
+        for guard in result.join() {
+            let result = guard.expect("Error getting the result").extract();
+            if !result.is_empty() {
+                let sum: usize = result.into_iter().flat_map(|pair| pair.1).sum::<usize>();
+                matching_count += sum;
+            }
         }
     }
 

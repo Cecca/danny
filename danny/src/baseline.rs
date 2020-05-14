@@ -20,119 +20,6 @@ use timely::dataflow::operators::generic::operator::source;
 use timely::dataflow::operators::*;
 use timely::Data;
 
-// #[derive(Serialize, Deserialize)]
-// pub struct Baselines {
-//     path: PathBuf,
-//     baselines: Vec<(String, String, f64, usize, u64, String)>,
-// }
-
-// impl Baselines {
-//     pub fn new(config: &Config) -> Self {
-//         unimplemented!("use SQLite")
-//         // let path = config.get_baselines_path();
-//         // info!("Reading baseline from {:?}", path);
-//         // let mut baselines = Vec::new();
-//         // if let Ok(file) = File::open(path.clone()) {
-//         //     let file = BufReader::new(file);
-//         //     for line in file.lines() {
-//         //         let line = line.expect("Problem reading line");
-//         //         let mut tokens = line.split(',');
-//         //         let left = tokens
-//         //             .next()
-//         //             .expect("There should be the left path")
-//         //             .to_owned();
-//         //         let right = tokens
-//         //             .next()
-//         //             .expect("There should be the right path")
-//         //             .to_owned();
-//         //         let range: f64 = tokens
-//         //             .next()
-//         //             .expect("There should be the range")
-//         //             .parse()
-//         //             .expect("Problem parsing range");
-//         //         let count: usize = tokens
-//         //             .next()
-//         //             .expect("There should be the count")
-//         //             .parse()
-//         //             .expect("Problem parsing the count");
-//         //         let seconds: u64 = tokens
-//         //             .next()
-//         //             .expect("There should be the number of seconds")
-//         //             .parse()
-//         //             .expect("Problem parsing the seconds");
-//         //         let version: String = tokens
-//         //             .next()
-//         //             .expect("There should be the git version")
-//         //             .to_owned();
-//         //         baselines.push((left, right, range, count, seconds, version));
-//         //     }
-//         // };
-//         // Baselines { path, baselines }
-//     }
-
-//     #[allow(clippy::float_cmp)]
-//     pub fn get_count(&self, left: &str, right: &str, range: f64) -> Option<usize> {
-//         self.baselines
-//             .iter()
-//             .find(|(l, r, t, _, _, _)| l == left && r == right && t == &range)
-//             .map(|tup| tup.3)
-//     }
-
-//     #[allow(clippy::float_cmp)]
-//     pub fn get_times_secs(&self, left: &str, right: &str, range: f64) -> Option<Vec<u64>> {
-//         let times: Vec<u64> = self
-//             .baselines
-//             .iter()
-//             .filter(|(l, r, t, _, _, _)| l == left && r == right && t == &range)
-//             .map(|tup| tup.4)
-//             .collect();
-//         if times.is_empty() {
-//             None
-//         } else {
-//             Some(times)
-//         }
-//     }
-
-//     pub fn add(self, left: &str, right: &str, range: f64, count: usize, seconds: u64) {
-//         if self.get_count(left, right, range).is_none() {
-//             info!("Writing baseline to {:?}", self.path);
-//             let mut file = OpenOptions::new()
-//                 .append(true)
-//                 .create(true)
-//                 .open(self.path)
-//                 .expect("problem opening file for writing");
-//             writeln!(
-//                 file,
-//                 "{},{},{},{},{},{}",
-//                 left,
-//                 right,
-//                 range,
-//                 count,
-//                 seconds,
-//                 crate::version::short_sha()
-//             )
-//             .expect("Error appending line");
-//         } else {
-//             info!(
-//                 "Baseline entry already present in {:?}, skipping",
-//                 self.path
-//             );
-//         }
-//     }
-
-//     pub fn recall(&self, left: &str, right: &str, range: f64, count: usize) -> Option<f64> {
-//         self.get_count(left, right, range)
-//             .map(|base_count| count as f64 / base_count as f64)
-//     }
-
-//     pub fn speedup(&self, left: &str, right: &str, range: f64, seconds: f64) -> Option<f64> {
-//         self.get_times_secs(left, right, range).map(|times| {
-//             let avg_base_time = times.iter().sum::<u64>() as f64 / times.len() as f64;
-//             avg_base_time / seconds
-//         })
-//     }
-// }
-
 #[cfg(feature = "seq-all-2-all")]
 pub fn sequential<T, F>(thresh: f64, left_path: &str, right_path: &str, sim_fn: F) -> usize
 where
@@ -243,6 +130,7 @@ where
                 .capture_into(output_send_ch);
             });
         })
+        .transpose()
         .expect("Something went wrong with the timely dataflow execution");
 
     if config.is_master() {

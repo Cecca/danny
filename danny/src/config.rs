@@ -185,7 +185,7 @@ impl Config {
         }
     }
 
-    pub fn execute<T, F>(&self, func: F) -> Result<WorkerGuards<T>, ExecError>
+    pub fn execute<T, F>(&self, func: F) -> Option<Result<WorkerGuards<T>, String>>
     where
         T: Send + 'static,
         F: Fn(&mut Worker<Allocator>) -> T + Send + Sync + 'static,
@@ -218,7 +218,7 @@ impl Config {
                 h.wait().expect("problem waiting for the ssh process");
             }
 
-            Err(ExecError::RemoteExecution)
+            None
         } else {
             let c = match &self.hosts {
                 None => {
@@ -236,7 +236,7 @@ impl Config {
                     log_fn: Box::new(|_| None),
                 },
             };
-            timely::execute(c, func).or_else(|e| Err(ExecError::Error(e)))
+            Some(timely::execute(c, func))
         }
     }
 }

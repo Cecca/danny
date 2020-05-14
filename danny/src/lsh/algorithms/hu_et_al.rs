@@ -256,6 +256,7 @@ where
 
         collect_execution_summaries(execution_summary, send_exec_summary.clone(), &mut worker);
     })
+    .transpose()
     .expect("Problems with the dataflow");
 
     info!("Collecting summaries");
