@@ -6,7 +6,6 @@ extern crate log;
 extern crate danny;
 
 use danny::baseline;
-use danny::baseline::Baselines;
 use danny::config::*;
 use danny::experiment::Experiment;
 use danny::io::*;

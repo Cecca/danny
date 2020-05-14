@@ -496,27 +496,10 @@ fn run(left_path: PathBuf, right_path: PathBuf, range: f64, num_groups: u32, con
     let total_time_d = end - start;
     let total_time = total_time_d.as_secs() * 1000 + u64::from(total_time_d.subsec_millis());
     if config.is_master() {
-        let baselines = Baselines::new(&config);
-        let recall = baselines
-            .recall(
-                &left_path_2.to_str().unwrap(),
-                &right_path_2.to_str().unwrap(),
-                range,
-                matching_count,
-            )
-            .expect("Could not compute the recall! Missing entry in the baseline file?");
-        let speedup = baselines
-            .speedup(
-                &left_path_2.to_str().unwrap(),
-                &right_path_2.to_str().unwrap(),
-                range,
-                total_time as f64 / 1000.0,
-            )
-            .expect("Could not compute the speedup! Missing entry in the baseline file?");
-        info!(
-            "Pairs above similarity {} are {} (time {:?}, recall {}, speedup {})",
-            range, matching_count, total_time_d, recall, speedup
-        );
+        // info!(
+        //     "Pairs above similarity {} are {} (time {:?}, recall {}, speedup {})",
+        //     range, matching_count, total_time_d, recall, speedup
+        // );
         // experiment.append(
         //     "result",
         //     row!("timed_out" => false, "output_size" => matching_count, "total_time_ms" => total_time, "recall" => recall, "speedup" => speedup),
