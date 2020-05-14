@@ -1,5 +1,4 @@
 use crate::config::*;
-use crate::dataset::ChunkedDataset;
 use crate::experiment::Experiment;
 use crate::io::*;
 use crate::join::Joiner;

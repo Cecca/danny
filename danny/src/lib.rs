@@ -25,7 +25,6 @@ pub mod experiment;
 pub mod logging;
 pub mod baseline;
 pub mod config;
-pub mod dataset;
 pub mod io;
 pub mod join;
 pub mod lsh;

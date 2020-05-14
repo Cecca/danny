@@ -2,7 +2,6 @@ use danny_base::types::ElementId;
 use timely::worker::Worker;
 use timely::communication::Allocator;
 use crate::config::*;
-use crate::dataset::ChunkedDataset;
 use crate::experiment::Experiment;
 use crate::io::*;
 use crate::join::*;

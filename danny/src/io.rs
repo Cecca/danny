@@ -1,7 +1,6 @@
 extern crate bincode;
 
 use crate::config::*;
-use crate::dataset::*;
 use crate::logging::*;
 use crate::operators::*;
 use danny_base::types::*;
@@ -365,57 +364,4 @@ where
         |c, v| data.push((ElementId(c as u32), v)),
     );
     data
-}
-
-#[allow(clippy::type_complexity)]
-pub fn load_vectors<D>(
-    worker: &mut Worker<Allocator>,
-    left_path_main: &str,
-    right_path_main: &str,
-    config: &Config,
-) -> (
-    Arc<ChunkedDataset<ElementId, D>>,
-    Arc<ChunkedDataset<ElementId, D>>,
-)
-where
-    for<'de> D: Deserialize<'de> + ReadBinaryFile + Sync + Send + Clone + 'static,
-{
-    let index = worker.index();
-    let peers = worker.peers() as u64;
-    let matrix_coords =
-        MatrixDescription::for_workers(peers as usize).row_major_to_pair(index as u64);
-
-    let total_workers = config.get_total_workers();
-    let matrix_desc = MatrixDescription::for_workers(total_workers);
-    let mut row_set = HashSet::new();
-    let mut column_set = HashSet::new();
-    let mut left_builder = ChunkedDataset::builder(matrix_desc.rows as usize);
-    let mut right_builder = ChunkedDataset::builder(matrix_desc.columns as usize);
-
-    let (i, j) = matrix_coords;
-    row_set.insert(i);
-    column_set.insert(j);
-
-    debug!("This worker is responsible for rows: {:?}", row_set);
-    debug!("This worker is responsible for columns: {:?}", column_set);
-    debug!("Memory before reading data {}", proc_mem!());
-    ReadBinaryFile::read_binary(
-        left_path_main.into(),
-        |l| row_set.contains(&((l % matrix_desc.rows as usize) as u8)),
-        |c, v| {
-            left_builder.insert(ElementId(c as u32), v);
-        },
-    );
-    ReadBinaryFile::read_binary(
-        right_path_main.into(),
-        |l| column_set.contains(&((l % matrix_desc.columns as usize) as u8)),
-        |c, v| {
-            right_builder.insert(ElementId(c as u32), v);
-        },
-    );
-
-    (
-        Arc::new(left_builder.finish(D::num_elements(left_path_main.into()))),
-        Arc::new(right_builder.finish(D::num_elements(right_path_main.into()))),
-    )
 }
