@@ -95,7 +95,7 @@ where
     info!("Started worker {}/{}", index, peers);
     let sim_pred = sim_pred.clone();
 
-    worker.dataflow::<u32, _, _>(|scope| {
+    let probe = worker.dataflow::<u32, _, _>(|scope| {
         let matrix = MatrixDescription::for_workers(peers as usize);
         let (row, col) = matrix.row_major_to_pair(index as u64);
 
@@ -179,7 +179,8 @@ where
                     });
                 }
             },
-        );
+        )
+        .probe()
 
         // source(scope, "Source", move |capability| {
         //     let mut cap = Some(capability);
@@ -217,6 +218,8 @@ where
         //     }
         // })
     });
+
+    worker.step_while(|| !probe.done());
 
     if worker.index() == 0 {
         result_read.replace(0)
