@@ -277,11 +277,11 @@ where
 
     worker.step_while(|| !probe.done());
 
-    info!("Collect execution summaries");
-    collect_execution_summaries(execution_summary, send_exec_summary.clone(), worker);
+    // info!("Collect execution summaries");
+    // collect_execution_summaries(execution_summary, send_exec_summary.clone(), worker);
 
-    info!("Collect network summaries");
-    let network_summaries = network.map(|n| n.measure().collect_from_workers(worker, &config));
+    // info!("Collect network summaries");
+    // let network_summaries = network.map(|n| n.measure().collect_from_workers(worker, &config));
 
     if config.is_master() {
         // let mut exec_summaries = Vec::new();
@@ -312,6 +312,7 @@ where
                 cnt
             })
             .sum();
+        info!("Got elements");
 
         count as usize
     } else {

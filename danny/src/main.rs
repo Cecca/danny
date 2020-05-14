@@ -299,8 +299,6 @@ fn main() {
                 _ => unimplemented!("Unknown algorithm {}", config.algorithm),
             };
 
-            info!("Final count: {}", count);
-
             let end = std::time::Instant::now();
             let total_time_d = end - start;
             let total_time =
