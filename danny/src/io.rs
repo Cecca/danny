@@ -375,6 +375,7 @@ where
                 .send(matrix_coords)
                 .expect("Error while pushing into coordinates channel");
         })
+        .transpose()
         .unwrap();
 
     let total_workers = config.get_total_workers();
