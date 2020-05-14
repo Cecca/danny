@@ -328,12 +328,6 @@ where
         self.unary(pact, "approximate-distinct-atomic", move |_, _| {
             move |input, output| {
                 input.for_each(|t, d| {
-                    let _pg = ProfileGuard::new(
-                        logger.clone(),
-                        t.time().to_step_id(),
-                        1,
-                        "distinct_atomic",
-                    );
                     let mut data = d.replace(Vec::new());
                     let mut cnt = 0;
                     let mut received = 0;
@@ -344,10 +338,16 @@ where
                             cnt += 1;
                         }
                     }
-                    log_event!(logger, LogEvent::DistinctPairs(t.time().to_step_id(), cnt));
                     log_event!(
                         logger,
-                        LogEvent::DuplicatesDiscarded(t.time().to_step_id(), received - cnt)
+                        (LogEvent::DistinctPairs(t.time().to_step_id()), cnt)
+                    );
+                    log_event!(
+                        logger,
+                        (
+                            LogEvent::DuplicatesDiscarded(t.time().to_step_id()),
+                            received - cnt
+                        )
                     );
                     debug!(
                         "Filtered {} elements out of {} received",
@@ -380,8 +380,6 @@ where
         self.unary_frontier(PipelinePact, "stream-count", move |_, _| {
             move |input, output| {
                 input.for_each(|t, d| {
-                    let _pg =
-                        ProfileGuard::new(logger.clone(), t.time().to_step_id(), 1, "stream_sum");
                     let mut data = d.replace(Vec::new());
                     let local_sum: D = data.drain(..).sum();
                     sums.entry(t.retain())

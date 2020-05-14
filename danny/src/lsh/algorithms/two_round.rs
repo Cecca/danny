@@ -174,14 +174,14 @@ where
                         Instant::now() - start,
                         proc_mem!(),
                     );
-                    log_event!(logger, LogEvent::GeneratedPairs(*outer_repetition, cnt));
+                    log_event!(logger, (LogEvent::GeneratedPairs(*outer_repetition), cnt));
                     log_event!(
                         logger,
-                        LogEvent::SketchDiscarded(*outer_repetition, sketch_cnt)
+                        (LogEvent::SketchDiscarded(*outer_repetition), sketch_cnt)
                     );
                     log_event!(
                         logger,
-                        LogEvent::DuplicatesDiscarded(*outer_repetition, duplicate_cnt)
+                        (LogEvent::DuplicatesDiscarded(*outer_repetition), duplicate_cnt)
                     );
                     vec![cnt]
                 },

@@ -243,13 +243,12 @@ where
     // itself.
     // FIXME: Maybe we can get away without synchronization.
     let summary = Arc::new(Mutex::new(ExecutionSummary::new(worker.index())));
-    let summary_thread = Arc::clone(&summary);
+    // let summary_thread = Arc::clone(&summary);
     worker
         .log_register()
-        .insert::<LogEvent, _>("danny", move |_time, data| {
-            let mut summary = summary_thread.lock().unwrap();
+        .insert::<(LogEvent, usize), _>("danny", move |_time, data| {
             for event in data.drain(..) {
-                summary.add(event.2);
+                // Push this into the stream
             }
         });
     summary
@@ -363,64 +362,61 @@ impl Drop for ProfileGuard {
 
 #[derive(Debug, Clone, Abomonation)]
 pub enum LogEvent {
-    Load(usize, usize),
-    SketchDiscarded(usize, usize),
-    DistinctPairs(usize, usize),
-    DuplicatesDiscarded(usize, usize),
-    GeneratedPairs(usize, usize),
+    Load(usize),
+    SketchDiscarded(usize),
+    DistinctPairs(usize),
+    DuplicatesDiscarded(usize),
+    GeneratedPairs(usize),
     /// The number of received hashes during bucketing. This is a proxy for the load measure
-    ReceivedHashes(usize, usize),
-    /// Histogram of the distribution of levels in the adaptive algorithm (level, count) pairs
-    AdaptiveLevelHistogram(usize, usize),
-    AdaptiveNoCollision(usize),
-    AdaptiveSampledPoints(usize),
+    ReceivedHashes(usize),
     // The hashes generated in each iteration
-    GeneratedHashes(usize, usize),
+    GeneratedHashes(usize),
 }
 
 pub trait AsDannyLogger {
-    fn danny_logger(&self) -> Option<Logger<LogEvent>>;
+    fn danny_logger(&self) -> Option<Logger<(LogEvent, usize)>>;
 }
 
 impl<T> AsDannyLogger for T
 where
     T: AsWorker,
 {
-    fn danny_logger(&self) -> Option<Logger<LogEvent>> {
+    fn danny_logger(&self) -> Option<Logger<(LogEvent, usize)>> {
         self.log_register().get("danny")
     }
 }
 
 #[derive(Debug)]
 pub struct ExecutionSummary {
-    worker_id: usize,
-    load: HashMap<usize, usize>,
-    sketch_discarded: HashMap<usize, usize>,
-    distinct_pairs: HashMap<usize, usize>,
-    duplicates_discarded: HashMap<usize, usize>,
-    generated_pairs: HashMap<usize, usize>,
-    received_hashes: HashMap<usize, usize>,
-    adaptive_histogram: HashMap<usize, usize>,
-    adaptive_no_collision: usize,
-    adaptive_sampled_points: usize,
-    generated_hashes: HashMap<usize, usize>,
+    // worker_id: usize,
+// load: HashMap<usize, usize>,
+// sketch_discarded: HashMap<usize, usize>,
+// distinct_pairs: HashMap<usize, usize>,
+// duplicates_discarded: HashMap<usize, usize>,
+// generated_pairs: HashMap<usize, usize>,
+// received_hashes: HashMap<usize, usize>,
+// adaptive_histogram: HashMap<usize, usize>,
+// adaptive_no_collision: usize,
+// adaptive_sampled_points: usize,
+// generated_hashes: HashMap<usize, usize>,
 }
 
 impl ExecutionSummary {
     pub fn new(worker_id: usize) -> Self {
-        Self {
-            worker_id,
-            load: HashMap::new(),
-            sketch_discarded: HashMap::new(),
-            distinct_pairs: HashMap::new(),
-            duplicates_discarded: HashMap::new(),
-            generated_pairs: HashMap::new(),
-            received_hashes: HashMap::new(),
-            adaptive_histogram: HashMap::new(),
-            adaptive_no_collision: 0,
-            adaptive_sampled_points: 0,
-            generated_hashes: HashMap::new(),
-        }
+        // Self {
+        //     worker_id,
+        //     load: HashMap::new(),
+        //     sketch_discarded: HashMap::new(),
+        //     distinct_pairs: HashMap::new(),
+        //     duplicates_discarded: HashMap::new(),
+        //     generated_pairs: HashMap::new(),
+        //     received_hashes: HashMap::new(),
+        //     adaptive_histogram: HashMap::new(),
+        //     adaptive_no_collision: 0,
+        //     adaptive_sampled_points: 0,
+        //     generated_hashes: HashMap::new(),
+        // }
+        unimplemented!()
     }
 
     fn map_to_vec<K: Clone + Eq + Hash, V: Clone>(m: &HashMap<K, V>) -> Vec<(K, V)> {
@@ -428,70 +424,72 @@ impl ExecutionSummary {
     }
 
     pub fn freeze(&self) -> FrozenExecutionSummary {
-        FrozenExecutionSummary {
-            worker_id: self.worker_id,
-            load: Self::map_to_vec(&self.load),
-            sketch_discarded: Self::map_to_vec(&self.sketch_discarded),
-            distinct_pairs: Self::map_to_vec(&self.distinct_pairs),
-            duplicates_discarded: Self::map_to_vec(&self.duplicates_discarded),
-            generated_pairs: Self::map_to_vec(&self.generated_pairs),
-            received_hashes: Self::map_to_vec(&self.received_hashes),
-            adaptive_histogram: Self::map_to_vec(&self.adaptive_histogram),
-            adaptive_no_collision: self.adaptive_no_collision,
-            adaptive_sampled_points: self.adaptive_sampled_points,
-            generated_hashes: Self::map_to_vec(&self.generated_hashes),
-        }
+        // FrozenExecutionSummary {
+        //     worker_id: self.worker_id,
+        //     load: Self::map_to_vec(&self.load),
+        //     sketch_discarded: Self::map_to_vec(&self.sketch_discarded),
+        //     distinct_pairs: Self::map_to_vec(&self.distinct_pairs),
+        //     duplicates_discarded: Self::map_to_vec(&self.duplicates_discarded),
+        //     generated_pairs: Self::map_to_vec(&self.generated_pairs),
+        //     received_hashes: Self::map_to_vec(&self.received_hashes),
+        //     adaptive_histogram: Self::map_to_vec(&self.adaptive_histogram),
+        //     adaptive_no_collision: self.adaptive_no_collision,
+        //     adaptive_sampled_points: self.adaptive_sampled_points,
+        //     generated_hashes: Self::map_to_vec(&self.generated_hashes),
+        // }
+        unimplemented!()
     }
 
     pub fn add(&mut self, event: LogEvent) {
-        match event {
-            LogEvent::Load(step, count) => {
-                *self.load.entry(step).or_insert(0usize) += count;
-            }
-            LogEvent::SketchDiscarded(step, count) => {
-                *self.sketch_discarded.entry(step).or_insert(0usize) += count;
-            }
-            LogEvent::DistinctPairs(step, count) => {
-                *self.distinct_pairs.entry(step).or_insert(0usize) += count;
-            }
-            LogEvent::DuplicatesDiscarded(step, count) => {
-                *self.duplicates_discarded.entry(step).or_insert(0usize) += count;
-            }
-            LogEvent::GeneratedPairs(step, count) => {
-                *self.generated_pairs.entry(step).or_insert(0usize) += count;
-            }
-            LogEvent::ReceivedHashes(step, count) => {
-                *self.received_hashes.entry(step).or_insert(0usize) += count;
-            }
-            LogEvent::AdaptiveLevelHistogram(level, count) => {
-                *self.adaptive_histogram.entry(level).or_insert(0usize) += count;
-            }
-            LogEvent::AdaptiveNoCollision(count) => {
-                self.adaptive_no_collision += count;
-            }
-            LogEvent::AdaptiveSampledPoints(count) => {
-                self.adaptive_sampled_points += count;
-            }
-            LogEvent::GeneratedHashes(step, count) => {
-                *self.generated_hashes.entry(step).or_insert(0usize) += count;
-            }
-        }
+        unimplemented!()
+        // match event {
+        //     LogEvent::Load(step, count) => {
+        //         *self.load.entry(step).or_insert(0usize) += count;
+        //     }
+        //     LogEvent::SketchDiscarded(step, count) => {
+        //         *self.sketch_discarded.entry(step).or_insert(0usize) += count;
+        //     }
+        //     LogEvent::DistinctPairs(step, count) => {
+        //         *self.distinct_pairs.entry(step).or_insert(0usize) += count;
+        //     }
+        //     LogEvent::DuplicatesDiscarded(step, count) => {
+        //         *self.duplicates_discarded.entry(step).or_insert(0usize) += count;
+        //     }
+        //     LogEvent::GeneratedPairs(step, count) => {
+        //         *self.generated_pairs.entry(step).or_insert(0usize) += count;
+        //     }
+        //     LogEvent::ReceivedHashes(step, count) => {
+        //         *self.received_hashes.entry(step).or_insert(0usize) += count;
+        //     }
+        //     LogEvent::AdaptiveLevelHistogram(level, count) => {
+        //         *self.adaptive_histogram.entry(level).or_insert(0usize) += count;
+        //     }
+        //     LogEvent::AdaptiveNoCollision(count) => {
+        //         self.adaptive_no_collision += count;
+        //     }
+        //     LogEvent::AdaptiveSampledPoints(count) => {
+        //         self.adaptive_sampled_points += count;
+        //     }
+        //     LogEvent::GeneratedHashes(step, count) => {
+        //         *self.generated_hashes.entry(step).or_insert(0usize) += count;
+        //     }
+        // }
     }
 }
 
 #[derive(Debug, Abomonation, Clone, Default)]
 pub struct FrozenExecutionSummary {
-    pub worker_id: usize,
-    pub load: Vec<(usize, usize)>,
-    pub sketch_discarded: Vec<(usize, usize)>,
-    pub distinct_pairs: Vec<(usize, usize)>,
-    pub duplicates_discarded: Vec<(usize, usize)>,
-    pub generated_pairs: Vec<(usize, usize)>,
-    pub received_hashes: Vec<(usize, usize)>,
-    pub adaptive_histogram: Vec<(usize, usize)>,
-    pub adaptive_no_collision: usize,
-    pub adaptive_sampled_points: usize,
-    pub generated_hashes: Vec<(usize, usize)>,
+    // pub worker_id: usize,
+// pub load: Vec<(usize, usize)>,
+// pub sketch_discarded: Vec<(usize, usize)>,
+// pub distinct_pairs: Vec<(usize, usize)>,
+// pub duplicates_discarded: Vec<(usize, usize)>,
+// pub generated_pairs: Vec<(usize, usize)>,
+// pub received_hashes: Vec<(usize, usize)>,
+// pub adaptive_histogram: Vec<(usize, usize)>,
+// pub adaptive_no_collision: usize,
+// pub adaptive_sampled_points: usize,
+// pub generated_hashes: Vec<(usize, usize)>,
 }
 
 /// Abstracts boilerplate code in dumping tables to the experiment

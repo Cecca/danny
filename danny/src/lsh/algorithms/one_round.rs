@@ -47,7 +47,6 @@ where
         let mut cap = Some(capability);
         move |output| {
             if let Some(cap) = cap.take() {
-                let _pg = ProfileGuard::new(logger.clone(), 0, 0, "sketching_hashing");
                 let start = Instant::now();
                 let mut session = output.session(&cap);
                 for (k, v) in vecs.iter() {
@@ -165,7 +164,7 @@ where
             let mut right_vectors = HashMap::new();
             move |left_in, right_in, output| {
                 left_in.for_each(|t, data| {
-                    log_event!(logger, LogEvent::Load(t.time().to_step_id(), data.len()));
+                    log_event!(logger, (LogEvent::Load(t.time().to_step_id()), data.len()));
                     let local_data = left_data
                         .entry(t.time().clone())
                         .or_insert_with(|| Vec::new());
@@ -179,7 +178,7 @@ where
                     notificator.notify_at(t.retain());
                 });
                 right_in.for_each(|t, data| {
-                    log_event!(logger, LogEvent::Load(t.time().to_step_id(), data.len()));
+                    log_event!(logger, (LogEvent::Load(t.time().to_step_id()), data.len()));
                     let local_data = right_data
                         .entry(t.time().clone())
                         .or_insert_with(|| Vec::new());
@@ -202,7 +201,6 @@ where
                         let mut cnt = 0;
                         info!("Starting {} repetitions", repetitions);
                         for rep in 0..repetitions {
-                            let _pg = ProfileGuard::new(logger.clone(), rep, 0, "repetition");
                             let start = Instant::now();
                             let mut joiner = Joiner::default();
                             for (k, pool, sketch) in left_data.iter() {
@@ -236,11 +234,11 @@ where
                             let end = Instant::now();
                             info!("Repetition {} ended in {:?}", rep, end - start);
                             pl.update(1u64);
-                            log_event!(logger, LogEvent::GeneratedPairs(rep, examined_pairs));
-                            log_event!(logger, LogEvent::SketchDiscarded(rep, sketch_discarded));
+                            log_event!(logger, (LogEvent::GeneratedPairs(rep), examined_pairs));
+                            log_event!(logger, (LogEvent::SketchDiscarded(rep), sketch_discarded));
                             log_event!(
                                 logger,
-                                LogEvent::DuplicatesDiscarded(rep, duplicates_discarded)
+                                (LogEvent::DuplicatesDiscarded(rep), duplicates_discarded)
                             );
                         }
                         output.session(&t).give(cnt);

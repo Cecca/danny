@@ -224,12 +224,12 @@ where
                         );
                         log_event!(
                             logger,
-                            LogEvent::SketchDiscarded(*repetition, sketch_discarded)
+                            (LogEvent::SketchDiscarded(*repetition), sketch_discarded)
                         );
-                        log_event!(logger, LogEvent::GeneratedPairs(*repetition, cnt));
+                        log_event!(logger, (LogEvent::GeneratedPairs(*repetition), cnt));
                         log_event!(
                             logger,
-                            LogEvent::DuplicatesDiscarded(*repetition, duplicate_cnt)
+                            (LogEvent::DuplicatesDiscarded(*repetition), duplicate_cnt)
                         );
                         vec![cnt]
                     },
