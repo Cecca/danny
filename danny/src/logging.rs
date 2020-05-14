@@ -9,11 +9,11 @@ use std::io::BufReader;
 use std::io::{Read, Write};
 use std::ops::Drop;
 use std::process;
-
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+use timely::communication::Allocator;
 use timely::dataflow::operators::capture::event::Event as TimelyEvent;
 use timely::dataflow::operators::*;
 use timely::dataflow::ProbeHandle;
@@ -140,33 +140,35 @@ impl NetworkSummary {
     }
 
     /// sets up a small dataflow to exchange information about the network exchanges
-    pub fn collect_from_workers(self, config: &Config) -> Vec<NetworkSummary> {
+    pub fn collect_from_workers(
+        self,
+        worker: &mut Worker<Allocator>,
+        config: &Config,
+    ) -> Vec<NetworkSummary> {
         let (send, recv) = std::sync::mpsc::channel();
         let send = Arc::new(Mutex::new(send));
         let this = Arc::new(Mutex::new(Some(self)));
-        config
-            .execute(move |worker| {
-                let send = Arc::clone(&send);
-                let (mut input, probe) = worker.dataflow::<u32, _, _>(move |scope| {
-                    let send = send.lock().unwrap().clone();
-                    let (input, stream) = scope.new_input::<NetworkSummary>();
-                    let mut probe = ProbeHandle::new();
-                    stream
-                        .exchange(|_| 0)
-                        .probe_with(&mut probe)
-                        .capture_into(send);
+        let send = Arc::clone(&send);
+        let (mut input, probe) = worker.dataflow::<u32, _, _>(move |scope| {
+            let send = send.lock().unwrap().clone();
+            let (input, stream) = scope.new_input::<NetworkSummary>();
+            let mut probe = ProbeHandle::new();
+            stream
+                .exchange(|_| 0)
+                .probe_with(&mut probe)
+                .capture_into(send);
 
-                    (input, probe)
-                });
-                // Use the lock to send the information about this machine just once
-                let this = this.lock().unwrap().take();
-                if this.is_some() {
-                    input.send(this.unwrap());
-                }
-                input.advance_to(1);
-                worker.step_while(|| probe.less_than(&1));
-            })
-            .expect("problems with the dataflow for network monitoring");
+            (input, probe)
+        });
+        // Use the lock to send the information about this machine just once
+        let this = this.lock().unwrap().take();
+        if this.is_some() {
+            input.send(this.unwrap());
+        }
+        input.advance_to(1);
+
+        // Who should step this?
+        worker.step_while(|| probe.less_than(&1));
 
         let mut res = Vec::new();
         if config.is_master() {

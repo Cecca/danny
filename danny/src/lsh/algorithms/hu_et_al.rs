@@ -260,7 +260,7 @@ where
 
     info!("Collecting summaries");
 
-    let network_summaries = network.map(|n| n.measure().collect_from_workers(&config));
+    let network_summaries = network.map(|n| n.measure().collect_from_workers(worker, &config));
 
     if config.is_master() {
         let mut exec_summaries = Vec::new();

@@ -279,7 +279,7 @@ where
 
     collect_execution_summaries(execution_summary, send_exec_summary.clone(), worker);
 
-    let network_summaries = network.map(|n| n.measure().collect_from_workers(&config));
+    let network_summaries = network.map(|n| n.measure().collect_from_workers(worker, &config));
 
     if config.is_master() {
         let mut exec_summaries = Vec::new();
