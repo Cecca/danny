@@ -164,20 +164,6 @@ impl Experiment {
             )
             .expect("error inserting into main table");
 
-            // TODO Insert into counters table
-            // let mut stmt = tx
-            //     .prepare(
-            //         "INSERT INTO counters ( sha, kind, step, count
-            //         ) VALUES ( ?1, ?2, ?3, ?45 )",
-            //     )
-            //     .expect("failed to prepare statement");
-            // for (kind, step, count) in self.step_counters.iter() {
-            //     stmt.execute(params![sha, kind, step, *count as u32])
-            //         .expect("Failure to insert into counters table");
-            // }
-
-            // TODO: insert into network table
-
             let mut stmt = tx.prepare(
                 "INSERT INTO counters ( sha, kind, step, count )
                  VALUES ( ?1, ?2, ?3, ?4 )"
