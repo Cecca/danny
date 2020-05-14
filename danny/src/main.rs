@@ -303,7 +303,7 @@ fn main() {
             let total_time_d = end - start;
             let total_time =
                 total_time_d.as_secs() * 1000 + u64::from(total_time_d.subsec_millis());
-            if config.is_master() {
+            if worker.index() == 0 {
                 info!(
                     "pairs above similarity {} are {} (time {:?})",
                     config.threshold, count, total_time_d

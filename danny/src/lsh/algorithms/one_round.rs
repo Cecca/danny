@@ -290,7 +290,7 @@ where
     // info!("Collect network summaries");
     // let network_summaries = network.map(|n| n.measure().collect_from_workers(worker, &config));
 
-    if config.is_master() {
+    if worker.index() == 0 {
         // let mut exec_summaries = Vec::new();
         // for summary in recv_exec_summary.iter() {
         //     if let TimelyEvent::Messages(_, msgs) = summary {
