@@ -123,8 +123,8 @@ where
         rng,
     ));
 
-    let worker_vectors = Arc::new(load_for_worker(worker.index(), worker.peers(), left_path));
-    info!("Worker has {} vectors", worker_vectors.len());
+    let left_vectors = Arc::new(load_for_worker(worker.index(), worker.peers(), left_path));
+    let right_vectors = Arc::new(load_for_worker(worker.index(), worker.peers(), left_path));
 
     let hasher = Arc::clone(&hasher);
     // let execution_summary = init_event_logging(&worker);
@@ -146,7 +146,7 @@ where
 
         let left = simple_source(
             scope,
-            Arc::clone(&worker_vectors),
+            Arc::clone(&left_vectors),
             Arc::clone(&sketcher),
             Arc::clone(&hasher),
             worker_index,
@@ -155,7 +155,7 @@ where
         );
         let right = simple_source(
             scope,
-            Arc::clone(&worker_vectors),
+            Arc::clone(&right_vectors),
             Arc::clone(&sketcher),
             Arc::clone(&hasher),
             worker_index,

@@ -9,6 +9,7 @@ use crate::lsh::repetition_stopwatch::*;
 use crate::operators::*;
 use danny_base::lsh::*;
 use danny_base::sketch::*;
+use danny_base::types::ElementId;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
 use std::clone::Clone;
@@ -26,15 +27,14 @@ use timely::progress::Timestamp;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
-pub fn source_hashed_one_round<G, T, K, D, S, F>(
+pub fn source_hashed_one_round<G, T, D, S, F>(
     scope: &G,
-    global_vecs: Arc<ChunkedDataset<K, D>>,
+    global_vecs: Arc<Vec<(ElementId, D)>>,
     hash_fns: Arc<TensorCollection<F>>,
     sketcher: Arc<S>,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-) -> Stream<G, ((usize, u32), (K, TensorPool, S::Output, D))>
-// ) -> Stream<G, (u32, (K, D))>
+) -> Stream<G, ((usize, u32), (ElementId, TensorPool, S::Output, D))>
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ,
@@ -42,18 +42,17 @@ where
     S: Sketcher<Input = D> + Clone + 'static,
     S::Output: SketchData + Debug,
     F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
-    K: KeyData + Debug,
 {
     let worker: u64 = scope.index() as u64;
     let logger = scope.danny_logger();
     let repetitions = hash_fns.repetitions();
     let vecs = Arc::clone(&global_vecs);
     let mut stopwatch = RepetitionStopWatch::new("repetition", worker == 0, logger);
-    let mut bit_pools: HashMap<K, TensorPool> = HashMap::new();
+    let mut bit_pools: HashMap<ElementId, TensorPool> = HashMap::new();
     let mut sketches = HashMap::new();
     info!("Computing the bit pools");
     let start = Instant::now();
-    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
+    for (k, v) in vecs.iter() {
         bit_pools.insert(*k, hash_fns.pool(v));
     }
     let end = Instant::now();
@@ -65,7 +64,7 @@ where
 
     info!("Computing sketches");
     let start = Instant::now();
-    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
+    for (k, v) in vecs.iter() {
         let s = sketcher.sketch(v);
         sketches.insert(*k, s);
     }
@@ -88,7 +87,7 @@ where
                         debug!("Repetition {} (Hu et al. baseline)", current_repetition,);
                     }
                     let mut session = output.session(&cap);
-                    for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
+                    for (k, v) in vecs.iter() {
                         let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
                         session.give((
                             (current_repetition, h),
@@ -145,21 +144,23 @@ where
     let no_dedup = config.no_dedup;
     let no_verify = config.no_verify;
 
+    let left_vectors = Arc::new(load_for_worker::<D, _>(
+        worker.index(),
+        worker.peers(),
+        left_path,
+    ));
+    let right_vectors = Arc::new(load_for_worker::<D, _>(
+        worker.index(),
+        worker.peers(),
+        left_path,
+    ));
+
     // let (send_exec_summary, recv_exec_summary) = channel();
     // let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
     let hasher = TensorCollection::new(k, range, config.recall, hash_function_builder, rng);
     let hasher = Arc::new(hasher);
 
-    debug!(
-        "Left dataset has {} points, right has {}",
-        D::num_elements(left_path.into()),
-        D::num_elements(right_path.into())
-    );
-    let (global_left, global_right) = load_vectors(worker, left_path, right_path, &config);
-
-    let global_left = Arc::clone(&global_left);
-    let global_right = Arc::clone(&global_right);
     let hasher = Arc::clone(&hasher);
     let execution_summary = init_event_logging(&worker);
     let sim_pred = sim_pred.clone();
@@ -174,7 +175,7 @@ where
 
             let left_hashes = source_hashed_one_round(
                 scope,
-                Arc::clone(&global_left),
+                Arc::clone(&left_vectors),
                 Arc::clone(&hasher),
                 Arc::clone(&sketcher),
                 matrix,
@@ -182,7 +183,7 @@ where
             );
             let right_hashes = source_hashed_one_round(
                 scope,
-                Arc::clone(&global_right),
+                Arc::clone(&right_vectors),
                 Arc::clone(&hasher),
                 Arc::clone(&sketcher),
                 matrix,
