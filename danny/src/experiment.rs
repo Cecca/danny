@@ -1,5 +1,6 @@
 use crate::config::*;
 use chrono::prelude::*;
+use rusqlite::types::ToSqlOutput;
 use rusqlite::*;
 
 pub struct Experiment {
@@ -57,8 +58,9 @@ impl Experiment {
         sha.input(format!("{:?}", self.config));
         sha.input(format!("{:?}", self.step_counters));
 
-        format!("{:x}", sha.result())[..6].to_owned()
+        format!("{:x}", sha.result())
     }
+
     fn get_db_path() -> std::path::PathBuf {
         let mut path = std::env::home_dir().expect("unable to get home directory");
         path.push("danny-results.sqlite");
@@ -72,11 +74,11 @@ impl Experiment {
         conn
     }
 
-    pub fn already_run(&self) -> Option<String> {
+    pub fn get_baseline(&self) -> Option<(u32, u32)> {
         let conn = Self::get_conn();
         conn.query_row(
             "
-            SELECT sha
+            SELECT total_time_ms, output_size
             FROM result
             WHERE left_path = ?1
               AND right_path = ?2
@@ -87,54 +89,23 @@ impl Experiment {
                 self.config.right_path,
                 self.config.threshold
             ],
-            |row| Ok(row.get(0).expect("error getting sha")),
-        )
-        .optional()
-        .expect("error running query")
-    }
-
-    pub fn get_baseline(&self) -> Option<(u32, u32)> {
-        let conn = Self::get_conn();
-        conn.query_row(
-            "
-            SELECT total_time_ms, output_size 
-            FROM result
-            WHERE threshold == ?1
-              AND algorithm == ?2
-              AND k == ?3
-              AND k2 == ?4
-              AND sketch_bits == ?5
-              AND threads == ?6
-              AND hosts == ?7
-              AND sketch_epsilon == ?8
-              AND required_recall == ?9
-              AND no_dedup == ?10
-              AND no_verify == ?11
-              AND repetition_batch == ?12
-              AND left_path == ?13
-              AND right_path == ?14",
-            params![
-                self.config.threshold,
-                self.config.algorithm,
-                self.config.k.map(|k| k as u32),
-                self.config.k2.map(|k2| k2 as u32),
-                self.config.sketch_bits as u32,
-                self.config.threads as u32,
-                self.config.hosts_string(),
-                self.config.sketch_epsilon,
-                self.config.recall,
-                self.config.no_dedup,
-                self.config.no_verify,
-                self.config.repetition_batch as u32,
-                self.config.left_path,
-                self.config.right_path,
-            ],
             |row| {
                 Ok((
                     row.get(0).expect("error getting time"),
                     row.get(1).expect("error getting count"),
                 ))
             },
+        )
+        .optional()
+        .expect("error running query")
+    }
+
+    pub fn already_run(&self) -> Option<String> {
+        let conn = Self::get_conn();
+        conn.query_row(
+            "SELECT sha FROM result WHERE params_sha == ?1",
+            params![self.config.sha()],
+            |row| Ok(row.get(0).expect("error getting sha")),
         )
         .optional()
         .expect("error running query")
@@ -166,6 +137,8 @@ impl Experiment {
                     sha,
                     code_version,
                     date,
+                    params_sha,
+                    seed,
                     threshold,
                     algorithm,
                     k,
@@ -187,16 +160,19 @@ impl Experiment {
                     speedup
                 )
                  VALUES (
-                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23
                  )",
                 params![
                     sha,
                     env!("VERGEN_SHA_SHORT"),
                     self.date.to_rfc3339(),
+                    self.config.sha(),
+                    self.config.seed as u32,
                     self.config.threshold,
                     self.config.algorithm,
-                    self.config.k.map(|k| k as u32),
-                    self.config.k2.map(|k2| k2 as u32),
+                    // We insert 0 instad of null because the handling of NULL in SQL is complicated
+                    self.config.k.unwrap_or(0) as u32,
+                    self.config.k2.unwrap_or(0) as u32,
                     self.config.sketch_bits as u32,
                     self.config.threads as u32,
                     self.config.hosts_string(),
@@ -247,19 +223,21 @@ fn create_tables_if_needed(conn: &Connection) {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS result (
             sha              TEXT PRIMARY KEY,
-            code_version     TEXT,
+            code_version     TEXT NOT NULL,
             date             TEXT NOT NULL,
+            params_sha       TEXT NOT NULL,
+            seed             INTEGER NOT NULL,
             threshold        REAL NOT NULL,
             algorithm        TEXT NOT NULL,
-            k                INTEGER,
-            k2               INTEGER,
-            sketch_bits      INTEGER,
-            threads          INTEGER,
+            k                INTEGER NOT NULL,
+            k2               INTEGER NOT NULL,
+            sketch_bits      INTEGER NOT NULL,
+            threads          INTEGER NOT NULL,
             hosts            TEXT NOT NULL,
             sketch_epsilon   REAL NOT NULL,
             required_recall  REAL NOT NULL,
-            no_dedup         BOOL,
-            no_verify        BOOL,
+            no_dedup         BOOL NOT NULL,
+            no_verify        BOOL NOT NULL,
             repetition_batch INTEGER,
             left_path        TEXT NOT NULL,
             right_path       TEXT NOT NULL,
@@ -275,11 +253,11 @@ fn create_tables_if_needed(conn: &Connection) {
 
     conn.execute(
         "CREATE VIEW IF NOT EXISTS result_recent AS
-        SELECT sha, code_version, MAX(date) AS date, threshold, algorithm, k, k2, sketch_bits, threads, hosts, sketch_epsilon, required_recall, 
+        SELECT sha, code_version, MAX(date) AS date, params_sha, seed, threshold, algorithm, k, k2, sketch_bits, threads, hosts, sketch_epsilon, required_recall, 
                no_dedup, no_verify, repetition_batch, left_path, right_path,
                total_time_ms, output_size, recall, speedup
         FROM result
-        GROUP BY threshold, algorithm, k, k2, sketch_bits, threads, hosts, sketch_epsilon, required_recall, 
+        GROUP BY seed, threshold, algorithm, k, k2, sketch_bits, threads, hosts, sketch_epsilon, required_recall, 
                  no_dedup, no_verify, repetition_batch, left_path, right_path",
         params![]
     )

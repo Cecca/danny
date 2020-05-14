@@ -110,6 +110,30 @@ impl Config {
         bincode::deserialize(&bytes).ok()
     }
 
+    pub fn sha(&self) -> String {
+        use sha2::Digest;
+        let mut sha = sha2::Sha256::new();
+
+        // IMPORTANT: Don't change the order of the following statements!
+        sha.input(format!("{}", self.algorithm));
+        sha.input(format!("{}", self.threshold));
+        sha.input(format!("{}", self.k.map(|k| format!("{}", k)).unwrap_or("".to_owned())));
+        sha.input(format!("{}", self.k2.map(|k2| format!("{}", k2)).unwrap_or("".to_owned())));
+        sha.input(format!("{}", self.sketch_bits));
+        sha.input(format!("{}", self.sketch_epsilon));
+        sha.input(format!("{}", self.threads));
+        sha.input(format!("{}", self.hosts_string()));
+        sha.input(format!("{}", self.seed));
+        sha.input(format!("{}", self.recall));
+        sha.input(format!("{}", self.no_verify));
+        sha.input(format!("{}", self.no_dedup));
+        sha.input(format!("{}", self.repetition_batch));
+        sha.input(format!("{}", self.left_path));
+        sha.input(format!("{}", self.right_path));
+
+        format!("{:x}", sha.result())
+    }
+
     pub fn master_hostname(&self) -> Option<String> {
         self.hosts.as_ref().map(|hosts| hosts.hosts[0].name.clone())
     }
