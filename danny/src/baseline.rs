@@ -1,6 +1,5 @@
 use crate::config::Config;
 use crate::io::*;
-use crate::logging::*;
 use crate::operators::*;
 use abomonation::Abomonation;
 use danny_base::types::*;
@@ -8,18 +7,11 @@ use serde::de::Deserialize;
 use std::clone::Clone;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::fs::File;
-use std::fs::OpenOptions;
-use std::io::BufRead;
-use std::io::BufReader;
-use std::io::Write;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::time::Instant;
 use timely::communication::Allocator;
 use timely::dataflow::channels::pact::Pipeline as PipelinePact;
-use timely::dataflow::operators::capture::Extract;
 use timely::dataflow::operators::generic::operator::source;
 use timely::dataflow::operators::*;
 use timely::dataflow::Scope;
@@ -159,6 +151,7 @@ where
                             pl.update_light(pairs_looked);
                         }
                         pl.stop();
+                        info!("Matching pairs: {}", cnt);
                         output.session(&t).give(cnt);
                     }
                 });
@@ -181,42 +174,6 @@ where
             },
         )
         .probe()
-
-        // source(scope, "Source", move |capability| {
-        //     let mut cap = Some(capability);
-        //     move |output| {
-        //         if let Some(cap) = cap.take() {
-        //             info!("Starting to count pairs (memory {})", proc_mem!());
-        //             let mut count = 0usize;
-        //             let mut pl = progress_logger::ProgressLogger::builder()
-        //                 .with_frequency(Duration::from_secs(60))
-        //                 .with_items_name("pairs")
-        //                 .with_expected_updates(
-        //                     (left.chunk_len(row as usize) * right.chunk_len(col as usize)) as u64,
-        //                 )
-        //                 .start();
-        //             for (_lk, lv) in left.iter_chunk(row as usize) {
-        //                 let mut pairs_looked = 0_u64;
-        //                 for (_rk, rv) in right.iter_chunk(col as usize) {
-        //                     if sim_pred(lv, rv) {
-        //                         count += 1;
-        //                     }
-        //                     pairs_looked += 1;
-        //                 }
-        //                 pl.update_light(pairs_looked);
-        //             }
-        //             pl.stop();
-
-        //             info!(
-        //                 "Worker {} outputting count {} (memory {})",
-        //                 index,
-        //                 count,
-        //                 proc_mem!()
-        //             );
-        //             output.session(&cap).give(count);
-        //         }
-        //     }
-        // })
     });
 
     worker.step_while(|| !probe.done());
