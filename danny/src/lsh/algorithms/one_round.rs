@@ -26,19 +26,18 @@ use timely::dataflow::*;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
-fn simple_source<G, K, F, D, S>(
+fn simple_source<G, F, D, S>(
     scope: &G,
-    vecs: Arc<ChunkedDataset<K, D>>,
+    vecs: Vec<(ElementId, D)>,
     sketcher: Arc<S>,
     hash_fns: Arc<TensorCollection<F>>,
     worker: u64,
     matrix: MatrixDescription,
     direction: MatrixDirection,
-) -> Stream<G, (K, (D, TensorPool, S::Output))>
+) -> Stream<G, (ElementId, (D, TensorPool, S::Output))>
 where
     G: Scope,
     G::Timestamp: Succ,
-    K: KeyData + Debug,
     D: ExchangeData + SketchEstimate + Debug,
     S: Sketcher<Input = D> + Clone + 'static,
     S::Output: SketchData + Debug,
@@ -52,7 +51,7 @@ where
                 let _pg = ProfileGuard::new(logger.clone(), 0, 0, "sketching_hashing");
                 let start = Instant::now();
                 let mut session = output.session(&cap);
-                for (k, v) in vecs.iter_stripe(matrix, direction, worker) {
+                for (k, v) in vecs.iter() {
                     let pool = hash_fns.pool(v);
                     let s = sketcher.sketch(v);
                     let output_element = (k.clone(), (v.clone(), pool.clone(), s.clone()));
@@ -124,18 +123,17 @@ where
         rng,
     ));
 
-    info!(
-        "Left dataset has {} points, right has {}",
-        D::num_elements(left_path.into()),
-        D::num_elements(right_path.into())
-    );
-    let (global_left, global_right) = load_vectors::<D>(worker, left_path, right_path, &config);
+    let left_vecs = load_for_worker(worker.index(), worker.peers(), left_path);
+    let right_vecs = load_for_worker(worker.index(), worker.peers(), right_path);
 
-    let global_left = Arc::clone(&global_left);
-    let global_right = Arc::clone(&global_right);
-    // let bloom_filter = Arc::clone(&bloom_filter);
+    info!(
+        "Left part has {} points, right has {}",
+        left_vecs.len(),
+        right_vecs.len()
+    );
+
     let hasher = Arc::clone(&hasher);
-    let execution_summary = init_event_logging(&worker);
+    // let execution_summary = init_event_logging(&worker);
 
     let sim_pred = sim_pred.clone();
     let sketch_predicate = sketch_predicate.clone();
@@ -145,154 +143,145 @@ where
     let matrix = MatrixDescription::for_workers(worker.peers());
     let (worker_row, worker_col) = matrix.row_major_to_pair(worker_index);
 
-    {
-        let probe = worker.dataflow::<u32, _, _>(move |scope| {
-            let mut probe = ProbeHandle::<u32>::new();
-            let global_left = Arc::clone(&global_left);
-            let global_right = Arc::clone(&global_right);
-            let logger = scope.danny_logger();
-            let mut pl = progress_logger::ProgressLogger::builder()
-                .with_items_name("repetitions")
-                .with_expected_updates(hasher.repetitions() as u64)
-                .start();
+    let probe = worker.dataflow::<u32, _, _>(move |scope| {
+        let mut probe = ProbeHandle::<u32>::new();
+        let logger = scope.danny_logger();
+        let mut pl = progress_logger::ProgressLogger::builder()
+            .with_items_name("repetitions")
+            .with_expected_updates(hasher.repetitions() as u64)
+            .start();
 
-            let left = simple_source(
-                scope,
-                Arc::clone(&global_left),
-                Arc::clone(&sketcher),
-                Arc::clone(&hasher),
-                worker_index,
-                matrix,
-                MatrixDirection::Rows,
-            );
-            let right = simple_source(
-                scope,
-                Arc::clone(&global_right),
-                Arc::clone(&sketcher),
-                Arc::clone(&hasher),
-                worker_index,
-                matrix,
-                MatrixDirection::Columns,
-            );
+        let left = simple_source(
+            scope,
+            left_vecs,
+            Arc::clone(&sketcher),
+            Arc::clone(&hasher),
+            worker_index,
+            matrix,
+            MatrixDirection::Rows,
+        );
+        let right = simple_source(
+            scope,
+            right_vecs,
+            Arc::clone(&sketcher),
+            Arc::clone(&hasher),
+            worker_index,
+            matrix,
+            MatrixDirection::Columns,
+        );
 
-            left.binary_frontier(&right, PipelinePact, PipelinePact, "bucket", move |_, _| {
-                let mut notificator = FrontierNotificator::new();
-                let mut left_data = HashMap::new();
-                let mut right_data = HashMap::new();
-                let mut left_vectors = HashMap::new();
-                let mut right_vectors = HashMap::new();
-                move |left_in, right_in, output| {
-                    left_in.for_each(|t, data| {
-                        log_event!(logger, LogEvent::Load(t.time().to_step_id(), data.len()));
-                        let local_data = left_data.entry(t.time().clone()).or_insert_with(|| {
-                            Vec::with_capacity(global_left.chunk_len(worker_row as usize))
-                        });
-                        let local_vectors = left_vectors
-                            .entry(t.time().clone())
-                            .or_insert_with(HashMap::new);
-                        for (k, (v, p, s)) in data.replace(Vec::new()).drain(..) {
-                            local_data.push((k, p, s));
-                            local_vectors.entry(k).or_insert(v);
-                        }
-                        notificator.notify_at(t.retain());
-                    });
-                    right_in.for_each(|t, data| {
-                        log_event!(logger, LogEvent::Load(t.time().to_step_id(), data.len()));
-                        let local_data = right_data.entry(t.time().clone()).or_insert_with(|| {
-                            Vec::with_capacity(global_right.chunk_len(worker_col as usize))
-                        });
-                        let local_vectors = right_vectors
-                            .entry(t.time().clone())
-                            .or_insert_with(HashMap::<ElementId, D>::new);
-                        for (k, (v, p, s)) in data.replace(Vec::new()).drain(..) {
-                            local_data.push((k, p, s));
-                            local_vectors.entry(k).or_insert(v);
-                        }
-                        notificator.notify_at(t.retain());
-                    });
-                    notificator.for_each(&[left_in.frontier(), &right_in.frontier()], |t, _| {
-                        if let Some(left_data) = left_data.remove(&t) {
-                            let right_data = right_data.remove(&t).expect("missing right data");
-                            let left_vectors =
-                                left_vectors.remove(&t).expect("missing left vectors");
-                            let right_vectors =
-                                right_vectors.remove(&t).expect("missing right vectors");
-                            let repetitions = hasher.repetitions();
-                            let mut cnt = 0;
-                            info!("Starting {} repetitions", repetitions);
-                            for rep in 0..repetitions {
-                                let _pg = ProfileGuard::new(logger.clone(), rep, 0, "repetition");
-                                let start = Instant::now();
-                                // let mut bucket = Bucket::default();
-                                let mut joiner = Joiner::default();
-                                for (k, pool, sketch) in left_data.iter() {
-                                    joiner.push_left(hasher.hash(pool, rep), (*k, *sketch, pool));
-                                }
-                                for (k, pool, sketch) in right_data.iter() {
-                                    joiner.push_right(hasher.hash(pool, rep), (*k, *sketch, pool));
-                                }
-                                let mut sketch_discarded = 0;
-                                let mut duplicates_discarded = 0;
-                                let mut examined_pairs = 0;
-                                joiner.join_map(
-                                    |_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
-                                        examined_pairs += 1;
-                                        if sketch_predicate.eval(l_sketch, r_sketch) {
-                                            if no_verify
-                                                || sim_pred(&left_vectors[lk], &right_vectors[rk])
-                                            {
-                                                if no_dedup
-                                                    || !hasher.already_seen(l_pool, r_pool, rep)
-                                                {
-                                                    cnt += 1;
-                                                } else {
-                                                    duplicates_discarded += 1;
-                                                }
-                                            }
-                                        } else {
-                                            sketch_discarded += 1;
-                                        }
-                                    },
-                                );
-                                let end = Instant::now();
-                                info!("Repetition {} ended in {:?}", rep, end - start);
-                                pl.update(1u64);
-                                log_event!(logger, LogEvent::GeneratedPairs(rep, examined_pairs));
-                                log_event!(
-                                    logger,
-                                    LogEvent::SketchDiscarded(rep, sketch_discarded)
-                                );
-                                log_event!(
-                                    logger,
-                                    LogEvent::DuplicatesDiscarded(rep, duplicates_discarded)
-                                );
+        left.binary_frontier(&right, PipelinePact, PipelinePact, "bucket", move |_, _| {
+            let mut notificator = FrontierNotificator::new();
+            let mut left_data = HashMap::new();
+            let mut right_data = HashMap::new();
+            let mut left_vectors = HashMap::new();
+            let mut right_vectors = HashMap::new();
+            move |left_in, right_in, output| {
+                left_in.for_each(|t, data| {
+                    log_event!(logger, LogEvent::Load(t.time().to_step_id(), data.len()));
+                    let local_data = left_data
+                        .entry(t.time().clone())
+                        .or_insert_with(|| Vec::new());
+                    let local_vectors = left_vectors
+                        .entry(t.time().clone())
+                        .or_insert_with(HashMap::new);
+                    for (k, (v, p, s)) in data.replace(Vec::new()).drain(..) {
+                        local_data.push((k, p, s));
+                        local_vectors.entry(k).or_insert(v);
+                    }
+                    notificator.notify_at(t.retain());
+                });
+                right_in.for_each(|t, data| {
+                    log_event!(logger, LogEvent::Load(t.time().to_step_id(), data.len()));
+                    let local_data = right_data
+                        .entry(t.time().clone())
+                        .or_insert_with(|| Vec::new());
+                    let local_vectors = right_vectors
+                        .entry(t.time().clone())
+                        .or_insert_with(HashMap::<ElementId, D>::new);
+                    for (k, (v, p, s)) in data.replace(Vec::new()).drain(..) {
+                        local_data.push((k, p, s));
+                        local_vectors.entry(k).or_insert(v);
+                    }
+                    notificator.notify_at(t.retain());
+                });
+                notificator.for_each(&[left_in.frontier(), &right_in.frontier()], |t, _| {
+                    if let Some(left_data) = left_data.remove(&t) {
+                        let right_data = right_data.remove(&t).expect("missing right data");
+                        let left_vectors = left_vectors.remove(&t).expect("missing left vectors");
+                        let right_vectors =
+                            right_vectors.remove(&t).expect("missing right vectors");
+                        let repetitions = hasher.repetitions();
+                        let mut cnt = 0;
+                        info!("Starting {} repetitions", repetitions);
+                        for rep in 0..repetitions {
+                            let _pg = ProfileGuard::new(logger.clone(), rep, 0, "repetition");
+                            let start = Instant::now();
+                            // let mut bucket = Bucket::default();
+                            let mut joiner = Joiner::default();
+                            for (k, pool, sketch) in left_data.iter() {
+                                joiner.push_left(hasher.hash(pool, rep), (*k, *sketch, pool));
                             }
-                            output.session(&t).give(cnt);
+                            for (k, pool, sketch) in right_data.iter() {
+                                joiner.push_right(hasher.hash(pool, rep), (*k, *sketch, pool));
+                            }
+                            let mut sketch_discarded = 0;
+                            let mut duplicates_discarded = 0;
+                            let mut examined_pairs = 0;
+                            joiner.join_map(
+                                |_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
+                                    examined_pairs += 1;
+                                    if sketch_predicate.eval(l_sketch, r_sketch) {
+                                        if no_verify
+                                            || sim_pred(&left_vectors[lk], &right_vectors[rk])
+                                        {
+                                            if no_dedup || !hasher.already_seen(l_pool, r_pool, rep)
+                                            {
+                                                cnt += 1;
+                                            } else {
+                                                duplicates_discarded += 1;
+                                            }
+                                        }
+                                    } else {
+                                        sketch_discarded += 1;
+                                    }
+                                },
+                            );
+                            let end = Instant::now();
+                            info!("Repetition {} ended in {:?}", rep, end - start);
+                            pl.update(1u64);
+                            log_event!(logger, LogEvent::GeneratedPairs(rep, examined_pairs));
+                            log_event!(logger, LogEvent::SketchDiscarded(rep, sketch_discarded));
+                            log_event!(
+                                logger,
+                                LogEvent::DuplicatesDiscarded(rep, duplicates_discarded)
+                            );
                         }
-                    });
-                }
-            })
-            .stream_sum()
-            .exchange(|_| 0) // Bring all the counts to the first worker
-            .inspect_time(|t, cnt| info!("count at {}: {}", t, cnt))
-            .unary(PipelinePact, "count collection", move |_, _| {
-                move |input, output| {
-                    input.for_each(|t, data| {
-                        let data = data.replace(Vec::new());
-                        for c in data.into_iter() {
-                            *result.borrow_mut() += c;
-                        }
-                        output.session(&t).give(());
-                    });
-                }
-            })
-            .probe_with(&mut probe);
+                        output.session(&t).give(cnt);
+                    }
+                });
+            }
+        })
+        .stream_sum()
+        .exchange(|_| 0) // Bring all the counts to the first worker
+        .inspect_time(|t, cnt| info!("count at {}: {}", t, cnt))
+        .unary(PipelinePact, "count collection", move |_, _| {
+            move |input, output| {
+                input.for_each(|t, data| {
+                    let data = data.replace(Vec::new());
+                    for c in data.into_iter() {
+                        *result.borrow_mut() += c;
+                    }
+                    output.session(&t).give(());
+                });
+            }
+        })
+        .probe_with(&mut probe);
 
-            probe
-        });
+        probe
+    });
 
-        worker.step_while(|| !probe.done());
-    }
+    worker.step_while(|| !probe.done());
 
     // info!("Collect execution summaries");
     // collect_execution_summaries(execution_summary, send_exec_summary.clone(), worker);
@@ -301,36 +290,6 @@ where
     // let network_summaries = network.map(|n| n.measure().collect_from_workers(worker, &config));
 
     if worker.index() == 0 {
-        // let mut exec_summaries = Vec::new();
-        // for summary in recv_exec_summary.iter() {
-        //     if let TimelyEvent::Messages(_, msgs) = summary {
-        //         exec_summaries.extend(msgs);
-        //     }
-        // }
-        // for summary in exec_summaries.iter() {
-        //     summary.add_to_experiment(experiment);
-        // }
-        // if network_summaries.is_some() {
-        //     network_summaries
-        //         .unwrap()
-        //         .iter()
-        //         .for_each(|n| n.report(experiment));
-        // }
-        // info!("Get elements out of count");
-        // From `recv` we get an entry for each timestamp, containing a one-element vector with the
-        // count of output pairs for a given timestamp. We sum across all the timestamps, so we need to
-        // remove the duplicates
-        // let count: u64 = recv
-        //     .extract()
-        //     .iter()
-        //     .map(|pair: &(u32, Vec<u64>)| {
-        //         let cnt = pair.1.clone().iter().sum::<u64>();
-        //         println!("Time {}, count {}", pair.0, cnt);
-        //         cnt
-        //     })
-        //     .sum();
-        // info!("Got elements");
-
         result_read.replace(0)
     } else {
         0

@@ -350,6 +350,23 @@ impl ReadDataFile for BagOfWords {
     }
 }
 
+pub fn load_for_worker<D, P: AsRef<Path>>(
+    index: usize,
+    peers: usize,
+    path: P,
+) -> Vec<(ElementId, D)>
+where
+    for<'de> D: Deserialize<'de> + ReadBinaryFile + Sync + Send + Clone + 'static,
+{
+    let mut data = Vec::new();
+    ReadBinaryFile::read_binary(
+        path.as_ref().into(),
+        |file_id| file_id % peers == index,
+        |c, v| data.push((ElementId(c as u32), v)),
+    );
+    data
+}
+
 #[allow(clippy::type_complexity)]
 pub fn load_vectors<D>(
     worker: &mut Worker<Allocator>,

@@ -60,8 +60,8 @@ where
     let no_dedup = config.no_dedup;
     let no_verify = config.no_verify;
 
-    let (send_exec_summary, recv_exec_summary) = channel();
-    let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
+    // let (send_exec_summary, recv_exec_summary) = channel();
+    // let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
 
     let individual_recall = config.recall.sqrt();
 
@@ -207,29 +207,13 @@ where
 
     // Do the stepping even though it's not strictly needed: we use it to wait for the dataflow
     // to finish
-    // worker.step_while(|| probe.less_than(&(repetitions as u32)));
     worker.step_while(|| probe.with_frontier(|f| !f.is_empty()));
 
-    collect_execution_summaries(execution_summary, send_exec_summary.clone(), worker);
+    // collect_execution_summaries(execution_summary, send_exec_summary.clone(), worker);
 
-    let network_summaries = network.map(|n| n.measure().collect_from_workers(worker, &config));
+    // let network_summaries = network.map(|n| n.measure().collect_from_workers(worker, &config));
 
     if worker.index() == 0 {
-        // let mut exec_summaries = Vec::new();
-        // for summary in recv_exec_summary.iter() {
-        //     if let TimelyEvent::Messages(_, msgs) = summary {
-        //         exec_summaries.extend(msgs);
-        //     }
-        // }
-        // for summary in exec_summaries.iter() {
-        //     summary.add_to_experiment(experiment);
-        // }
-        // if network_summaries.is_some() {
-        //     network_summaries
-        //         .unwrap()
-        //         .iter()
-        //         .for_each(|n| n.report(experiment));
-        // }
         result_read.replace(0)
     } else {
         0

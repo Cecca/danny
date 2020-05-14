@@ -267,22 +267,6 @@ where
     // let network_summaries = network.map(|n| n.measure().collect_from_workers(worker, &config));
 
     if worker.index() == 0 {
-        // let mut exec_summaries = Vec::new();
-        // for summary in recv_exec_summary.iter() {
-        //     if let TimelyEvent::Messages(_, msgs) = summary {
-        //         exec_summaries.extend(msgs);
-        //     }
-        // }
-        // for summary in exec_summaries.iter() {
-        //     summary.add_to_experiment(experiment);
-        // }
-        // if network_summaries.is_some() {
-        //     network_summaries
-        //         .unwrap()
-        //         .iter()
-        //         .for_each(|n| n.report(experiment));
-        // }
-
         result_read.replace(0)
     } else {
         0
