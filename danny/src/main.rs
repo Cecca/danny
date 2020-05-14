@@ -226,7 +226,7 @@ fn main() {
         .clone()
         .execute(move |worker| {
             let mut experiment = Experiment::from_config(config.clone());
-            let execution_summary = init_event_logging(&worker);
+            let (events_probe, events_handle, events) = init_event_logging(worker);
 
             info!("Starting...");
             info!("Initial memory {}", proc_mem!());
@@ -314,13 +314,19 @@ fn main() {
             let total_time =
                 total_time_d.as_secs() * 1000 + u64::from(total_time_d.subsec_millis());
 
-            let summaries = collect_execution_summaries(execution_summary, worker);
             let network_summary = {
                 let mut network = network.lock().unwrap();
                 let network: Option<NetworkGauge> = network.take().flatten();
                 network.map(|gauge| gauge.measure())
             };
             let network_summaries = NetworkSummary::collect_from_workers(worker, network_summary);
+
+            // close the events input and perform any outstanding work
+            events_handle
+                .replace(None)
+                .expect("missing logging input handle")
+                .close();
+            worker.step_while(|| !events_probe.done());
 
             if worker.index() == 0 {
                 info!(
@@ -339,6 +345,11 @@ fn main() {
                         )
                     }
                 }
+
+                for (event, count) in events.borrow().iter() {
+                    experiment.append_step_counter(event.kind(), event.step(), *count as u32);
+                }
+
                 experiment.save();
             }
         })

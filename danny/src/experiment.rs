@@ -6,7 +6,7 @@ pub struct Experiment {
     date: DateTime<Utc>,
     config: Config,
     // Table with Counter name, step, and count
-    step_counters: Vec<(String, u32, u64)>,
+    step_counters: Vec<(String, u32, u32)>,
     // Hostname, interface, transmitted, received
     network: Vec<(String, String, u32, u32)>,
     output_size: Option<u32>,
@@ -32,7 +32,7 @@ impl Experiment {
     pub fn set_total_time_ms(&mut self, total_time_ms: u64) {
         self.total_time_ms.replace(total_time_ms as u32);
     }
-    pub fn append_step_counter(&mut self, kind: String, step: u32, count: u64) {
+    pub fn append_step_counter(&mut self, kind: String, step: u32, count: u32) {
         self.step_counters.push((kind, step, count));
     }
 
@@ -177,6 +177,14 @@ impl Experiment {
             // }
 
             // TODO: insert into network table
+
+            let mut stmt = tx.prepare(
+                "INSERT INTO counters ( sha, kind, step, count )
+                 VALUES ( ?1, ?2, ?3, ?4 )"
+            ).expect("failed to prepare statement");
+            for (kind, step, count) in self.step_counters.iter() {
+                stmt.execute(params![sha, kind, step, count]).expect("failure in inserting network information");
+            }
 
             let mut stmt = tx.prepare(
                 "INSERT INTO network ( sha, hostname, interface, transmitted, received )

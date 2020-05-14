@@ -1,6 +1,7 @@
 use crate::config::*;
 use crate::experiment::Experiment;
 use env_logger::Builder;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::File;
 use std::hash::Hash;
@@ -9,6 +10,7 @@ use std::io::BufReader;
 use std::io::{Read, Write};
 use std::ops::Drop;
 use std::process;
+use std::rc::Rc;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -16,6 +18,7 @@ use std::time::{Duration, Instant};
 use timely::communication::Allocator;
 use timely::dataflow::operators::capture::event::Event as TimelyEvent;
 use timely::dataflow::operators::*;
+use timely::dataflow::InputHandle;
 use timely::dataflow::ProbeHandle;
 use timely::logging::Logger;
 use timely::worker::{AsWorker, Worker};
@@ -235,23 +238,70 @@ impl NetworkGauge {
     }
 }
 
-pub fn init_event_logging<A>(worker: &Worker<A>) -> Arc<Mutex<ExecutionSummary>>
+pub fn init_event_logging<A>(
+    worker: &mut Worker<A>,
+) -> (
+    ProbeHandle<()>,
+    Rc<RefCell<Option<InputHandle<(), (LogEvent, usize)>>>>,
+    Rc<RefCell<HashMap<LogEvent, usize>>>,
+)
 where
     A: timely::communication::Allocate,
 {
-    // There is one summary for each worker, which is updated by the worker thread
-    // itself.
-    // FIXME: Maybe we can get away without synchronization.
-    let summary = Arc::new(Mutex::new(ExecutionSummary::new(worker.index())));
-    // let summary_thread = Arc::clone(&summary);
+    use timely::dataflow::channels::pact::Pipeline;
+    use timely::dataflow::operators::aggregation::Aggregate;
+    use timely::dataflow::operators::*;
+
+    let events = Rc::new(RefCell::new(HashMap::new()));
+    let events_read = Rc::clone(&events);
+
+    let (input, probe) = worker.dataflow::<(), _, _>(move |scope| {
+        let (input, stream) = scope.new_input::<(LogEvent, usize)>();
+        let mut probe = ProbeHandle::new();
+
+        stream
+            .aggregate(
+                |_key, val, agg| {
+                    *agg += val;
+                },
+                |key, agg: usize| (key, agg),
+                |_key| 0,
+            )
+            .unary_notify(
+                Pipeline,
+                "report",
+                None,
+                move |input, output, notificator| {
+                    input.for_each(|t, data| {
+                        let data = data.replace(Vec::new());
+                        events.borrow_mut().extend(data.into_iter());
+                        notificator.notify_at(t.retain());
+                    });
+                    notificator.for_each(|t, _, _| {
+                        output.session(&t).give(());
+                    });
+                },
+            )
+            .probe_with(&mut probe);
+
+        (input, probe)
+    });
+
+    let input = Rc::new(RefCell::new(Some(input)));
+    let input_2 = input.clone();
+
     worker
         .log_register()
         .insert::<(LogEvent, usize), _>("danny", move |_time, data| {
-            for event in data.drain(..) {
-                // Push this into the stream
+            for (_time_bound, worker_id, (key, value)) in data.drain(..) {
+                input
+                    .borrow_mut()
+                    .as_mut()
+                    .map(|input| input.send((key, value)));
             }
         });
-    summary
+
+    (probe, input_2, events_read)
 }
 
 pub fn collect_execution_summaries<A>(
@@ -323,44 +373,44 @@ where
     }
 }
 
-pub struct ProfileGuard {
-    logger: Logger<LogEvent>,
-    step: usize,
-    depth: u8,
-    name: String,
-    start: Instant,
-}
+// pub struct ProfileGuard {
+//     logger: Logger<LogEvent>,
+//     step: usize,
+//     depth: u8,
+//     name: String,
+//     start: Instant,
+// }
 
-impl ProfileGuard {
-    pub fn new(
-        logger: Option<Logger<LogEvent>>,
-        step: usize,
-        depth: u8,
-        name: &str,
-    ) -> Option<Self> {
-        logger.map(|logger| Self {
-            logger: logger,
-            step,
-            depth,
-            name: name.to_owned(),
-            start: Instant::now(),
-        })
-    }
-}
+// impl ProfileGuard {
+//     pub fn new(
+//         logger: Option<Logger<LogEvent>>,
+//         step: usize,
+//         depth: u8,
+//         name: &str,
+//     ) -> Option<Self> {
+//         logger.map(|logger| Self {
+//             logger: logger,
+//             step,
+//             depth,
+//             name: name.to_owned(),
+//             start: Instant::now(),
+//         })
+//     }
+// }
 
-impl Drop for ProfileGuard {
-    fn drop(&mut self) {
-        let end = Instant::now();
-        // self.logger.log(LogEvent::Profile(
-        //     self.step,
-        //     self.depth,
-        //     self.name.clone(),
-        //     end - self.start,
-        // ));
-    }
-}
+// impl Drop for ProfileGuard {
+//     fn drop(&mut self) {
+//         let end = Instant::now();
+//         // self.logger.log(LogEvent::Profile(
+//         //     self.step,
+//         //     self.depth,
+//         //     self.name.clone(),
+//         //     end - self.start,
+//         // ));
+//     }
+// }
 
-#[derive(Debug, Clone, Abomonation)]
+#[derive(Debug, Clone, Abomonation, Eq, Ord, PartialEq, PartialOrd, Hash)]
 pub enum LogEvent {
     Load(usize),
     SketchDiscarded(usize),
@@ -371,6 +421,34 @@ pub enum LogEvent {
     ReceivedHashes(usize),
     // The hashes generated in each iteration
     GeneratedHashes(usize),
+}
+
+impl LogEvent {
+    pub fn kind(&self) -> String {
+        use LogEvent::*;
+        match self {
+            Load(_) => String::from("Load"),
+            SketchDiscarded(_) => String::from("SketchDiscarded"),
+            DistinctPairs(_) => String::from("DistinctPairs"),
+            DuplicatesDiscarded(_) => String::from("DuplicatesDiscarded"),
+            GeneratedPairs(_) => String::from("GeneratedPairs"),
+            ReceivedHashes(_) => String::from("ReceivedHashes"),
+            GeneratedHashes(_) => String::from("GeneratedHashes"),
+        }
+    }
+
+    pub fn step(&self) -> u32 {
+        use LogEvent::*;
+        match self {
+            Load(step) => *step as u32,
+            SketchDiscarded(step) => *step as u32,
+            DistinctPairs(step) => *step as u32,
+            DuplicatesDiscarded(step) => *step as u32,
+            GeneratedPairs(step) => *step as u32,
+            ReceivedHashes(step) => *step as u32,
+            GeneratedHashes(step) => *step as u32,
+        }
+    }
 }
 
 pub trait AsDannyLogger {
