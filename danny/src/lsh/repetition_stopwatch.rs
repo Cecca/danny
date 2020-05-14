@@ -33,10 +33,10 @@ impl RepetitionStopWatch {
             if self.verbose {
                 info!("{} {} ended in {:?}", self.name, self.counter, elapsed);
             }
-            log_event!(
-                self.logger,
-                LogEvent::Profile(self.counter, 0, self.name.clone(), elapsed)
-            );
+            // log_event!(
+            //     self.logger,
+            //     LogEvent::Profile(self.counter, 0, self.name.clone(), elapsed)
+            // );
             self.counter += 1;
         }
     }

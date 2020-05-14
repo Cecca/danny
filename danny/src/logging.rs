@@ -352,12 +352,12 @@ impl ProfileGuard {
 impl Drop for ProfileGuard {
     fn drop(&mut self) {
         let end = Instant::now();
-        self.logger.log(LogEvent::Profile(
-            self.step,
-            self.depth,
-            self.name.clone(),
-            end - self.start,
-        ));
+        // self.logger.log(LogEvent::Profile(
+        //     self.step,
+        //     self.depth,
+        //     self.name.clone(),
+        //     end - self.start,
+        // ));
     }
 }
 
@@ -376,8 +376,6 @@ pub enum LogEvent {
     AdaptiveSampledPoints(usize),
     // The hashes generated in each iteration
     GeneratedHashes(usize, usize),
-    /// Profiling event, with (step, depth, name, duration)
-    Profile(usize, u8, String, Duration),
 }
 
 pub trait AsDannyLogger {
@@ -406,7 +404,6 @@ pub struct ExecutionSummary {
     adaptive_no_collision: usize,
     adaptive_sampled_points: usize,
     generated_hashes: HashMap<usize, usize>,
-    profile: HashMap<(usize, u8, String), Duration>,
 }
 
 impl ExecutionSummary {
@@ -423,7 +420,6 @@ impl ExecutionSummary {
             adaptive_no_collision: 0,
             adaptive_sampled_points: 0,
             generated_hashes: HashMap::new(),
-            profile: HashMap::new(),
         }
     }
 
@@ -444,7 +440,6 @@ impl ExecutionSummary {
             adaptive_no_collision: self.adaptive_no_collision,
             adaptive_sampled_points: self.adaptive_sampled_points,
             generated_hashes: Self::map_to_vec(&self.generated_hashes),
-            profile: Self::map_to_vec(&self.profile),
         }
     }
 
@@ -480,12 +475,6 @@ impl ExecutionSummary {
             LogEvent::GeneratedHashes(step, count) => {
                 *self.generated_hashes.entry(step).or_insert(0usize) += count;
             }
-            LogEvent::Profile(step, depth, name, duration) => {
-                *self
-                    .profile
-                    .entry((step, depth, name))
-                    .or_insert_with(Duration::default) += duration;
-            }
         }
     }
 }
@@ -503,7 +492,6 @@ pub struct FrozenExecutionSummary {
     pub adaptive_no_collision: usize,
     pub adaptive_sampled_points: usize,
     pub generated_hashes: Vec<(usize, usize)>,
-    pub profile: Vec<((usize, u8, String), Duration)>,
 }
 
 /// Abstracts boilerplate code in dumping tables to the experiment
