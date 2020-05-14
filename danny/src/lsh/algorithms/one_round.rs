@@ -103,12 +103,15 @@ where
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
     B: Fn(usize, &mut R) -> H + Sized + Send + Sync + Clone + 'static,
 {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
     let no_dedup = config.no_dedup;
     let no_verify = config.no_verify;
     let network = NetworkGauge::start();
-    // This channel is used to get the results
-    let (output_send_ch, recv) = channel();
-    // let output_send_ch = Arc::new(Mutex::new(output_send_ch));
+
+    let result = Rc::new(RefCell::new(0usize));
+    let result_read = Rc::clone(&result);
 
     // let (send_exec_summary, recv_exec_summary) = channel();
     // let send_exec_summary = Arc::new(Mutex::new(send_exec_summary));
@@ -133,10 +136,7 @@ where
     // let bloom_filter = Arc::clone(&bloom_filter);
     let hasher = Arc::clone(&hasher);
     let execution_summary = init_event_logging(&worker);
-    // let output_send_ch = output_send_ch
-    //     .lock()
-    //     .expect("Cannot get lock on output channel")
-    //     .clone();
+
     let sim_pred = sim_pred.clone();
     let sketch_predicate = sketch_predicate.clone();
     let sketcher = sketcher.clone();
@@ -275,8 +275,18 @@ where
             .stream_sum()
             .exchange(|_| 0) // Bring all the counts to the first worker
             .inspect_time(|t, cnt| info!("count at {}: {}", t, cnt))
-            .probe_with(&mut probe)
-            .capture_into(output_send_ch);
+            .unary(PipelinePact, "count collection", move |_, _| {
+                move |input, output| {
+                    input.for_each(|t, data| {
+                        let data = data.replace(Vec::new());
+                        for c in data.into_iter() {
+                            *result.borrow_mut() += c;
+                        }
+                        output.session(&t).give(());
+                    });
+                }
+            })
+            .probe_with(&mut probe);
 
             probe
         });
@@ -306,7 +316,6 @@ where
         //         .iter()
         //         .for_each(|n| n.report(experiment));
         // }
-        let count = 0;
         // info!("Get elements out of count");
         // From `recv` we get an entry for each timestamp, containing a one-element vector with the
         // count of output pairs for a given timestamp. We sum across all the timestamps, so we need to
@@ -322,7 +331,7 @@ where
         //     .sum();
         // info!("Got elements");
 
-        count as usize
+        result_read.replace(0)
     } else {
         0
     }
