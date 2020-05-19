@@ -2,8 +2,10 @@ use crate::config::*;
 use chrono::prelude::*;
 use rusqlite::types::ToSqlOutput;
 use rusqlite::*;
+use std::path::{Path,PathBuf};
 
 pub struct Experiment {
+    db_path: PathBuf,
     date: DateTime<Utc>,
     config: Config,
     // Table with Counter name, step, and count
@@ -12,17 +14,36 @@ pub struct Experiment {
     network: Vec<(String, String, u32, u32)>,
     output_size: Option<u32>,
     total_time_ms: Option<u32>,
+    recall: Option<f64>,
+    speedup: Option<f64>
 }
 
 impl Experiment {
     pub fn from_config(config: Config) -> Experiment {
         Self {
+            db_path: Self::default_db_path(),
             date: Utc::now(),
             config,
             step_counters: Vec::new(),
             network: Vec::new(),
             output_size: None,
             total_time_ms: None,
+            recall: None,
+            speedup: None,
+        }
+    }
+
+    pub fn with_date(self, date: DateTime<Utc>) -> Self {
+        Self {
+            date,
+            ..self
+        }
+    }
+
+    pub fn with_database<P: AsRef<Path>>(self, path: P) -> Self {
+        Self {
+            db_path: path.as_ref().into(),
+            ..self
         }
     }
 
@@ -33,6 +54,12 @@ impl Experiment {
     pub fn set_total_time_ms(&mut self, total_time_ms: u64) {
         self.total_time_ms.replace(total_time_ms as u32);
     }
+
+    pub fn set_recall_speedup(&mut self, recall: f64, speedup: f64) {
+        self.recall.replace(recall);
+        self.speedup.replace(speedup);
+    }
+
     pub fn append_step_counter(&mut self, kind: String, step: u32, count: u32) {
         self.step_counters.push((kind, step, count));
     }
@@ -61,21 +88,21 @@ impl Experiment {
         format!("{:x}", sha.result())
     }
 
-    fn get_db_path() -> std::path::PathBuf {
+    fn default_db_path() -> std::path::PathBuf {
         let mut path = std::env::home_dir().expect("unable to get home directory");
         path.push("danny-results.sqlite");
         path
     }
 
-    fn get_conn() -> Connection {
-        let dbpath = Self::get_db_path();
+    fn get_conn(&self) -> Connection {
+        let dbpath = &self.db_path;
         let conn = Connection::open(dbpath).expect("error connecting to the database");
         create_tables_if_needed(&conn);
         conn
     }
 
     pub fn get_baseline(&self) -> Option<(u32, u32)> {
-        let conn = Self::get_conn();
+        let conn = self.get_conn();
         conn.query_row(
             "
             SELECT total_time_ms, output_size
@@ -104,7 +131,7 @@ impl Experiment {
         if self.config.rerun {
             return None;
         }
-        let conn = Self::get_conn();
+        let conn = self.get_conn();
         conn.query_row(
             "SELECT sha FROM result WHERE params_sha == ?1",
             params![self.config.sha()],
@@ -116,12 +143,15 @@ impl Experiment {
 
     pub fn save(self) {
         let sha = self.sha();
-        let mut conn = Self::get_conn();
+        let mut conn = self.get_conn();
 
         let output_size = self.output_size.expect("missing output size");
         let total_time_ms = self.total_time_ms.expect("missing total time");
 
-        let (recall, speedup) = if let Some((base_time, base_count)) = self.get_baseline() {
+        let (recall, speedup) = if let (Some(recall), Some(speedup)) = (self.recall, self.speedup) {
+            trace!("Speedup and recall set manually (valid during CSV import)");
+            (Some(recall), Some(speedup))
+        } else if let Some((base_time, base_count)) = self.get_baseline() {
             let recall = output_size as f64 / base_count as f64;
             let speedup = base_time as f64 / total_time_ms as f64;
             info!("Recall {} and speedup {}", recall, speedup);

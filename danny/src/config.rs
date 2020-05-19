@@ -278,7 +278,7 @@ impl Hosts {
     }
 }
 
-fn parse_hosts(arg: &str) -> Result<Hosts, String> {
+pub fn parse_hosts(arg: &str) -> Result<Hosts, String> {
     use std::fs::File;
     use std::io::{BufRead, BufReader};
     use std::path::PathBuf;
