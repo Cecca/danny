@@ -9,7 +9,7 @@ do
   do
     for K in 9 10 11 12 13
     do
-      DATASET=/mnt/fast_storage/users/mcec/data-master/$BASE_DATA-$SIZE_SPEC.bin
+      DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-$SIZE_SPEC.bin
       echo "Running on $DATASET"
       danny \
         --hosts ~/hosts.txt \
@@ -28,7 +28,7 @@ for DATA in glove.twitter.27B.200d.bin Orkut.bin Livejournal.bin sift-100-0.5.bi
 do
   for K in 9 10 11 12 13
   do
-    DATASET=/mnt/fast_storage/users/mcec/data-master/$DATA
+    DATASET=/mnt/fast_storage/users/mcec/$DATA
     echo "Running on $DATASET"
     danny \
       --hosts ~/hosts.txt \
