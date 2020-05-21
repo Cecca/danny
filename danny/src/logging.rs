@@ -136,8 +136,8 @@ impl NetworkSummary {
             experiment.append_network_info(
                 self.hostname.clone(),
                 iface.clone(),
-                diff.transmitted,
-                diff.received,
+                diff.transmitted as i64,
+                diff.received as i64,
             );
         }
     }

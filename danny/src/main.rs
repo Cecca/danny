@@ -345,14 +345,14 @@ fn main() {
                         experiment.append_network_info(
                             net_summary.hostname.clone(),
                             iface.clone(),
-                            diff.transmitted,
-                            diff.received,
+                            diff.transmitted as i64,
+                            diff.received as i64,
                         )
                     }
                 }
 
                 for (event, count) in events.borrow().iter() {
-                    experiment.append_step_counter(event.kind(), event.step(), *count as u32);
+                    experiment.append_step_counter(event.kind(), event.step(), *count as i64);
                 }
 
                 experiment.save();

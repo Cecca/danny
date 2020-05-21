@@ -9,9 +9,9 @@ pub struct Experiment {
     date: DateTime<Utc>,
     config: Config,
     // Table with Counter name, step, and count
-    step_counters: Vec<(String, u32, u32)>,
+    step_counters: Vec<(String, u32, i64)>,
     // Hostname, interface, transmitted, received
-    network: Vec<(String, String, u32, u32)>,
+    network: Vec<(String, String, i64, i64)>,
     output_size: Option<u32>,
     total_time_ms: Option<u32>,
     recall: Option<f64>,
@@ -60,7 +60,7 @@ impl Experiment {
         self.speedup.replace(speedup);
     }
 
-    pub fn append_step_counter(&mut self, kind: String, step: u32, count: u32) {
+    pub fn append_step_counter(&mut self, kind: String, step: u32, count: i64) {
         self.step_counters.push((kind, step, count));
     }
 
@@ -68,11 +68,11 @@ impl Experiment {
         &mut self,
         host: String,
         iface: String,
-        transmitted: usize,
-        received: usize,
+        transmitted: i64,
+        received: i64,
     ) {
         self.network
-            .push((host, iface, transmitted as u32, received as u32));
+            .push((host, iface, transmitted, received));
     }
 
     fn sha(&self) -> String {
