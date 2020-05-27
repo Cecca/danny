@@ -534,7 +534,7 @@ mod tests {
         let mut rng = XorShiftRng::seed_from_u64(123);
         let s1 = Vector::new(vec![1.0, 0.2, 0.3, 0.7]);
         let s2 = Vector::new(vec![4.0, 0.2, 2.3, 0.7]);
-        let similarity = InnerProduct::cosine(&s1, &s2);
+        let similarity = InnerProduct::inner_product(&s1, &s2);
         let mut sum_squared_error = 0.0;
         let mut sum_preds = 0.0;
 

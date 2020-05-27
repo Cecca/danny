@@ -374,10 +374,10 @@ mod tests {
         for _ in 0..10 {
             let a = Vector::random_normal(dim, &mut rng);
             let b = Vector::random_normal(dim, &mut rng);
-            let cos = InnerProduct::cosine(&a, &b);
-            println!("Cosine between the vectors is {}", cos);
-            assert!(cos >= -1.0 && cos <= 1.0);
-            let acos = cos.acos();
+            let ip = InnerProduct::inner_product(&a, &b);
+            println!("Inner product between the vectors is {}", ip);
+            assert!(ip >= -1.0 && ip <= 1.0);
+            let acos = ip.acos();
             assert!(!acos.is_nan());
             let expected = 1.0 - acos / std::f64::consts::PI;
             let mut collisions = 0;
@@ -470,7 +470,7 @@ mod tests {
     fn test_tensor_1() {
         let mut rng = StdRng::seed_from_u64(1223132);
         let a = BagOfWords::random(3000, 0.01, &mut rng);
-        let coll = TensorCollection::new(4, 0.5, OneBitMinHash::builder(), &mut rng);
+        let coll = TensorCollection::new(4, 0.5, 0.8, OneBitMinHash::builder(), &mut rng);
         let pool = coll.pool(&a);
         for rep in 0..coll.repetitions() {
             let h = coll.hash(&pool, rep);
