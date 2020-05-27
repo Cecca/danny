@@ -1,0 +1,40 @@
+name: Rust
+
+on:
+  push:
+    branches: [ ci ]
+  pull_request:
+    branches: [ ci ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-python@v2
+    - name: Install dependencies
+      run: |
+        rustup install nightly
+        python -m pip install --upgrade pip
+        pip install flake8 pyyaml numpy sklearn jinja2
+    - name: Build
+      run: | 
+        cargo +nightly install --path danny
+        cargo +nightly install --path danny-utilities
+    - name: Build dataset
+      run: |
+        cd experiments/
+        DANNY_DATA_DIR=$(pwd) DANNY_MINIONS=localhost python run.py --list-datasets --dataset-prefix random
+    - name: Run algorithms
+      run: |
+        danny --threshold 0.5 --algorithm all-2-all experiments/random.bin experiments/random.bin
+        danny --threshold 0.5 --algorithm hu-et-al --k 2 experiments/random.bin experiments/random.bin
+        danny --threshold 0.5 --algorithm one-round-lsh --k 2 experiments/random.bin experiments/random.bin
+        danny --threshold 0.5 --algorithm two-round-lsh --k 2 --k2 2 experiments/random.bin experiments/random.bin
+    - name: Run tests
+      run: cargo +nightly test --verbose
