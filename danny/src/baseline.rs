@@ -1,136 +1,24 @@
 use crate::config::Config;
 use crate::io::*;
-use crate::logging::*;
 use crate::operators::*;
 use abomonation::Abomonation;
+use danny_base::types::*;
 use serde::de::Deserialize;
 use std::clone::Clone;
+use std::collections::HashMap;
 use std::fmt::Debug;
-use std::fs::File;
-use std::fs::OpenOptions;
-use std::io::BufRead;
-use std::io::BufReader;
-use std::io::Write;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::time::Instant;
-use timely::dataflow::operators::capture::Extract;
+use timely::communication::Allocator;
+use timely::dataflow::channels::pact::Pipeline as PipelinePact;
 use timely::dataflow::operators::generic::operator::source;
 use timely::dataflow::operators::*;
+use timely::dataflow::Scope;
+use timely::dataflow::Stream;
+use timely::worker::Worker;
 use timely::Data;
-
-#[derive(Serialize, Deserialize)]
-pub struct Baselines {
-    path: PathBuf,
-    baselines: Vec<(String, String, f64, usize, u64, String)>,
-}
-
-impl Baselines {
-    pub fn new(config: &Config) -> Self {
-        let path = config.get_baselines_path();
-        info!("Reading baseline from {:?}", path);
-        let mut baselines = Vec::new();
-        if let Ok(file) = File::open(path.clone()) {
-            let file = BufReader::new(file);
-            for line in file.lines() {
-                let line = line.expect("Problem reading line");
-                let mut tokens = line.split(',');
-                let left = tokens
-                    .next()
-                    .expect("There should be the left path")
-                    .to_owned();
-                let right = tokens
-                    .next()
-                    .expect("There should be the right path")
-                    .to_owned();
-                let range: f64 = tokens
-                    .next()
-                    .expect("There should be the range")
-                    .parse()
-                    .expect("Problem parsing range");
-                let count: usize = tokens
-                    .next()
-                    .expect("There should be the count")
-                    .parse()
-                    .expect("Problem parsing the count");
-                let seconds: u64 = tokens
-                    .next()
-                    .expect("There should be the number of seconds")
-                    .parse()
-                    .expect("Problem parsing the seconds");
-                let version: String = tokens
-                    .next()
-                    .expect("There should be the git version")
-                    .to_owned();
-                baselines.push((left, right, range, count, seconds, version));
-            }
-        };
-        Baselines { path, baselines }
-    }
-
-    #[allow(clippy::float_cmp)]
-    pub fn get_count(&self, left: &str, right: &str, range: f64) -> Option<usize> {
-        self.baselines
-            .iter()
-            .find(|(l, r, t, _, _, _)| l == left && r == right && t == &range)
-            .map(|tup| tup.3)
-    }
-
-    #[allow(clippy::float_cmp)]
-    pub fn get_times_secs(&self, left: &str, right: &str, range: f64) -> Option<Vec<u64>> {
-        let times: Vec<u64> = self
-            .baselines
-            .iter()
-            .filter(|(l, r, t, _, _, _)| l == left && r == right && t == &range)
-            .map(|tup| tup.4)
-            .collect();
-        if times.is_empty() {
-            None
-        } else {
-            Some(times)
-        }
-    }
-
-    pub fn add(self, left: &str, right: &str, range: f64, count: usize, seconds: u64) {
-        if self.get_count(left, right, range).is_none() {
-            info!("Writing baseline to {:?}", self.path);
-            let mut file = OpenOptions::new()
-                .append(true)
-                .create(true)
-                .open(self.path)
-                .expect("problem opening file for writing");
-            writeln!(
-                file,
-                "{},{},{},{},{},{}",
-                left,
-                right,
-                range,
-                count,
-                seconds,
-                crate::version::short_sha()
-            )
-            .expect("Error appending line");
-        } else {
-            info!(
-                "Baseline entry already present in {:?}, skipping",
-                self.path
-            );
-        }
-    }
-
-    pub fn recall(&self, left: &str, right: &str, range: f64, count: usize) -> Option<f64> {
-        self.get_count(left, right, range)
-            .map(|base_count| count as f64 / base_count as f64)
-    }
-
-    pub fn speedup(&self, left: &str, right: &str, range: f64, seconds: f64) -> Option<f64> {
-        self.get_times_secs(left, right, range).map(|times| {
-            let avg_base_time = times.iter().sum::<u64>() as f64 / times.len() as f64;
-            avg_base_time / seconds
-        })
-    }
-}
+use timely::ExchangeData;
 
 #[cfg(feature = "seq-all-2-all")]
 pub fn sequential<T, F>(thresh: f64, left_path: &str, right_path: &str, sim_fn: F) -> usize
@@ -169,6 +57,7 @@ where
 
 #[cfg(feature = "all-2-all")]
 pub fn all_pairs_parallel<T, F>(
+    worker: &mut Worker<Allocator>,
     threshold: f64,
     left_path: &str,
     right_path: &str,
@@ -179,83 +68,162 @@ where
     for<'de> T: Deserialize<'de> + ReadDataFile + Data + Sync + Send + Clone + Abomonation + Debug,
     F: Fn(&T, &T) -> bool + Send + Clone + Sync + 'static,
 {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    let result = Rc::new(RefCell::new(0usize));
+    let result_read = Rc::clone(&result);
+
     let start_time = Instant::now();
-    let timely_builder = config.get_timely_builder();
-    // This channel is used to get the results
-    let (output_send_ch, recv) = ::std::sync::mpsc::channel();
-    let output_send_ch = Arc::new(Mutex::new(output_send_ch));
 
-    let (global_left, global_right) = load_vectors(left_path, right_path, &config);
+    let worker_vectors = Arc::new(load_for_worker::<T, _>(
+        worker.index(),
+        worker.peers(),
+        left_path,
+    ));
+    info!("Worker has {} vectors", worker_vectors.len());
 
-    timely::execute::execute_from(timely_builder.0, timely_builder.1, move |worker| {
-        let index = worker.index();
-        let peers = worker.peers() as u64;
-        info!("Started worker {}/{}", index, peers);
-        let sim_pred = sim_pred.clone();
+    let index = worker.index();
+    let peers = worker.peers() as u64;
+    info!("Started worker {}/{}", index, peers);
+    let sim_pred = sim_pred.clone();
 
-        worker.dataflow::<u32, _, _>(|scope| {
-            let output_send_ch = output_send_ch.lock().unwrap().clone();
-            let global_left = Arc::clone(&global_left);
-            let global_right = Arc::clone(&global_right);
+    let probe = worker.dataflow::<u32, _, _>(|scope| {
+        let matrix = MatrixDescription::for_workers(peers as usize);
+        let (row, col) = matrix.row_major_to_pair(index as u64);
 
-            let matrix = MatrixDescription::for_workers(peers as usize);
-            let (row, col) = matrix.row_major_to_pair(index as u64);
-            source(scope, "Source", move |capability| {
-                let mut cap = Some(capability);
-                let left = Arc::clone(&global_left);
-                let right = Arc::clone(&global_right);
-                move |output| {
-                    if let Some(cap) = cap.take() {
-                        info!("Starting to count pairs (memory {})", proc_mem!());
-                        let mut count = 0usize;
+        let left = simple_source(
+            scope,
+            Arc::clone(&worker_vectors),
+            matrix,
+            MatrixDirection::Rows,
+        );
+        let right = simple_source(
+            scope,
+            Arc::clone(&worker_vectors),
+            matrix,
+            MatrixDirection::Columns,
+        );
+
+        left.binary_frontier(&right, PipelinePact, PipelinePact, "bucket", move |_, _| {
+            let mut notificator = FrontierNotificator::new();
+            let mut left_vectors = HashMap::new();
+            let mut right_vectors = HashMap::new();
+            move |left_in, right_in, output| {
+                left_in.for_each(|t, data| {
+                    let local_vectors = left_vectors
+                        .entry(t.time().clone())
+                        .or_insert_with(HashMap::new);
+                    for (k, v) in data.replace(Vec::new()).drain(..) {
+                        local_vectors.entry(k).or_insert(v);
+                    }
+                    notificator.notify_at(t.retain());
+                });
+                right_in.for_each(|t, data| {
+                    let local_vectors = right_vectors
+                        .entry(t.time().clone())
+                        .or_insert_with(HashMap::new);
+                    for (k, v) in data.replace(Vec::new()).drain(..) {
+                        local_vectors.entry(k).or_insert(v);
+                    }
+                    notificator.notify_at(t.retain());
+                });
+                notificator.for_each(&[left_in.frontier(), &right_in.frontier()], |t, _| {
+                    if let Some(left_vectors) = left_vectors.remove(&t) {
+                        let right_vectors =
+                            right_vectors.remove(&t).expect("missing right vectors");
                         let mut pl = progress_logger::ProgressLogger::builder()
                             .with_frequency(Duration::from_secs(60))
                             .with_items_name("pairs")
                             .with_expected_updates(
-                                (left.chunk_len(row as usize) * right.chunk_len(col as usize))
-                                    as u64,
+                                (left_vectors.len() * right_vectors.len()) as u64,
                             )
                             .start();
-                        for (_lk, lv) in left.iter_chunk(row as usize) {
+
+                        let mut cnt = 0;
+                        for (_lk, lv) in left_vectors.iter() {
                             let mut pairs_looked = 0_u64;
-                            for (_rk, rv) in right.iter_chunk(col as usize) {
+                            for (_rk, rv) in right_vectors.iter() {
                                 if sim_pred(lv, rv) {
-                                    count += 1;
+                                    cnt += 1;
                                 }
                                 pairs_looked += 1;
                             }
                             pl.update_light(pairs_looked);
                         }
                         pl.stop();
-
-                        info!(
-                            "Worker {} outputting count {} (memory {})",
-                            index,
-                            count,
-                            proc_mem!()
-                        );
-                        output.session(&cap).give(count);
+                        info!("Matching pairs: {}", cnt);
+                        output.session(&t).give(cnt);
                     }
+                });
+            }
+        })
+        .exchange(|_| 0)
+        .unary(
+            timely::dataflow::channels::pact::Pipeline,
+            "count collection",
+            move |_, _| {
+                move |input, output| {
+                    input.for_each(|t, data| {
+                        let data = data.replace(Vec::new());
+                        for c in data.into_iter() {
+                            *result.borrow_mut() += c;
+                        }
+                        output.session(&t).give(());
+                    });
                 }
-            })
-            .exchange(|_| 0)
-            .capture_into(output_send_ch);
-        });
-    })
-    .expect("Something went wrong with the timely dataflow execution");
+            },
+        )
+        .probe()
+    });
 
-    if config.is_master() {
-        let count: usize = recv
-            .extract()
-            .iter()
-            .map(|pair| pair.1.clone().iter().sum::<usize>())
-            .next() // The iterator has one item for each timestamp. We have just one timestamp, 0
-            .expect("Failed to get the result out of the channel");
-        let end_time = Instant::now();
-        let elapsed = (end_time - start_time).as_secs();
-        Baselines::new(config).add(left_path, right_path, threshold, count, elapsed);
-        count
+    worker.step_while(|| !probe.done());
+
+    if worker.index() == 0 {
+        result_read.replace(0)
     } else {
         0
     }
+}
+
+fn simple_source<G, D>(
+    scope: &G,
+    vecs: Arc<Vec<(ElementId, D)>>,
+    matrix: MatrixDescription,
+    direction: MatrixDirection,
+) -> Stream<G, (ElementId, D)>
+where
+    G: Scope,
+    G::Timestamp: Succ,
+    D: ExchangeData + Debug,
+{
+    source(scope, "hashed source", move |capability| {
+        let mut cap = Some(capability);
+        move |output| {
+            if let Some(cap) = cap.take() {
+                let start = Instant::now();
+                let mut session = output.session(&cap);
+                for (k, v) in vecs.iter() {
+                    let output_element = (k.clone(), v.clone());
+                    match direction {
+                        MatrixDirection::Columns => {
+                            let col = (k.route() % u64::from(matrix.columns)) as u8;
+                            for row in 0..matrix.rows {
+                                session.give(((row, col), output_element.clone()));
+                            }
+                        }
+                        MatrixDirection::Rows => {
+                            let row = (k.route() % u64::from(matrix.rows)) as u8;
+                            for col in 0..matrix.columns {
+                                session.give(((row, col), output_element.clone()));
+                            }
+                        }
+                    };
+                }
+                let end = Instant::now();
+                info!("Distributed vectors in {:?}", end - start);
+            }
+        }
+    })
+    .exchange(move |tuple| matrix.row_major((tuple.0).0, (tuple.0).1))
+    .map(|pair| pair.1)
 }

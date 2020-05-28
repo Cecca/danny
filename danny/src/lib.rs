@@ -9,21 +9,14 @@ extern crate env_logger;
 extern crate log_panics;
 #[macro_use]
 extern crate serde_derive;
-extern crate envy;
 extern crate serde;
-#[macro_use]
-extern crate clap;
 #[macro_use]
 extern crate abomonation_derive;
 extern crate chrono;
 extern crate core;
-extern crate probabilistic_collections;
 extern crate rand;
 extern crate rand_xorshift;
-extern crate serde_json;
 extern crate siphasher;
-extern crate smallbitvec;
-extern crate statrs;
 extern crate timely;
 
 #[macro_use]
@@ -32,14 +25,13 @@ pub mod experiment;
 pub mod logging;
 pub mod baseline;
 pub mod config;
-pub mod dataset;
 pub mod io;
 pub mod join;
 pub mod lsh;
 pub mod operators;
-pub mod version {
-    include!(concat!(env!("OUT_DIR"), "/version.rs"));
-}
+// pub mod version {
+//     include!(concat!(env!("OUT_DIR"), "/version.rs"));
+// }
 
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;

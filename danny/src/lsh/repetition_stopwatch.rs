@@ -8,12 +8,12 @@ pub struct RepetitionStopWatch {
     start: Option<Instant>,
     counter: usize,
     name: String,
-    logger: Option<Logger<LogEvent>>,
+    logger: Option<Logger<(LogEvent, usize)>>,
     verbose: bool,
 }
 
 impl RepetitionStopWatch {
-    pub fn new(name: &str, verbose: bool, logger: Option<Logger<LogEvent>>) -> Self {
+    pub fn new(name: &str, verbose: bool, logger: Option<Logger<(LogEvent, usize)>>) -> Self {
         Self {
             start: None,
             counter: 0usize,
@@ -33,10 +33,10 @@ impl RepetitionStopWatch {
             if self.verbose {
                 info!("{} {} ended in {:?}", self.name, self.counter, elapsed);
             }
-            log_event!(
-                self.logger,
-                LogEvent::Profile(self.counter, 0, self.name.clone(), elapsed)
-            );
+            // log_event!(
+            //     self.logger,
+            //     LogEvent::Profile(self.counter, 0, self.name.clone(), elapsed)
+            // );
             self.counter += 1;
         }
     }

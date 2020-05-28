@@ -1,13 +1,16 @@
+use argh::FromArgs;
 use core::any::Any;
 use rand::rngs::StdRng;
 use rand::RngCore;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
-use std::path::PathBuf;
-use std::process::Command;
-use std::time::Duration;
+use std::convert::TryFrom;
+use std::fmt::Debug;
+use std::path::Path;
+use std::process::{Child, Command};
 use timely::communication::allocator::generic::GenericBuilder;
-use timely::communication::initialize::Configuration as TimelyConfig;
+use timely::communication::{Allocator, Configuration as TimelyConfig, WorkerGuards};
+use timely::worker::Worker;
 
 pub fn get_hostname() -> String {
     let output = Command::new("hostname")
@@ -16,179 +19,132 @@ pub fn get_hostname() -> String {
     String::from_utf8_lossy(&output.stdout).trim().to_owned()
 }
 
-#[derive(Deserialize, Debug)]
+/// command line configuration for DANNY
+#[derive(FromArgs, Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
-    #[serde(default)]
-    process_id: usize,
-    #[serde(default = "Config::default_threads")]
-    threads: usize,
-    #[serde(default = "Config::default_hosts")]
-    hosts: Vec<String>,
-    #[serde(default = "Config::default_report")]
-    report: bool,
-    #[serde(default = "Config::default_seed")]
-    seed: u64,
-    #[serde(default = "Config::default_baselines_path")]
-    baselines_path: PathBuf,
-    #[serde(default = "Config::default_sketch_epsilon")]
-    sketch_epsilon: f64,
-    #[serde(default = "Config::default_timeout")]
-    timeout: Option<u64>,
-    #[serde(default = "Config::default_recall")]
-    recall: f64,
-    #[serde(default = "Config::default_repetition_batch")]
-    repetition_batch: usize,
-    #[serde(default = "Config::default_no_dedup")]
+    /// the similarity threshold
+    #[argh(option)]
+    pub threshold: f64,
+
+    /// the algortihm to be used
+    #[argh(option)]
+    pub algorithm: String,
+
+    /// the value of k for lsh algorithms
+    #[argh(option)]
+    pub k: Option<usize>,
+
+    /// the value of k2 for lsh algorithms
+    #[argh(option)]
+    pub k2: Option<usize>,
+
+    /// the number of sketch bits for lsh algorithms
+    #[argh(option, default = "0")]
+    pub sketch_bits: usize,
+
+    /// don't set this manually
+    #[argh(option)]
+    pub process_id: Option<usize>,
+
+    /// number of threads to use
+    #[argh(option, default = "1")]
+    pub threads: usize,
+
+    /// the hosts to run on
+    #[argh(option, from_str_fn(parse_hosts))]
+    pub hosts: Option<Hosts>,
+
+    /// the seed for the random number generator
+    #[argh(option, default = "4258726345")]
+    pub seed: u64,
+
+    /// the number of bits to use for sketches
+    #[argh(option, default = "0.01")]
+    pub sketch_epsilon: f64,
+
+    /// the required recall for lsh algorithms
+    #[argh(option, default = "0.8")]
+    pub recall: f64,
+
+    /// don't remove duplicates from the output
+    #[argh(switch)]
     pub no_dedup: bool,
-    #[serde(default = "Config::default_no_verify")]
+
+    /// don't verify output pairs
+    #[argh(switch)]
     pub no_verify: bool,
+
+    /// number of repetitions to squash together
+    #[argh(option, default = "1")]
+    pub repetition_batch: usize,
+
+    /// wether to run again the given configuration, 
+    /// even if already present in the database
+    #[argh(switch)]
+    pub rerun: bool,
+
+    /// the left dataset to be joined
+    #[argh(positional)]
+    pub left_path: String,
+
+    /// the right dataset to be joined
+    #[argh(positional)]
+    pub right_path: String,
 }
 
-#[allow(dead_code)]
 impl Config {
-    pub fn help_str() -> &'static str {
-        "Environment configuration:
-            
-            DANNY_THREADS     number of threads to be used in each process (default=1)
-            DANNY_HOSTS       comma separated list of hosts:port on which 
-                              to run (default=no hosts)
-            DANNY_PROCESS_ID  in the context of multiple processes, the unique identifier
-                              of the process, ranging from 0 until $DANNY_PROCESSES
-            DANNY_SEED        The seed for the random number generator
-            DANNY_SKETCH_EPSILON  The value of epsilon for the sketcher (if used)
-            DANNY_BASELINES_PATH  The path to the baselines file
-            DANNY_TIMEOUT     Number of seconds before killing a run (default: unbounded)
-            DANNY_RECALL    Guaranteed recall (default: 0.5)
-            DANNY_REPETITION_BATCH  The number of repetitions to squash into a distributed round
-            DANNY_NO_DEDUP  Don't perform duplicate elimination
-            DANNY_NO_VERIFY  Don't perform verification of distances
-        "
-    }
-
+    /// If the command line contains a single argument (other than the command name)
+    /// tries to decode the first argument into a `Config` struct. If this fails,
+    /// proceeds to reading the command line arguments.
     pub fn get() -> Config {
-        match envy::prefixed("DANNY_").from_env::<Config>() {
-            Ok(config) => config,
-            Err(error) => panic!("{:#?}", error),
+        match std::env::args().nth(1) {
+            Some(arg1) => match Config::decode(&arg1) {
+                Some(config) => config,
+                None => argh::from_env(),
+            },
+            None => argh::from_env(),
         }
     }
 
-    fn default_no_dedup() -> bool {
-        false
+    fn encode(&self) -> String {
+        base64::encode(&bincode::serialize(&self).unwrap())
     }
 
-    fn default_no_verify() -> bool {
-        false
+    fn decode(string: &str) -> Option<Self> {
+        let bytes = base64::decode(string).ok()?;
+        bincode::deserialize(&bytes).ok()
     }
 
-    fn default_repetition_batch() -> usize {
-        1
-    }
+    pub fn sha(&self) -> String {
+        use sha2::Digest;
+        let mut sha = sha2::Sha256::new();
 
-    pub fn get_repetition_batch(&self) -> usize {
-        self.repetition_batch
-    }
+        // IMPORTANT: Don't change the order of the following statements!
+        sha.input(format!("{}", self.algorithm));
+        sha.input(format!("{}", self.threshold));
+        sha.input(format!("{}", self.k.map(|k| format!("{}", k)).unwrap_or("".to_owned())));
+        sha.input(format!("{}", self.k2.map(|k2| format!("{}", k2)).unwrap_or("".to_owned())));
+        sha.input(format!("{}", self.sketch_bits));
+        sha.input(format!("{}", self.sketch_epsilon));
+        sha.input(format!("{}", self.threads));
+        sha.input(format!("{}", self.hosts_string()));
+        sha.input(format!("{}", self.seed));
+        sha.input(format!("{}", self.recall));
+        sha.input(format!("{}", self.no_verify));
+        sha.input(format!("{}", self.no_dedup));
+        sha.input(format!("{}", self.repetition_batch));
+        sha.input(format!("{}", self.left_path));
+        sha.input(format!("{}", self.right_path));
 
-    fn default_timeout() -> Option<u64> {
-        None
-    }
-
-    pub fn get_timeout(&self) -> Option<Duration> {
-        self.timeout.map(|t| Duration::from_secs(t))
-    }
-
-    fn default_baselines_path() -> PathBuf {
-        PathBuf::from("baselines.csv")
-    }
-
-    fn default_seed() -> u64 {
-        98_768_473_876_234
-    }
-
-    fn default_sketch_epsilon() -> f64 {
-        0.01
-    }
-
-    fn default_cost_balance() -> f64 {
-        0.5
-    }
-
-    fn default_repetition_cost() -> f64 {
-        100.0
-    }
-
-    fn default_sampling_factor() -> f64 {
-        10.0
-    }
-
-    fn default_threads() -> usize {
-        1
-    }
-
-    fn default_hosts() -> Vec<String> {
-        Vec::new()
-    }
-
-    fn default_report() -> bool {
-        false
-    }
-
-    fn default_recall() -> f64 {
-        0.5
+        format!("{:x}", sha.result())
     }
 
     pub fn master_hostname(&self) -> Option<String> {
-        if !self.hosts.is_empty() {
-            let hn = self.hosts[0]
-                .split(':')
-                .next()
-                .expect("Can't split the host string");
-            Some(hn.to_owned())
-        } else {
-            None
-        }
+        self.hosts.as_ref().map(|hosts| hosts.hosts[0].name.clone())
     }
 
     pub fn is_master(&self) -> bool {
-        self.process_id == 0
-    }
-
-    pub fn get_baselines_path(&self) -> PathBuf {
-        self.baselines_path.clone()
-    }
-
-    pub fn get_recall(&self) -> f64 {
-        return self.recall;
-    }
-
-    pub fn get_timely_builder(&self) -> (Vec<GenericBuilder>, Box<dyn Any + 'static>) {
-        let timely_config = if self.hosts.len() > 1 {
-            let hosts: Vec<String> = self.hosts.clone();
-            info!(
-                "Running on {:?}, using {} threads in each process",
-                hosts, self.threads
-            );
-            TimelyConfig::Cluster {
-                threads: self.threads,
-                process: self.process_id,
-                addresses: hosts,
-                report: self.report,
-                log_fn: Box::new(|_| None),
-            }
-        } else if self.threads > 1 {
-            println!("Running on {} threads", self.threads);
-            TimelyConfig::Process(self.threads)
-        } else {
-            println!("Running on a single thread");
-            TimelyConfig::Thread
-        };
-        match timely_config.try_build() {
-            Ok(pair) => pair,
-            Err(msg) => panic!("Error while configuring timely: {}", msg),
-        }
-    }
-
-    pub fn get_sketch_epsilon(&self) -> f64 {
-        self.sketch_epsilon
+        self.process_id.unwrap_or(0) == 0
     }
 
     pub fn get_random_generator(&self, instance: usize) -> XorShiftRng {
@@ -200,104 +156,161 @@ impl Config {
         XorShiftRng::seed_from_u64(seed)
     }
 
-    pub fn get_seed(&self) -> u64 {
-        self.seed
-    }
-
-    pub fn get_threads(&self) -> usize {
-        self.threads
-    }
-
     pub fn get_total_workers(&self) -> usize {
-        if self.hosts.is_empty() {
-            self.threads
+        if let Some(hosts) = self.hosts.as_ref() {
+            hosts.hosts.len() * self.threads
         } else {
-            self.hosts.len() * self.threads
+            self.threads
         }
     }
 
-    pub fn get_hosts(&self) -> &Vec<String> {
-        &self.hosts
+    pub fn hosts_string(&self) -> String {
+        self.hosts
+            .as_ref()
+            .map(|hosts| hosts.to_strings().join("__"))
+            .unwrap_or(String::new())
     }
 
     pub fn get_num_hosts(&self) -> usize {
-        self.hosts.len()
-    }
-}
-
-pub struct CmdlineConfig {
-    pub threshold: f64,
-    pub left_path: String,
-    pub right_path: String,
-    pub algorithm: String,
-    pub k: Option<usize>,
-    pub k2: Option<usize>,
-    pub sketch_bits: Option<usize>,
-}
-
-impl CmdlineConfig {
-    pub fn get() -> CmdlineConfig {
-        let matches = clap_app!(danny =>
-            (version: "0.1")
-            (author: "Matteo Ceccarello <mcec@itu.dk>")
-            (about: format!("Distributed Approximate Near Neighbours, Yo!\n\n{}", Config::help_str()).as_ref())
-            (@arg ALGORITHM: -a --algorithm +takes_value "The algorithm to be used: (fixed-lsh, all-2-all)")
-            // (@arg MEASURE: -m --measure +required +takes_value "The similarity measure to be used")
-            (@arg K: -k +takes_value "The number of concatenations of the hash function")
-            (@arg L: -l +takes_value "The number of concatenations of the internal hash function")
-            (@arg THRESHOLD: -r --range +required +takes_value "The similarity threshold")
-            (@arg BITS: --("sketch-bits") +takes_value "The number of bits to use for sketching")
-            (@arg LEFT: +required "Path to the left hand side of the join")
-            (@arg RIGHT: +required "Path to the right hand side of the join")
-        )
-        .get_matches();
-
-        let threshold: f64 = matches
-            .value_of("THRESHOLD")
-            .expect("range is a required argument")
-            .parse()
-            .expect("Cannot convert the threshold into a f64");
-        let left_path = matches
-            .value_of("LEFT")
-            .expect("left is a required argument")
-            .to_owned();
-        let right_path = matches
-            .value_of("RIGHT")
-            .expect("right is a required argument")
-            .to_owned();
-        let algorithm = matches
-            .value_of("ALGORITHM")
-            .unwrap_or("all-2-all")
-            .to_owned();
-        let k2 = matches.value_of("L").map(|k_str| {
-            let _k = k_str
-                .parse::<usize>()
-                .expect("L should be an unsigned integer");
-            _k
-        });
-        let k = matches.value_of("K").map(|k_str| {
-            let _k = k_str
-                .parse::<usize>()
-                .expect("k should be an unsigned integer");
-            _k
-        });
-        let sketch_bits = matches.value_of("BITS").map(|bits_str| {
-            bits_str
-                .parse::<usize>()
-                .expect("The number of bits should be an integer")
-        });
-        CmdlineConfig {
-            threshold,
-            left_path,
-            right_path,
-            algorithm,
-            k,
-            k2,
-            sketch_bits,
+        if let Some(hosts) = self.hosts.as_ref() {
+            hosts.hosts.len()
+        } else {
+            1
         }
     }
 
-    pub fn get_sketch_bits(&self) -> usize {
-        self.sketch_bits.unwrap_or(1024)
+    fn with_process_id(&self, process_id: usize) -> Self {
+        Self {
+            process_id: Some(process_id),
+            ..self.clone()
+        }
     }
+
+    pub fn execute<T, F>(&self, func: F) -> Option<Result<WorkerGuards<T>, String>>
+    where
+        T: Send + 'static,
+        F: Fn(&mut Worker<Allocator>) -> T + Send + Sync + 'static,
+    {
+        if self.hosts.is_some() && self.process_id.is_none() {
+            let exec = std::env::args().nth(0).unwrap();
+            info!("spawning executable {:?}", exec);
+            // This is the top level invocation, which should spawn the processes with ssh
+            let handles: Vec<std::process::Child> = self
+                .hosts
+                .as_ref()
+                .unwrap()
+                .hosts
+                .iter()
+                .enumerate()
+                .map(|(pid, host)| {
+                    let encoded_config = self.with_process_id(pid).encode();
+                    info!("Connecting to {}", host.name);
+                    Command::new("ssh")
+                        .arg(&host.name)
+                        .arg(&exec)
+                        .arg(encoded_config)
+                        .spawn()
+                        .expect("problem spawning the ssh process")
+                })
+                .collect();
+
+            for mut h in handles {
+                info!("Waiting for ssh process to finish");
+                h.wait().expect("problem waiting for the ssh process");
+            }
+            info!("All workers done");
+
+            None
+        } else {
+            info!("Worker invocation");
+            let c = match &self.hosts {
+                None => {
+                    if self.threads == 1 {
+                        TimelyConfig::Thread
+                    } else {
+                        TimelyConfig::Process(self.threads)
+                    }
+                }
+                Some(hosts) => TimelyConfig::Cluster {
+                    threads: self.threads,
+                    process: self.process_id.expect("missing process id"),
+                    addresses: hosts.to_strings(),
+                    report: false,
+                    log_fn: Box::new(|_| None),
+                },
+            };
+            Some(timely::execute(c, func))
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Host {
+    name: String,
+    port: String,
+}
+
+impl Host {
+    fn to_string(&self) -> String {
+        format!("{}:{}", self.name, self.port)
+    }
+}
+
+impl TryFrom<&str> for Host {
+    type Error = String;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let mut tokens = value.split(":");
+        let name = tokens.next().ok_or("missing host part")?.to_owned();
+        let port = tokens.next().ok_or("missing port part")?.to_owned();
+        Ok(Self { name, port })
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct Hosts {
+    hosts: Vec<Host>,
+}
+
+impl Hosts {
+    fn to_strings(&self) -> Vec<String> {
+        self.hosts.iter().map(|h| h.to_string()).collect()
+    }
+}
+
+pub fn parse_hosts(arg: &str) -> Result<Hosts, String> {
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
+    use std::path::PathBuf;
+
+    let path = PathBuf::from(arg);
+    if path.is_file() {
+        let f = File::open(path).or(Err("error opening hosts file"))?;
+        let reader = BufReader::new(f);
+        let mut hosts = Vec::new();
+        for line in reader.lines() {
+            let line = line.or(Err("error reading line"))?;
+            if line.len() > 0 {
+                let host = Host::try_from(line.as_str())?;
+                hosts.push(host);
+            }
+        }
+        Ok(Hosts { hosts })
+    } else {
+        let tokens = arg.split(",");
+        let mut hosts = Vec::new();
+        for token in tokens {
+            let host = Host::try_from(token)?;
+            hosts.push(host);
+        }
+        Ok(Hosts { hosts })
+    }
+}
+
+#[derive(Debug)]
+pub enum ExecError {
+    /// Not actually an error
+    RemoteExecution,
+    /// Actually an error, with message
+    Error(String),
 }

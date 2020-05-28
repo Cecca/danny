@@ -1,7 +1,7 @@
 use crate::config::*;
 use crate::experiment::Experiment;
 use env_logger::Builder;
-use serde_json::Value;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::File;
 use std::hash::Hash;
@@ -10,13 +10,15 @@ use std::io::BufReader;
 use std::io::{Read, Write};
 use std::ops::Drop;
 use std::process;
-
+use std::rc::Rc;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+use timely::communication::Allocator;
 use timely::dataflow::operators::capture::event::Event as TimelyEvent;
 use timely::dataflow::operators::*;
+use timely::dataflow::InputHandle;
 use timely::dataflow::ProbeHandle;
 use timely::logging::Logger;
 use timely::worker::{AsWorker, Worker};
@@ -131,59 +133,54 @@ impl std::fmt::Display for NetworkSummary {
 impl NetworkSummary {
     pub fn report(&self, experiment: &mut Experiment) {
         for (iface, diff) in self.interfaces.iter() {
-            experiment.append(
-                "network",
-                row!(
-                    "hostname" => self.hostname.clone(),
-                    "interface" => iface.clone(),
-                    "transmitted" => diff.transmitted,
-                    "received" => diff.received
-                ),
+            experiment.append_network_info(
+                self.hostname.clone(),
+                iface.clone(),
+                diff.transmitted as i64,
+                diff.received as i64,
             );
         }
     }
 
     /// sets up a small dataflow to exchange information about the network exchanges
-    pub fn collect_from_workers(self, config: &Config) -> Vec<NetworkSummary> {
-        let timely_builder = config.get_timely_builder();
-        let (send, recv) = std::sync::mpsc::channel();
-        let send = Arc::new(Mutex::new(send));
-        let this = Arc::new(Mutex::new(Some(self)));
-        timely::execute::execute_from(timely_builder.0, timely_builder.1, move |worker| {
-            let send = Arc::clone(&send);
-            let (mut input, probe) = worker.dataflow::<u32, _, _>(move |scope| {
-                let send = send.lock().unwrap().clone();
-                let (input, stream) = scope.new_input::<NetworkSummary>();
-                let mut probe = ProbeHandle::new();
-                stream
-                    .exchange(|_| 0)
-                    .probe_with(&mut probe)
-                    .capture_into(send);
+    pub fn collect_from_workers(
+        worker: &mut Worker<Allocator>,
+        summary: Option<NetworkSummary>,
+    ) -> Vec<NetworkSummary> {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        use timely::dataflow::channels::pact::Pipeline;
 
-                (input, probe)
-            });
-            // Use the lock to send the information about this machine just once
-            let this = this.lock().unwrap().take();
-            if this.is_some() {
-                input.send(this.unwrap());
-            }
-            input.advance_to(1);
-            worker.step_while(|| probe.less_than(&1));
-        })
-        .expect("problems with the dataflow for network monitoring");
+        let result = Rc::new(RefCell::new(Vec::new()));
+        let result_read = Rc::clone(&result);
 
-        let mut res = Vec::new();
-        if config.is_master() {
-            for summary in recv.iter() {
-                if let TimelyEvent::Messages(_, msgs) = summary {
-                    for summary in msgs.iter() {
-                        info!("{}", summary);
+        let (mut input, probe) = worker.dataflow::<u32, _, _>(move |scope| {
+            let (input, stream) = scope.new_input::<NetworkSummary>();
+            let mut probe = ProbeHandle::new();
+            stream
+                .exchange(|_| 0)
+                .unary(Pipeline, "collector", move |_, _| {
+                    move |input, output| {
+                        input.for_each(|t, data| {
+                            let data = data.replace(Vec::new());
+                            result.borrow_mut().extend(data.into_iter());
+                            output.session(&t).give(());
+                        });
                     }
-                    res.extend(msgs);
-                }
-            }
+                })
+                .probe_with(&mut probe);
+
+            (input, probe)
+        });
+
+        if let Some(machine_summary) = summary {
+            input.send(machine_summary);
         }
-        res
+
+        input.advance_to(1);
+        worker.step_while(|| probe.less_than(&1));
+
+        result_read.replace(Vec::new())
     }
 }
 
@@ -241,54 +238,70 @@ impl NetworkGauge {
     }
 }
 
-pub fn init_event_logging<A>(worker: &Worker<A>) -> Arc<Mutex<ExecutionSummary>>
+pub fn init_event_logging<A>(
+    worker: &mut Worker<A>,
+) -> (
+    ProbeHandle<()>,
+    Rc<RefCell<Option<InputHandle<(), (LogEvent, usize)>>>>,
+    Rc<RefCell<HashMap<LogEvent, usize>>>,
+)
 where
     A: timely::communication::Allocate,
 {
-    // There is one summary for each worker, which is updated by the worker thread
-    // itself.
-    // FIXME: Maybe we can get away without synchronization.
-    let summary = Arc::new(Mutex::new(ExecutionSummary::new(worker.index())));
-    let summary_thread = Arc::clone(&summary);
-    worker
-        .log_register()
-        .insert::<LogEvent, _>("danny", move |_time, data| {
-            let mut summary = summary_thread.lock().unwrap();
-            for event in data.drain(..) {
-                summary.add(event.2);
-            }
-        });
-    summary
-}
+    use timely::dataflow::channels::pact::Pipeline;
+    use timely::dataflow::operators::aggregation::Aggregate;
+    use timely::dataflow::operators::*;
 
-pub fn collect_execution_summaries<A>(
-    execution_summary: Arc<Mutex<ExecutionSummary>>,
-    send: Arc<Mutex<Sender<TimelyEvent<u32, FrozenExecutionSummary>>>>,
-    worker: &mut Worker<A>,
-) where
-    A: timely::communication::Allocate,
-{
-    let (mut input, probe) = worker.dataflow::<u32, _, _>(move |scope| {
-        let send = send
-            .lock()
-            .expect("cannot acquire lock on send channel")
-            .clone();
-        let (input, stream) = scope.new_input::<FrozenExecutionSummary>();
+    let events = Rc::new(RefCell::new(HashMap::new()));
+    let events_read = Rc::clone(&events);
+
+    let (input, probe) = worker.dataflow::<(), _, _>(move |scope| {
+        let (input, stream) = scope.new_input::<(LogEvent, usize)>();
         let mut probe = ProbeHandle::new();
+
         stream
-            .exchange(|_| 0)
-            .probe_with(&mut probe)
-            .capture_into(send);
+            .aggregate(
+                |_key, val, agg| {
+                    *agg += val;
+                },
+                |key, agg: usize| (key, agg),
+                |_key| 0,
+            )
+            .unary_notify(
+                Pipeline,
+                "report",
+                None,
+                move |input, output, notificator| {
+                    input.for_each(|t, data| {
+                        let data = data.replace(Vec::new());
+                        events.borrow_mut().extend(data.into_iter());
+                        notificator.notify_at(t.retain());
+                    });
+                    notificator.for_each(|t, _, _| {
+                        output.session(&t).give(());
+                    });
+                },
+            )
+            .probe_with(&mut probe);
 
         (input, probe)
     });
-    let execution_summary = execution_summary
-        .lock()
-        .expect("cannot acquire lock on the execution summary")
-        .freeze();
-    input.send(execution_summary);
-    input.advance_to(1);
-    worker.step_while(|| probe.less_than(&1));
+
+    let input = Rc::new(RefCell::new(Some(input)));
+    let input_2 = input.clone();
+
+    worker
+        .log_register()
+        .insert::<(LogEvent, usize), _>("danny", move |_time, data| {
+            for (_time_bound, worker_id, (key, value)) in data.drain(..) {
+                input
+                    .borrow_mut()
+                    .as_mut()
+                    .map(|input| input.send((key, value)));
+            }
+        });
+
+    (probe, input_2, events_read)
 }
 
 #[macro_export]
@@ -317,330 +330,56 @@ where
         self.outer.to_step_id()
     }
 }
-
-pub struct ProfileGuard {
-    logger: Logger<LogEvent>,
-    step: usize,
-    depth: u8,
-    name: String,
-    start: Instant,
-}
-
-impl ProfileGuard {
-    pub fn new(
-        logger: Option<Logger<LogEvent>>,
-        step: usize,
-        depth: u8,
-        name: &str,
-    ) -> Option<Self> {
-        logger.map(|logger| Self {
-            logger: logger,
-            step,
-            depth,
-            name: name.to_owned(),
-            start: Instant::now(),
-        })
-    }
-}
-
-impl Drop for ProfileGuard {
-    fn drop(&mut self) {
-        let end = Instant::now();
-        self.logger.log(LogEvent::Profile(
-            self.step,
-            self.depth,
-            self.name.clone(),
-            end - self.start,
-        ));
-    }
-}
-
-#[derive(Debug, Clone, Abomonation)]
+#[derive(Debug, Clone, Abomonation, Eq, Ord, PartialEq, PartialOrd, Hash)]
 pub enum LogEvent {
-    Load(usize, usize),
-    SketchDiscarded(usize, usize),
-    DistinctPairs(usize, usize),
-    DuplicatesDiscarded(usize, usize),
-    GeneratedPairs(usize, usize),
+    Load(usize),
+    SketchDiscarded(usize),
+    DistinctPairs(usize),
+    DuplicatesDiscarded(usize),
+    GeneratedPairs(usize),
     /// The number of received hashes during bucketing. This is a proxy for the load measure
-    ReceivedHashes(usize, usize),
-    /// Histogram of the distribution of levels in the adaptive algorithm (level, count) pairs
-    AdaptiveLevelHistogram(usize, usize),
-    AdaptiveNoCollision(usize),
-    AdaptiveSampledPoints(usize),
+    ReceivedHashes(usize),
     // The hashes generated in each iteration
-    GeneratedHashes(usize, usize),
-    /// Profiling event, with (step, depth, name, duration)
-    Profile(usize, u8, String, Duration),
+    GeneratedHashes(usize),
+}
+
+impl LogEvent {
+    pub fn kind(&self) -> String {
+        use LogEvent::*;
+        match self {
+            Load(_) => String::from("Load"),
+            SketchDiscarded(_) => String::from("SketchDiscarded"),
+            DistinctPairs(_) => String::from("DistinctPairs"),
+            DuplicatesDiscarded(_) => String::from("DuplicatesDiscarded"),
+            GeneratedPairs(_) => String::from("GeneratedPairs"),
+            ReceivedHashes(_) => String::from("ReceivedHashes"),
+            GeneratedHashes(_) => String::from("GeneratedHashes"),
+        }
+    }
+
+    pub fn step(&self) -> u32 {
+        use LogEvent::*;
+        match self {
+            Load(step) => *step as u32,
+            SketchDiscarded(step) => *step as u32,
+            DistinctPairs(step) => *step as u32,
+            DuplicatesDiscarded(step) => *step as u32,
+            GeneratedPairs(step) => *step as u32,
+            ReceivedHashes(step) => *step as u32,
+            GeneratedHashes(step) => *step as u32,
+        }
+    }
 }
 
 pub trait AsDannyLogger {
-    fn danny_logger(&self) -> Option<Logger<LogEvent>>;
+    fn danny_logger(&self) -> Option<Logger<(LogEvent, usize)>>;
 }
 
 impl<T> AsDannyLogger for T
 where
     T: AsWorker,
 {
-    fn danny_logger(&self) -> Option<Logger<LogEvent>> {
+    fn danny_logger(&self) -> Option<Logger<(LogEvent, usize)>> {
         self.log_register().get("danny")
     }
 }
-
-#[derive(Debug)]
-pub struct ExecutionSummary {
-    worker_id: usize,
-    load: HashMap<usize, usize>,
-    sketch_discarded: HashMap<usize, usize>,
-    distinct_pairs: HashMap<usize, usize>,
-    duplicates_discarded: HashMap<usize, usize>,
-    generated_pairs: HashMap<usize, usize>,
-    received_hashes: HashMap<usize, usize>,
-    adaptive_histogram: HashMap<usize, usize>,
-    adaptive_no_collision: usize,
-    adaptive_sampled_points: usize,
-    generated_hashes: HashMap<usize, usize>,
-    profile: HashMap<(usize, u8, String), Duration>,
-}
-
-impl ExecutionSummary {
-    pub fn new(worker_id: usize) -> Self {
-        Self {
-            worker_id,
-            load: HashMap::new(),
-            sketch_discarded: HashMap::new(),
-            distinct_pairs: HashMap::new(),
-            duplicates_discarded: HashMap::new(),
-            generated_pairs: HashMap::new(),
-            received_hashes: HashMap::new(),
-            adaptive_histogram: HashMap::new(),
-            adaptive_no_collision: 0,
-            adaptive_sampled_points: 0,
-            generated_hashes: HashMap::new(),
-            profile: HashMap::new(),
-        }
-    }
-
-    fn map_to_vec<K: Clone + Eq + Hash, V: Clone>(m: &HashMap<K, V>) -> Vec<(K, V)> {
-        m.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
-    }
-
-    pub fn freeze(&self) -> FrozenExecutionSummary {
-        FrozenExecutionSummary {
-            worker_id: self.worker_id,
-            load: Self::map_to_vec(&self.load),
-            sketch_discarded: Self::map_to_vec(&self.sketch_discarded),
-            distinct_pairs: Self::map_to_vec(&self.distinct_pairs),
-            duplicates_discarded: Self::map_to_vec(&self.duplicates_discarded),
-            generated_pairs: Self::map_to_vec(&self.generated_pairs),
-            received_hashes: Self::map_to_vec(&self.received_hashes),
-            adaptive_histogram: Self::map_to_vec(&self.adaptive_histogram),
-            adaptive_no_collision: self.adaptive_no_collision,
-            adaptive_sampled_points: self.adaptive_sampled_points,
-            generated_hashes: Self::map_to_vec(&self.generated_hashes),
-            profile: Self::map_to_vec(&self.profile),
-        }
-    }
-
-    pub fn add(&mut self, event: LogEvent) {
-        match event {
-            LogEvent::Load(step, count) => {
-                *self.load.entry(step).or_insert(0usize) += count;
-            }
-            LogEvent::SketchDiscarded(step, count) => {
-                *self.sketch_discarded.entry(step).or_insert(0usize) += count;
-            }
-            LogEvent::DistinctPairs(step, count) => {
-                *self.distinct_pairs.entry(step).or_insert(0usize) += count;
-            }
-            LogEvent::DuplicatesDiscarded(step, count) => {
-                *self.duplicates_discarded.entry(step).or_insert(0usize) += count;
-            }
-            LogEvent::GeneratedPairs(step, count) => {
-                *self.generated_pairs.entry(step).or_insert(0usize) += count;
-            }
-            LogEvent::ReceivedHashes(step, count) => {
-                *self.received_hashes.entry(step).or_insert(0usize) += count;
-            }
-            LogEvent::AdaptiveLevelHistogram(level, count) => {
-                *self.adaptive_histogram.entry(level).or_insert(0usize) += count;
-            }
-            LogEvent::AdaptiveNoCollision(count) => {
-                self.adaptive_no_collision += count;
-            }
-            LogEvent::AdaptiveSampledPoints(count) => {
-                self.adaptive_sampled_points += count;
-            }
-            LogEvent::GeneratedHashes(step, count) => {
-                *self.generated_hashes.entry(step).or_insert(0usize) += count;
-            }
-            LogEvent::Profile(step, depth, name, duration) => {
-                *self
-                    .profile
-                    .entry((step, depth, name))
-                    .or_insert_with(Duration::default) += duration;
-            }
-        }
-    }
-}
-
-#[derive(Debug, Abomonation, Clone, Default)]
-pub struct FrozenExecutionSummary {
-    pub worker_id: usize,
-    pub load: Vec<(usize, usize)>,
-    pub sketch_discarded: Vec<(usize, usize)>,
-    pub distinct_pairs: Vec<(usize, usize)>,
-    pub duplicates_discarded: Vec<(usize, usize)>,
-    pub generated_pairs: Vec<(usize, usize)>,
-    pub received_hashes: Vec<(usize, usize)>,
-    pub adaptive_histogram: Vec<(usize, usize)>,
-    pub adaptive_no_collision: usize,
-    pub adaptive_sampled_points: usize,
-    pub generated_hashes: Vec<(usize, usize)>,
-    pub profile: Vec<((usize, u8, String), Duration)>,
-}
-
-/// Abstracts boilerplate code in dumping tables to the experiment
-macro_rules! append_step_counter {
-    ( $self: ident, $experiment: ident, $step:expr, $name:ident ) => {
-        $self.$name.iter().find(|(s, _)| s == $step).map(|(_, count)| {
-            $experiment.append(
-                "step_counters",
-                row!("step" => *$step, "worker" => $self.worker_id, "kind" => stringify!($name), "count" => *count),
-            );
-        });
-    };
-}
-
-impl FrozenExecutionSummary {
-    pub fn add_to_experiment(&self, experiment: &mut Experiment) {
-        let mut steps = std::collections::HashSet::new();
-        steps.extend(self.load.iter().map(|p| p.0));
-        steps.extend(self.received_hashes.iter().map(|p| p.0));
-        steps.extend(self.sketch_discarded.iter().map(|p| p.0));
-        steps.extend(self.distinct_pairs.iter().map(|p| p.0));
-        steps.extend(self.duplicates_discarded.iter().map(|p| p.0));
-        steps.extend(self.generated_pairs.iter().map(|p| p.0));
-        steps.extend(self.generated_hashes.iter().map(|p| p.0));
-        for step in steps.iter() {
-            append_step_counter!(self, experiment, step, load);
-            append_step_counter!(self, experiment, step, received_hashes);
-            append_step_counter!(self, experiment, step, sketch_discarded);
-            append_step_counter!(self, experiment, step, distinct_pairs);
-            append_step_counter!(self, experiment, step, duplicates_discarded);
-            append_step_counter!(self, experiment, step, generated_pairs);
-            append_step_counter!(self, experiment, step, generated_hashes);
-        }
-        let mut hist = std::collections::BTreeMap::new();
-        for (level, count) in self.adaptive_histogram.iter() {
-            experiment.append(
-                "adaptive_histogram",
-                row!("level" => *level, "count" => *count, "worker" => self.worker_id),
-            );
-            hist.insert(*level, *count);
-        }
-        if !hist.is_empty() {
-            info!(" Adaptive hist: {:?}", hist);
-            info!(" Points with no collisions: {}", self.adaptive_no_collision);
-            info!(" Sampled points: {}", self.adaptive_sampled_points);
-            experiment.append(
-                "adaptive_counts",
-                row!("count" => self.adaptive_no_collision, "name" => "no_collision", "worker" => self.worker_id),
-            );
-            experiment.append(
-                "adaptive_counts",
-                row!("count" => self.adaptive_sampled_points, "name" => "sampled_points", "worker" => self.worker_id),
-            );
-        }
-        for ((step, depth, name), duration) in self.profile.iter() {
-            experiment.append(
-                "profile",
-                row!(
-                    "step" => *step,
-                    "depth" => *depth,
-                    "name" => name.clone(),
-                    "duration" => duration.as_millis() as u64,
-                    "worker" => self.worker_id
-                ),
-            );
-        }
-    }
-}
-
-// pub struct ProgressLogger {
-//     start: Instant,
-//     last: Instant,
-//     interval: Duration,
-//     count: u64,
-//     items: String,
-//     expected: Option<u64>,
-// }
-
-// fn f64_to_strtime(seconds: f64) -> String {
-//     if seconds >= 60.0 * 60.0 {
-//         format!("{:.2} hours", seconds / (60.0 * 60.0))
-//     } else if seconds >= 60.0 {
-//         format!("{:.2} minutes", seconds / 60.0)
-//     } else {
-//         format!("{:.2} seconds", seconds)
-//     }
-// }
-
-// impl ProgressLogger {
-//     pub fn new(interval: Duration, items: String, expected: Option<u64>) -> Self {
-//         ProgressLogger {
-//             start: Instant::now(),
-//             last: Instant::now(),
-//             interval,
-//             count: 0,
-//             items,
-//             expected,
-//         }
-//     }
-
-//     pub fn add(&mut self, cnt: u64) {
-//         self.count += cnt;
-//         let now = Instant::now();
-//         if now - self.last > self.interval {
-//             let elapsed = now - self.start;
-//             let elapsed = elapsed.as_secs() as f64 + f64::from(elapsed.subsec_millis()) / 1000.0;
-//             let throughput = self.count as f64 / elapsed;
-//             match self.expected {
-//                 Some(expected) => {
-//                     let estimated = (expected - self.count) as f64 / throughput;
-//                     info!(
-//                         "{:?} :: {} {} :: {} {}/sec :: estimated {} ({})",
-//                         elapsed,
-//                         self.count,
-//                         self.items,
-//                         throughput,
-//                         self.items,
-//                         f64_to_strtime(estimated),
-//                         proc_mem!()
-//                     )
-//                 }
-//                 None => info!(
-//                     "{:?} :: {} {} :: {} {}/sec ({})",
-//                     elapsed,
-//                     self.count,
-//                     self.items,
-//                     throughput,
-//                     self.items,
-//                     proc_mem!()
-//                 ),
-//             }
-//             self.last = now;
-//         }
-//     }
-
-//     pub fn done(self) {
-//         let now = Instant::now();
-//         let elapsed = now - self.start;
-//         let elapsed = elapsed.as_secs() as f64 + f64::from(elapsed.subsec_millis()) / 1000.0;
-//         let throughput = self.count as f64 / elapsed;
-//         info!(
-//             "Completed {:?} :: {} {} :: {} {}/sec",
-//             elapsed, self.count, self.items, throughput, self.items
-//         );
-//     }
-// }

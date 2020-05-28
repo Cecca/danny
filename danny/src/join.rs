@@ -45,7 +45,7 @@ where
             move |_, _| {
                 move |left_in, right_in, output| {
                     left_in.for_each(|t, d| {
-                        log_event!(logger, LogEvent::Load(t.time().to_step_id(), d.len()));
+                        log_event!(logger, (LogEvent::Load(t.time().to_step_id()), d.len()));
                         let mut data = d.replace(Vec::new());
                         let rep_entry = joiners
                             .entry(t.time().clone())
@@ -56,7 +56,7 @@ where
                         notificator.notify_at(t.retain());
                     });
                     right_in.for_each(|t, d| {
-                        log_event!(logger, LogEvent::Load(t.time().to_step_id(), d.len()));
+                        log_event!(logger, (LogEvent::Load(t.time().to_step_id()), d.len()));
                         let mut data = d.replace(Vec::new());
                         let rep_entry = joiners
                             .entry(t.time().clone())

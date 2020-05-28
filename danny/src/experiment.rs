@@ -1,219 +1,323 @@
-extern crate bzip2;
-
 use crate::config::*;
-use crate::version;
-use bzip2::read::BzDecoder;
-use bzip2::write::BzEncoder;
-use bzip2::Compression;
 use chrono::prelude::*;
-use serde_json::Value;
-use std::collections::HashMap;
-use std::fs::File;
-use std::fs::OpenOptions;
-use std::io::BufRead;
-use std::io::BufReader;
-use std::io::Write;
-use std::path::PathBuf;
+use rusqlite::types::ToSqlOutput;
+use rusqlite::*;
+use std::path::{Path,PathBuf};
 
-#[derive(Serialize)]
 pub struct Experiment {
-    tags: HashMap<String, Value>,
-    tables: HashMap<String, Vec<HashMap<String, Value>>>,
-}
-
-impl Default for Experiment {
-    fn default() -> Experiment {
-        Experiment::new()
-    }
+    db_path: PathBuf,
+    date: DateTime<Utc>,
+    config: Config,
+    // Table with Counter name, step, and count
+    step_counters: Vec<(String, u32, i64)>,
+    // Hostname, interface, transmitted, received
+    network: Vec<(String, String, i64, i64)>,
+    output_size: Option<u32>,
+    total_time_ms: Option<u32>,
+    recall: Option<f64>,
+    speedup: Option<f64>
 }
 
 impl Experiment {
-    pub fn new() -> Experiment {
-        let date = Utc::now().to_rfc3339();
-        let mut tags = HashMap::new();
-        tags.insert("date".to_owned(), serde_json::Value::String(date));
-        let tables = HashMap::new();
-        Experiment { tags, tables }
-    }
-
-    pub fn from_config(config: &Config, cmdline: &CmdlineConfig) -> Experiment {
-        let experiment = Experiment::new()
-            .tag("threads_per_worker", config.get_threads())
-            .tag("num_hosts", config.get_num_hosts())
-            .tag("total_threads", config.get_total_workers())
-            .tag("seed", config.get_seed())
-            .tag("sketch_epsilon", config.get_sketch_epsilon())
-            .tag("required_recall", config.get_recall())
-            .tag("no_dedup", config.no_dedup)
-            .tag("no_verify", config.no_verify)
-            // .tag("measure", cmdline.measure.clone())
-            .tag("threshold", cmdline.threshold)
-            .tag("left_path", cmdline.left_path.clone())
-            .tag("right_path", cmdline.right_path.clone())
-            .tag("algorithm", cmdline.algorithm.clone())
-            .tag("git_revision", version::short_sha())
-            .tag("git_commit_date", version::commit_date());
-        let experiment = if cmdline.k.is_some() {
-            let k_str = cmdline.k.unwrap().to_string().clone();
-            let exp = experiment.tag("k", k_str);
-            if cmdline.k2.is_some() {
-                let k2_str = cmdline.k2.unwrap().to_string().clone();
-                exp.tag("k2", k2_str)
-            } else {
-                exp
-            }
-        } else {
-            experiment
-        };
-        if cmdline.sketch_bits.is_some() {
-            experiment.tag("sketch_bits", cmdline.get_sketch_bits())
-        } else {
-            experiment
+    pub fn from_config(config: Config) -> Experiment {
+        Self {
+            db_path: Self::default_db_path(),
+            date: Utc::now(),
+            config,
+            step_counters: Vec::new(),
+            network: Vec::new(),
+            output_size: None,
+            total_time_ms: None,
+            recall: None,
+            speedup: None,
         }
     }
 
-    pub fn from_env(config: &Config) -> Experiment {
-        Experiment::new()
-            .tag("threads_per_worker", config.get_threads())
-            .tag("hosts", config.get_hosts().clone())
-            .tag("num_hosts", config.get_num_hosts())
-            .tag("total_threads", config.get_total_workers())
-            .tag("seed", config.get_seed())
-            .tag("sketch_epsilon", config.get_sketch_epsilon())
-            .tag("git_revision", version::short_sha())
-            .tag("git_commit_date", version::commit_date())
+    pub fn with_date(self, date: DateTime<Utc>) -> Self {
+        Self {
+            date,
+            ..self
+        }
     }
 
-    pub fn tag<T>(mut self, name: &str, value: T) -> Self
-    where
-        T: Into<Value>,
-    {
-        self.tags.insert(name.to_owned(), value.into());
-        self
+    pub fn with_database<P: AsRef<Path>>(self, path: P) -> Self {
+        Self {
+            db_path: path.as_ref().into(),
+            ..self
+        }
     }
 
-    pub fn add_tag<T>(&mut self, name: &str, value: T)
-    where
-        T: Into<Value>,
-    {
-        self.tags.insert(name.to_owned(), value.into());
+    pub fn set_output_size(&mut self, output_size: u32) {
+        self.output_size.replace(output_size);
     }
 
-    pub fn append(&mut self, table: &str, row: HashMap<String, Value>) {
-        self.tables
-            .entry(table.to_owned())
-            .or_insert_with(Vec::new)
-            .push(row);
+    pub fn set_total_time_ms(&mut self, total_time_ms: u64) {
+        self.total_time_ms.replace(total_time_ms as u32);
+    }
+
+    pub fn set_recall_speedup(&mut self, recall: f64, speedup: f64) {
+        self.recall.replace(recall);
+        self.speedup.replace(speedup);
+    }
+
+    pub fn append_step_counter(&mut self, kind: String, step: u32, count: i64) {
+        self.step_counters.push((kind, step, count));
+    }
+
+    pub fn append_network_info(
+        &mut self,
+        host: String,
+        iface: String,
+        transmitted: i64,
+        received: i64,
+    ) {
+        self.network
+            .push((host, iface, transmitted, received));
+    }
+
+    fn sha(&self) -> String {
+        use sha2::Digest;
+        let datestr = self.date.to_rfc2822();
+        let mut sha = sha2::Sha256::new();
+        sha.input(datestr);
+        // I know that the following is implementation-dependent, but I just need
+        // to have a identifier to join different tables created in this run.
+        sha.input(format!("{:?}", self.config));
+        sha.input(format!("{:?}", self.step_counters));
+
+        format!("{:x}", sha.result())
+    }
+
+    fn default_db_path() -> std::path::PathBuf {
+        let mut path = std::env::home_dir().expect("unable to get home directory");
+        path.push("danny-results.sqlite");
+        path
+    }
+
+    fn get_conn(&self) -> Connection {
+        let dbpath = &self.db_path;
+        let conn = Connection::open(dbpath).expect("error connecting to the database");
+        create_tables_if_needed(&conn);
+        conn
+    }
+
+    pub fn get_baseline(&self) -> Option<(u32, u32)> {
+        let conn = self.get_conn();
+        conn.query_row(
+            "
+            SELECT total_time_ms, output_size
+            FROM result
+            WHERE left_path = ?1
+              AND right_path = ?2
+              AND threshold = ?3
+              AND algorithm = 'all-2-all'",
+            params![
+                self.config.left_path,
+                self.config.right_path,
+                self.config.threshold
+            ],
+            |row| {
+                Ok((
+                    row.get(0).expect("error getting time"),
+                    row.get(1).expect("error getting count"),
+                ))
+            },
+        )
+        .optional()
+        .expect("error running query")
+    }
+
+    pub fn already_run(&self) -> Option<String> {
+        if self.config.rerun {
+            return None;
+        }
+        let conn = self.get_conn();
+        conn.query_row(
+            "SELECT sha FROM result WHERE params_sha == ?1",
+            params![self.config.sha()],
+            |row| Ok(row.get(0).expect("error getting sha")),
+        )
+        .optional()
+        .expect("error running query")
     }
 
     pub fn save(self) {
-        let json_str =
-            serde_json::to_string(&self).expect("Error converting the experiment to string");
-        info!("Writing result file");
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open("results.json")
-            .expect("Error opening file");
-        file.write_all(json_str.as_bytes())
-            .expect("Error writing data");
-        file.write_all(b"\n").expect("Error writing final newline");
-        info!("Results file written");
-    }
+        let sha = self.sha();
+        let mut conn = self.get_conn();
 
-    fn get_header_and_writer<'a, I>(
-        table_name: &str,
-        header_names: Option<I>,
-    ) -> (Vec<String>, BzEncoder<File>)
-    where
-        I: Iterator<Item = &'a String>,
-    {
-        // Test if the csv file exists
-        let mut path = PathBuf::new();
-        path.set_file_name(table_name);
-        path.set_extension("csv.bz2");
-        if path.exists() {
-            // read the header
-            let header: Vec<String> = {
-                let f = File::open(&path).expect("Error opening csv file");
-                let reader = BzDecoder::new(f);
-                let reader = BufReader::new(reader);
-                reader
-                    .lines()
-                    .next()
-                    .expect("empty file")
-                    .expect("error reading first line")
-                    .split(",")
-                    .map(|s| s.trim().to_owned())
-                    .collect()
-            };
-            let file = OpenOptions::new()
-                .append(true)
-                .open(path)
-                .expect("Error opening file");
-            let writer = BzEncoder::new(file, Compression::Best);
-            // let writer = BufWriter::new(file);
-            (header, writer)
+        let output_size = self.output_size.expect("missing output size");
+        let total_time_ms = self.total_time_ms.expect("missing total time");
+
+        let (recall, speedup) = if let (Some(recall), Some(speedup)) = (self.recall, self.speedup) {
+            trace!("Speedup and recall set manually (valid during CSV import)");
+            (Some(recall), Some(speedup))
+        } else if let Some((base_time, base_count)) = self.get_baseline() {
+            let recall = output_size as f64 / base_count as f64;
+            let speedup = base_time as f64 / total_time_ms as f64;
+            info!("Recall {} and speedup {}", recall, speedup);
+            (Some(recall), Some(speedup))
         } else {
-            // write the header
-            let file = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .open(path)
-                .expect("Error opening file to write header");
-            let tmp: Vec<String> = header_names
-                .expect("Header names should be provided!")
-                .cloned()
-                .collect();
-            let header = tmp.join(",");
-            let mut writer = BzEncoder::new(file, Compression::Best);
-            writeln!(writer, "{}", header).expect("error writing header");
-            writer.flush().expect("error flushing file");
-            drop(writer);
-            Self::get_header_and_writer::<I>(table_name, None)
-        }
-    }
+            warn!("Missing baseline from the database");
+            (None, None)
+        };
 
-    pub fn save_csv(self) {
-        // serialize tables one at a time
-        for (name, table) in self.tables.iter() {
-            let (header, mut writer) = Self::get_header_and_writer(
-                name,
-                Some(self.tags.keys().chain(table.iter().next().unwrap().keys())),
-            );
-            for row in table {
-                let mut names = header.iter();
-                let mut opt_col_name = names.next();
-                while let Some(col_name) = opt_col_name {
-                    let value = row
-                        .get(col_name)
-                        .or_else(|| self.tags.get(col_name))
-                        .unwrap_or_else(|| panic!("Cannot find value for key {}", col_name));
-                    let str_value = serde_json::to_string(value).expect("Error converting value");
-                    write!(writer, "{}", str_value).expect("error writing value");
-                    opt_col_name = names.next();
-                    if opt_col_name.is_some() {
-                        //write the comma
-                        write!(writer, ",").expect("error writing comma");
-                    }
-                }
-                writeln!(writer, "").expect("error writing newline");
+        let tx = conn.transaction().expect("problem starting transaction");
+
+        {
+            // Insert into main table
+            tx.execute(
+                "INSERT INTO result (
+                    sha,
+                    code_version,
+                    date,
+                    params_sha,
+                    seed,
+                    threshold,
+                    algorithm,
+                    k,
+                    k2,
+                    sketch_bits,
+                    threads,
+                    hosts,
+                    sketch_epsilon,
+                    required_recall,
+                    no_dedup,
+                    no_verify,
+                    repetition_batch,
+                    left_path,
+                    right_path,
+
+                    total_time_ms,
+                    output_size,
+                    recall,
+                    speedup
+                )
+                 VALUES (
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23
+                 )",
+                params![
+                    sha,
+                    env!("VERGEN_SHA_SHORT"),
+                    self.date.to_rfc3339(),
+                    self.config.sha(),
+                    self.config.seed as u32,
+                    self.config.threshold,
+                    self.config.algorithm,
+                    // We insert 0 instad of null because the handling of NULL in SQL is complicated
+                    self.config.k.unwrap_or(0) as u32,
+                    self.config.k2.unwrap_or(0) as u32,
+                    self.config.sketch_bits as u32,
+                    self.config.threads as u32,
+                    self.config.hosts_string(),
+                    self.config.sketch_epsilon,
+                    self.config.recall,
+                    self.config.no_dedup,
+                    self.config.no_verify,
+                    self.config.repetition_batch as u32,
+                    self.config.left_path,
+                    self.config.right_path,
+                    self.total_time_ms,
+                    self.output_size,
+                    recall,
+                    speedup
+                ],
+            )
+            .expect("error inserting into main table");
+
+            let mut stmt = tx
+                .prepare(
+                    "INSERT INTO counters ( sha, kind, step, count )
+                 VALUES ( ?1, ?2, ?3, ?4 )",
+                )
+                .expect("failed to prepare statement");
+            for (kind, step, count) in self.step_counters.iter() {
+                stmt.execute(params![sha, kind, step, count])
+                    .expect("failure in inserting network information");
             }
-            writer.flush().expect("error flushing file");
-            drop(writer);
+
+            let mut stmt = tx
+                .prepare(
+                    "INSERT INTO network ( sha, hostname, interface, transmitted, received )
+                 VALUES ( ?1, ?2, ?3, ?4, ?5 )",
+                )
+                .expect("failed to prepare statement");
+            for (hostname, interface, transmitted, received) in self.network.iter() {
+                stmt.execute(params![sha, hostname, interface, transmitted, received])
+                    .expect("failure in inserting network information");
+            }
         }
+
+        tx.commit().expect("error committing insertions");
+        conn.close().expect("error inserting into the database");
     }
 }
 
-#[macro_export]
-macro_rules! row(
-    { $($key:expr => $value:expr),+ } => {
-        {
-            let mut m: HashMap<String, Value> = ::std::collections::HashMap::new();
-                $(
-                    m.insert($key.to_owned(), $value.into());
-                )+
-            m
-        }
-    };
-);
+fn create_tables_if_needed(conn: &Connection) {
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS result (
+            sha              TEXT PRIMARY KEY,
+            code_version     TEXT NOT NULL,
+            date             TEXT NOT NULL,
+            params_sha       TEXT NOT NULL,
+            seed             INTEGER NOT NULL,
+            threshold        REAL NOT NULL,
+            algorithm        TEXT NOT NULL,
+            k                INTEGER NOT NULL,
+            k2               INTEGER NOT NULL,
+            sketch_bits      INTEGER NOT NULL,
+            threads          INTEGER NOT NULL,
+            hosts            TEXT NOT NULL,
+            sketch_epsilon   REAL NOT NULL,
+            required_recall  REAL NOT NULL,
+            no_dedup         BOOL NOT NULL,
+            no_verify        BOOL NOT NULL,
+            repetition_batch INTEGER,
+            left_path        TEXT NOT NULL,
+            right_path       TEXT NOT NULL,
+
+            total_time_ms    INTEGER,
+            output_size      INTEGER,
+            recall           REAL,
+            speedup          REAL
+            )",
+        params![],
+    )
+    .expect("Error creating main table");
+
+    conn.execute(
+        "CREATE VIEW IF NOT EXISTS result_recent AS
+        SELECT sha, code_version, MAX(date) AS date, params_sha, seed, threshold, algorithm, k, k2, sketch_bits, threads, hosts, sketch_epsilon, required_recall, 
+               no_dedup, no_verify, repetition_batch, left_path, right_path,
+               total_time_ms, output_size, recall, speedup
+        FROM result
+        GROUP BY seed, threshold, algorithm, k, k2, sketch_bits, threads, hosts, sketch_epsilon, required_recall, 
+                 no_dedup, no_verify, repetition_batch, left_path, right_path",
+        params![]
+    )
+    .expect("Error creating the main_recent view");
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS counters (
+            sha       TEXT NOT NULL,
+            kind      TEXT NOT NULL,
+            step      INTEGER NOT NULL,
+            count     INTEGER NOT NULL,
+            FOREIGN KEY (sha) REFERENCES result (sha)
+            )",
+        params![],
+    )
+    .expect("error creating counters table");
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS network (
+            sha          TEXT NOT NULL,
+            hostname     TEXT NOT NULL,
+            interface    INTEGER NOT NULL,
+            transmitted  INTEGER NOT NULL,
+            received     INTEGER NOT NULL,
+            FOREIGN KEY (sha) REFERENCES result (sha)
+            )",
+        params![],
+    )
+    .expect("error creating counters table");
+}

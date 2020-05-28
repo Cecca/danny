@@ -17,7 +17,6 @@ use danny::logging::*;
 use danny::operators::Route;
 use danny_base::measure::*;
 use danny_base::types::*;
-use serde_json::Value;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -432,63 +431,67 @@ fn count_distinct<G: Scope>(stream: &Stream<G, (u64, u64)>) -> Stream<G, usize> 
 }
 
 fn run(left_path: PathBuf, right_path: PathBuf, range: f64, num_groups: u32, config: Config) {
-    let mut experiment = Experiment::from_env(&config)
-        .tag("algorithm", "Vernica_join")
-        .tag("num_groups", num_groups)
-        .tag("left", left_path.to_str().unwrap())
-        .tag("right", right_path.to_str().unwrap())
-        .tag("threshold", range);
+    unimplemented!("Report using SQLite");
+    let mut experiment = Experiment::from_config(config.clone());
+    // .tag("algorithm", "Vernica_join")
+    // .tag("num_groups", num_groups)
+    // .tag("left", left_path.to_str().unwrap())
+    // .tag("right", right_path.to_str().unwrap())
+    // .tag("threshold", range);
 
-    let timely_builder = config.get_timely_builder();
     let start = Instant::now();
     let left_path_2 = left_path.clone();
     let right_path_2 = right_path.clone();
 
-    let result = timely::execute::execute_from(timely_builder.0, timely_builder.1, move |worker| {
-        let (mut input_left, mut input_right, probe, captured) =
-            worker.dataflow::<u32, _, _>(move |scope| {
-                let mut probe = ProbeHandle::<u32>::new();
-                let (input_left, stream_left) = scope.new_input();
-                let (input_right, stream_right) = scope.new_input();
+    let result = config
+        .execute(move |worker| {
+            let (mut input_left, mut input_right, probe, captured) =
+                worker.dataflow::<u32, _, _>(move |scope| {
+                    let mut probe = ProbeHandle::<u32>::new();
+                    let (input_left, stream_left) = scope.new_input();
+                    let (input_right, stream_right) = scope.new_input();
 
-                let ranks = rank_tokens(&stream_left.concat(&stream_right));
-                let by_tokens_left = by_prefix_token(&stream_left, &ranks, range, num_groups);
-                let by_tokens_right = by_prefix_token(&stream_right, &ranks, range, num_groups);
-                let filtered = filter_candidates(&by_tokens_left, &by_tokens_right, range);
+                    let ranks = rank_tokens(&stream_left.concat(&stream_right));
+                    let by_tokens_left = by_prefix_token(&stream_left, &ranks, range, num_groups);
+                    let by_tokens_right = by_prefix_token(&stream_right, &ranks, range, num_groups);
+                    let filtered = filter_candidates(&by_tokens_left, &by_tokens_right, range);
 
-                let captured = count_distinct(&filtered).probe_with(&mut probe).capture();
+                    let captured = count_distinct(&filtered).probe_with(&mut probe).capture();
 
-                (input_left, input_right, probe, captured)
-            });
-        info!("Created dataflow");
+                    (input_left, input_right, probe, captured)
+                });
+            info!("Created dataflow");
 
-        let worker_id = worker.index();
-        let num_workers = worker.peers();
-        BagOfWords::read_binary(
-            left_path.clone(),
-            |l| l % num_workers == worker_id,
-            |idx, bow| input_left.send((idx, bow)),
-        );
-        BagOfWords::read_binary(
-            right_path.clone(),
-            |l| l % num_workers == worker_id,
-            |idx, bow| input_right.send((idx, bow)),
-        );
-        input_left.close();
-        input_right.close();
+            let worker_id = worker.index();
+            let num_workers = worker.peers();
+            BagOfWords::read_binary(
+                left_path.clone(),
+                |l| l % num_workers == worker_id,
+                |idx, bow| input_left.send((idx, bow)),
+            );
+            BagOfWords::read_binary(
+                right_path.clone(),
+                |l| l % num_workers == worker_id,
+                |idx, bow| input_right.send((idx, bow)),
+            );
+            input_left.close();
+            input_right.close();
 
-        worker.step_while(|| !probe.done());
-        info!("Finished stepping");
-        captured
-    })
-    .expect("Problems running the dataflow");
+            worker.step_while(|| !probe.done());
+            info!("Finished stepping");
+            captured
+        })
+        .transpose()
+        .expect("Problems running the dataflow");
 
     let mut matching_count = 0usize;
-    for guard in result.join() {
-        let result = guard.expect("Error getting the result").extract();
-        if !result.is_empty() {
-            let sum: usize = result.into_iter().flat_map(|pair| pair.1).sum::<usize>();
-            matching_count += sum;
+    if let Some(result) = result {
+        for guard in result.join() {
+            let result = guard.expect("Error getting the result").extract();
+            if !result.is_empty() {
+                let sum: usize = result.into_iter().flat_map(|pair| pair.1).sum::<usize>();
+                matching_count += sum;
+            }
         }
     }
 
@@ -496,32 +499,16 @@ fn run(left_path: PathBuf, right_path: PathBuf, range: f64, num_groups: u32, con
     let total_time_d = end - start;
     let total_time = total_time_d.as_secs() * 1000 + u64::from(total_time_d.subsec_millis());
     if config.is_master() {
-        let baselines = Baselines::new(&config);
-        let recall = baselines
-            .recall(
-                &left_path_2.to_str().unwrap(),
-                &right_path_2.to_str().unwrap(),
-                range,
-                matching_count,
-            )
-            .expect("Could not compute the recall! Missing entry in the baseline file?");
-        let speedup = baselines
-            .speedup(
-                &left_path_2.to_str().unwrap(),
-                &right_path_2.to_str().unwrap(),
-                range,
-                total_time as f64 / 1000.0,
-            )
-            .expect("Could not compute the speedup! Missing entry in the baseline file?");
-        info!(
-            "Pairs above similarity {} are {} (time {:?}, recall {}, speedup {})",
-            range, matching_count, total_time_d, recall, speedup
-        );
-        experiment.append(
-            "result",
-            row!("timed_out" => false, "output_size" => matching_count, "total_time_ms" => total_time, "recall" => recall, "speedup" => speedup),
-        );
-        experiment.save();
+        // info!(
+        //     "Pairs above similarity {} are {} (time {:?}, recall {}, speedup {})",
+        //     range, matching_count, total_time_d, recall, speedup
+        // );
+        // experiment.append(
+        //     "result",
+        //     row!("timed_out" => false, "output_size" => matching_count, "total_time_ms" => total_time, "recall" => recall, "speedup" => speedup),
+        // );
+        // experiment.save();
+        unimplemented!("use sqlite")
     }
 }
 
@@ -552,22 +539,22 @@ fn main() {
 
     let config = Config::get();
     init_logging(&config);
-    if let Some(timeout) = config.get_timeout() {
-        let mut timed_out_experiment = Experiment::from_env(&config)
-            .tag("algorithm", "Vernica_join")
-            .tag("num_groups", num_groups)
-            .tag("left", input_left.to_str().unwrap())
-            .tag("right", input_right.to_str().unwrap())
-            .tag("threshold", range);
-        timed_out_experiment.append(
-            "result",
-            row!("timed_out" => true, "total_time_ms" => timeout.as_millis() as u64),
-        );
+    let timeout = Duration::from_secs(60 * 60);
+    let mut timed_out_experiment = Experiment::from_config(config.clone());
+    unimplemented!("append SQLite tables");
+    // .tag("algorithm", "Vernica_join")
+    // .tag("num_groups", num_groups)
+    // .tag("left", input_left.to_str().unwrap())
+    // .tag("right", input_right.to_str().unwrap())
+    // .tag("threshold", range);
+    // timed_out_experiment.append(
+    //     "result",
+    //     row!("timed_out" => true, "total_time_ms" => timeout.as_millis() as u64),
+    // );
 
-        start_terminator(timeout, move || {
-            timed_out_experiment.save();
-        });
-    }
+    start_terminator(timeout, move || {
+        timed_out_experiment.save();
+    });
 
     info!("Starting");
     run(input_left, input_right, range, num_groups, config);
