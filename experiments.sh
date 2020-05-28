@@ -91,7 +91,59 @@ done
 
 }
 
-baselines
-recall
-scalability
+function duplicate_removal_cost() {
+for BASE_DATA in sift-100nn-0.5 Livejournal Orkut Glove
+do
+  for K in 5 7 10
+  do
+    for ALGORITHM in one-round-lsh hu-et-al
+    do
+      for SEED in 123 #2351 1251 1235
+      do
+        DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-sample-200000.bin
+        echo "Running on $DATASET"
+        test -d $DATASET
+        danny \
+          --seed $SEED \
+          --hosts ~/hosts.txt \
+          --threads 8 \
+          --threshold 0.5 \
+          --algorithm $ALGORITHM \
+          --sketch-bits 0 \
+          --no-verify \
+          --k $K \
+          $DATASET $DATASET
+
+        danny \
+          --seed $SEED \
+          --hosts ~/hosts.txt \
+          --threads 8 \
+          --threshold 0.5 \
+          --algorithm $ALGORITHM \
+          --sketch-bits 0 \
+          --no-dedup \
+          --k $K \
+          $DATASET $DATASET
+
+        danny \
+          --seed $SEED \
+          --hosts ~/hosts.txt \
+          --threads 8 \
+          --threshold 0.5 \
+          --algorithm $ALGORITHM \
+          --sketch-bits 0 \
+          --no-verify \
+          --no-dedup \
+          --k $K \
+          $DATASET $DATASET
+      done
+    done
+  done
+done
+}
+
+#baselines
+#recall
+#scalability
+duplicate_removal_cost
 
