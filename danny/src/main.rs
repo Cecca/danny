@@ -102,7 +102,6 @@ where
             two_round_lsh::<Vector, _, _, _, _, _, _>(
                 worker,
                 &config.left_path,
-                &config.right_path,
                 threshold,
                 k,
                 k2,
@@ -125,7 +124,6 @@ where
             two_round_lsh::<BagOfWords, _, _, _, _, _, _>(
                 worker,
                 &config.left_path,
-                &config.right_path,
                 threshold,
                 k,
                 k2,
