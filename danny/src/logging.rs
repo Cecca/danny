@@ -12,9 +12,7 @@ use std::io::{Read, Write};
 use std::process;
 use std::rc::Rc;
 
-
-
-use std::time::{Instant};
+use std::time::Instant;
 use timely::communication::Allocator;
 
 use timely::dataflow::operators::*;
@@ -147,8 +145,6 @@ impl NetworkSummary {
         worker: &mut Worker<Allocator>,
         summary: Option<NetworkSummary>,
     ) -> Vec<NetworkSummary> {
-        use std::cell::RefCell;
-        use std::rc::Rc;
         use timely::dataflow::channels::pact::Pipeline;
 
         let result = Rc::new(RefCell::new(Vec::new()));

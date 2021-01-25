@@ -5,17 +5,7 @@ extern crate serde;
 
 use danny::io::*;
 use danny_base::types::*;
-use serde::ser::Serialize;
 use std::path::PathBuf;
-
-fn read_write<T>(input: PathBuf, output: PathBuf, chunks: usize)
-where
-    T: Serialize + ReadDataFile,
-{
-    let mut elements = Vec::new();
-    T::from_file(&input, |e| elements.push(e));
-    WriteBinaryFile::write_binary(output, chunks, elements.iter());
-}
 
 fn main() {
     let matches = clap_app!(danny_convert =>
@@ -39,7 +29,7 @@ fn main() {
 
     match matches.value_of("TYPE").unwrap() {
         "vector" => {
-        println!("Converting to vectors");
+            println!("Converting to vectors");
             let mut elements = Vec::new();
             Vector::from_file(&input, |e| elements.push(e));
             Vector::write_binary(output, chunks, elements.into_iter());

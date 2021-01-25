@@ -1,9 +1,8 @@
 #[macro_use]
 extern crate clap;
-#[macro_use]
-extern crate log;
 extern crate danny;
 extern crate env_logger;
+extern crate log;
 extern crate rand;
 extern crate rand_xorshift;
 extern crate serde;
@@ -12,7 +11,6 @@ use danny::io::*;
 use danny_base::types::*;
 use rand::distributions::{Distribution, Normal};
 use rand::{Rng, SeedableRng};
-use serde::Serialize;
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -44,20 +42,18 @@ fn multiply(vec: &Vec<f32>, matrix: &Vec<Vec<f32>>) -> Vec<f32> {
     out
 }
 
-fn run_bow(path: &PathBuf, output: &PathBuf, factor: usize, seed: u64) {
+fn run_bow(path: &PathBuf, output: &PathBuf, factor: usize, _seed: u64) {
     let universe_size = BagOfWords::peek_one(path.clone()).universe;
-    let mut rng = rand_xorshift::XorShiftRng::seed_from_u64(seed);
     let mut data = Vec::new();
-    let num_elems = <BagOfWords as ReadBinaryFile>::num_elements(path.to_path_buf());
     let mut cnt = 0;
     BagOfWords::read_binary(
         path.to_path_buf(),
         |_| true,
-        |c, v| {
+        |_c, v| {
             for i in 0..factor {
                 let mut new_vec = v.words().clone();
                 for w in new_vec.iter_mut() {
-                    *w += (i as u32 % universe_size);
+                    *w += i as u32 % universe_size;
                 }
                 let new_vec = BagOfWords::new(universe_size, new_vec);
                 data.push((cnt, new_vec));

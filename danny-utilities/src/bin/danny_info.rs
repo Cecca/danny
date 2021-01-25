@@ -1,17 +1,14 @@
 #[macro_use]
 extern crate clap;
-#[macro_use]
-extern crate log;
 extern crate danny;
 extern crate env_logger;
+extern crate log;
 extern crate rand;
 extern crate rand_xorshift;
 extern crate serde;
 
 use danny::io::*;
 use danny_base::types::*;
-use rand::{Rng, SeedableRng};
-use serde::Serialize;
 use std::io::Write;
 use std::path::PathBuf;
 

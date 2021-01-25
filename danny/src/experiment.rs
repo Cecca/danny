@@ -2,7 +2,7 @@ use crate::config::*;
 use chrono::prelude::*;
 
 use rusqlite::*;
-use std::path::{Path,PathBuf};
+use std::path::{Path, PathBuf};
 
 pub struct Experiment {
     db_path: PathBuf,
@@ -15,7 +15,7 @@ pub struct Experiment {
     output_size: Option<u32>,
     total_time_ms: Option<u32>,
     recall: Option<f64>,
-    speedup: Option<f64>
+    speedup: Option<f64>,
 }
 
 impl Experiment {
@@ -34,10 +34,7 @@ impl Experiment {
     }
 
     pub fn with_date(self, date: DateTime<Utc>) -> Self {
-        Self {
-            date,
-            ..self
-        }
+        Self { date, ..self }
     }
 
     pub fn with_database<P: AsRef<Path>>(self, path: P) -> Self {
@@ -71,8 +68,7 @@ impl Experiment {
         transmitted: i64,
         received: i64,
     ) {
-        self.network
-            .push((host, iface, transmitted, received));
+        self.network.push((host, iface, transmitted, received));
     }
 
     fn sha(&self) -> String {
@@ -89,6 +85,7 @@ impl Experiment {
     }
 
     fn default_db_path() -> std::path::PathBuf {
+        #[allow(deprecated)]
         let mut path = std::env::home_dir().expect("unable to get home directory");
         path.push("danny-results.sqlite");
         path

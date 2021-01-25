@@ -1,4 +1,3 @@
-#[macro_use]
 extern crate rusqlite;
 #[macro_use]
 extern crate log;
@@ -16,7 +15,6 @@ use danny_base::lsh::*;
 use danny_base::measure::*;
 use danny_base::sketch::*;
 use danny_base::types::*;
-use std::collections::HashMap;
 use std::fmt::Debug;
 use timely::communication::Allocator;
 use timely::worker::Worker;

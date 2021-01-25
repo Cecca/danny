@@ -4,12 +4,9 @@ extern crate serde_derive;
 use argh::*;
 use bzip2::read::BzDecoder;
 use chrono::prelude::*;
-
 use danny::config::*;
 use danny::experiment::*;
 use log::*;
-
-use serde::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::*;

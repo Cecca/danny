@@ -1,6 +1,5 @@
 use crate::logging::*;
 
-
 use std::time::Instant;
 use timely::logging::Logger;
 
@@ -8,6 +7,7 @@ pub struct RepetitionStopWatch {
     start: Option<Instant>,
     counter: usize,
     name: String,
+    #[allow(dead_code)]
     logger: Option<Logger<(LogEvent, usize)>>,
     verbose: bool,
 }
