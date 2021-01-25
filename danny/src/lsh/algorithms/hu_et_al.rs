@@ -15,7 +15,7 @@ use std::clone::Clone;
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-use std::sync::{Arc};
+use std::sync::Arc;
 use std::time::Instant;
 use timely::communication::Allocator;
 
@@ -31,8 +31,6 @@ pub fn source_hashed_one_round<G, T, D, S, F>(
     global_vecs: Arc<Vec<(ElementId, D)>>,
     hash_fns: Arc<TensorCollection<F>>,
     sketcher: Arc<S>,
-    _matrix: MatrixDescription,
-    _direction: MatrixDirection,
 ) -> Stream<G, ((usize, u32), (ElementId, TensorPool, S::Output, D))>
 where
     G: Scope<Timestamp = T>,
@@ -114,7 +112,6 @@ where
 pub fn hu_baseline<D, F, H, S, V, B, R>(
     worker: &mut Worker<Allocator>,
     left_path: &str,
-    _right_path: &str,
     range: f64,
     k: usize,
     hash_function_builder: B,
@@ -142,12 +139,7 @@ where
     let no_dedup = config.no_dedup;
     let no_verify = config.no_verify;
 
-    let left_vectors = Arc::new(load_for_worker::<D, _>(
-        worker.index(),
-        worker.peers(),
-        left_path,
-    ));
-    let right_vectors = Arc::new(load_for_worker::<D, _>(
+    let vectors = Arc::new(load_for_worker::<D, _>(
         worker.index(),
         worker.peers(),
         left_path,
@@ -163,79 +155,65 @@ where
     let sketcher = Arc::new(sketcher);
 
     let probe = worker.dataflow::<u32, _, _>(move |scope| {
-            let mut probe = ProbeHandle::new();
-            let matrix = MatrixDescription::for_workers(scope.peers() as usize);
-            let logger = scope.danny_logger();
+        let mut probe = ProbeHandle::new();
+        let logger = scope.danny_logger();
 
-            let left_hashes = source_hashed_one_round(
-                scope,
-                Arc::clone(&left_vectors),
-                Arc::clone(&hasher),
-                Arc::clone(&sketcher),
-                matrix,
-                MatrixDirection::Rows,
-            );
-            let right_hashes = source_hashed_one_round(
-                scope,
-                Arc::clone(&right_vectors),
-                Arc::clone(&hasher),
-                Arc::clone(&sketcher),
-                matrix,
-                MatrixDirection::Columns,
-            );
-            left_hashes
-                .join_map_slice(
-                    &right_hashes,
-                    move |(repetition, _hash), left_vals, right_vals| {
-                        let mut cnt = 0usize;
-                        let mut total = 0usize;
-                        let mut sketch_discarded = 0;
-                        let mut duplicate_cnt = 0usize;
-                        let start = Instant::now();
-                        // for (_, (_, _, v)) in left_vals.iter() {
-                        //     info!("{:?}", v);
-                        // }
-                        for (_, (_, l_pool, l_sketch, l)) in left_vals {
-                            for (_, (_, r_pool, r_sketch, r)) in right_vals {
-                                total += 1;
-                                if sketch_predicate.eval(l_sketch, r_sketch) {
-                                    if no_verify || sim_pred(l, r) {
-                                        if no_dedup
-                                            || !hasher.already_seen(l_pool, r_pool, *repetition)
-                                        {
-                                            cnt += 1;
-                                        } else {
-                                            duplicate_cnt += 1;
-                                        }
-                                    }
+        let hashes = source_hashed_one_round(
+            scope,
+            Arc::clone(&vectors),
+            Arc::clone(&hasher),
+            Arc::clone(&sketcher),
+        );
+
+        hashes
+            .self_join_map_slice(move |(repetition, _hash), values| {
+                let mut cnt = 0usize;
+                let mut total = 0usize;
+                let mut sketch_discarded = 0;
+                let mut duplicate_cnt = 0usize;
+                let start = Instant::now();
+
+                for (_, (_, l_pool, l_sketch, l)) in values {
+                    for (_, (_, r_pool, r_sketch, r)) in values {
+                        total += 1;
+                        if sketch_predicate.eval(l_sketch, r_sketch) {
+                            if no_verify || sim_pred(l, r) {
+                                if no_dedup || !hasher.already_seen(l_pool, r_pool, *repetition) {
+                                    cnt += 1;
                                 } else {
-                                    sketch_discarded += 1;
+                                    duplicate_cnt += 1;
                                 }
                             }
+                        } else {
+                            sketch_discarded += 1;
                         }
-                        info!(
-                            "Candidates {}: Emitted {} / Sketch discarded {} / Duplicates {} in {:?} ({})",
-                            total,
-                            cnt,
-                            sketch_discarded,
-                            duplicate_cnt,
-                            Instant::now() - start,
-                            proc_mem!(),
-                        );
-                        log_event!(
-                            logger,
-                            (LogEvent::SketchDiscarded(*repetition), sketch_discarded)
-                        );
-                        log_event!(logger, (LogEvent::GeneratedPairs(*repetition), cnt));
-                        log_event!(
-                            logger,
-                            (LogEvent::DuplicatesDiscarded(*repetition), duplicate_cnt)
-                        );
-                        vec![cnt]
-                    },
-                )
-                .exchange(|_| 0) // Bring all the counts to the first worker
-                .unary(timely::dataflow::channels::pact::Pipeline, "count collection", move |_, _| {
+                    }
+                }
+                info!(
+                    "Candidates {}: Emitted {} / Sketch discarded {} / Duplicates {} in {:?} ({})",
+                    total,
+                    cnt,
+                    sketch_discarded,
+                    duplicate_cnt,
+                    Instant::now() - start,
+                    proc_mem!(),
+                );
+                log_event!(
+                    logger,
+                    (LogEvent::SketchDiscarded(*repetition), sketch_discarded)
+                );
+                log_event!(logger, (LogEvent::GeneratedPairs(*repetition), cnt));
+                log_event!(
+                    logger,
+                    (LogEvent::DuplicatesDiscarded(*repetition), duplicate_cnt)
+                );
+                vec![cnt]
+            })
+            .exchange(|_| 0) // Bring all the counts to the first worker
+            .unary(
+                timely::dataflow::channels::pact::Pipeline,
+                "count collection",
+                move |_, _| {
                     move |input, output| {
                         input.for_each(|t, data| {
                             let data = data.replace(Vec::new());
@@ -245,11 +223,12 @@ where
                             output.session(&t).give(());
                         });
                     }
-                })
-                .probe_with(&mut probe);
+                },
+            )
+            .probe_with(&mut probe);
 
-            probe
-        });
+        probe
+    });
 
     // Do the stepping even though it's not strictly needed: we use it to wait for the dataflow
     // to finish
