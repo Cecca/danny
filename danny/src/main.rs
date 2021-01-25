@@ -42,7 +42,6 @@ where
             one_round_lsh::<Vector, _, _, _, _, _, _>(
                 worker,
                 &config.left_path,
-                &config.right_path,
                 threshold,
                 k,
                 Hyperplane::builder(dim),
@@ -64,7 +63,6 @@ where
             one_round_lsh::<BagOfWords, _, _, _, _, _, _>(
                 worker,
                 &config.left_path,
-                &config.right_path,
                 threshold,
                 k,
                 OneBitMinHash::builder(),

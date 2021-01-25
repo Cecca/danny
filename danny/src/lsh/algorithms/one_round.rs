@@ -14,7 +14,7 @@ use std::clone::Clone;
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-use std::sync::{Arc};
+use std::sync::Arc;
 use std::time::Instant;
 use timely::communication::Allocator;
 use timely::dataflow::channels::pact::Pipeline as PipelinePact;
@@ -25,14 +25,51 @@ use timely::dataflow::*;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
+fn distribute<G, D>(
+    stream: &Stream<G, (ElementId, D)>,
+    matrix: MatrixDescription,
+    direction: MatrixDirection,
+) -> Stream<G, (ElementId, D)>
+where
+    G: Scope,
+    G::Timestamp: Succ,
+    D: ExchangeData,
+{
+    stream
+        .unary(PipelinePact, "distribute", move |_, _| {
+            move |input, output| {
+                input.for_each(|t, data| {
+                    let data = data.replace(Vec::new());
+                    let mut session = output.session(&t);
+                    for (k, d) in data {
+                        let output_element = (k, d);
+                        match direction {
+                            MatrixDirection::Columns => {
+                                let col = (k.route() % u64::from(matrix.columns)) as u8;
+                                for row in 0..matrix.rows {
+                                    session.give(((row, col), output_element.clone()));
+                                }
+                            }
+                            MatrixDirection::Rows => {
+                                let row = (k.route() % u64::from(matrix.rows)) as u8;
+                                for col in 0..matrix.columns {
+                                    session.give(((row, col), output_element.clone()));
+                                }
+                            }
+                        };
+                    }
+                })
+            }
+        })
+        .exchange(move |tuple| matrix.row_major((tuple.0).0, (tuple.0).1))
+        .map(|pair| pair.1)
+}
+
 fn simple_source<G, F, D, S>(
     scope: &G,
     vecs: Arc<Vec<(ElementId, D)>>,
     sketcher: Arc<S>,
     hash_fns: Arc<TensorCollection<F>>,
-    _worker: u64,
-    matrix: MatrixDescription,
-    direction: MatrixDirection,
 ) -> Stream<G, (ElementId, (D, TensorPool, S::Output))>
 where
     G: Scope,
@@ -53,34 +90,18 @@ where
                     let pool = hash_fns.pool(v);
                     let s = sketcher.sketch(v);
                     let output_element = (k.clone(), (v.clone(), pool.clone(), s.clone()));
-                    match direction {
-                        MatrixDirection::Columns => {
-                            let col = (k.route() % u64::from(matrix.columns)) as u8;
-                            for row in 0..matrix.rows {
-                                session.give(((row, col), output_element.clone()));
-                            }
-                        }
-                        MatrixDirection::Rows => {
-                            let row = (k.route() % u64::from(matrix.rows)) as u8;
-                            for col in 0..matrix.columns {
-                                session.give(((row, col), output_element.clone()));
-                            }
-                        }
-                    };
+                    session.give(output_element);
                 }
                 let end = Instant::now();
                 info!("Distributed sketches and pools in {:?}", end - start);
             }
         }
     })
-    .exchange(move |tuple| matrix.row_major((tuple.0).0, (tuple.0).1))
-    .map(|pair| pair.1)
 }
 
 pub fn one_round_lsh<D, F, H, S, V, B, R>(
     worker: &mut Worker<Allocator>,
-    left_path: &str,
-    _right_path: &str,
+    path: &str,
     range: f64,
     k: usize,
     hash_function_builder: B,
@@ -117,8 +138,7 @@ where
         rng,
     ));
 
-    let left_vectors = Arc::new(load_for_worker(worker.index(), worker.peers(), left_path));
-    let right_vectors = Arc::new(load_for_worker(worker.index(), worker.peers(), left_path));
+    let vectors = Arc::new(load_for_worker(worker.index(), worker.peers(), path));
 
     let hasher = Arc::clone(&hasher);
 
@@ -126,7 +146,6 @@ where
     let sketch_predicate = sketch_predicate.clone();
     let sketcher = sketcher.clone();
     let sketcher = Arc::new(sketcher);
-    let worker_index = worker.index() as u64;
     let matrix = MatrixDescription::for_workers(worker.peers());
 
     let probe = worker.dataflow::<u32, _, _>(move |scope| {
@@ -137,24 +156,14 @@ where
             .with_expected_updates(hasher.repetitions() as u64)
             .start();
 
-        let left = simple_source(
+        let hashes = simple_source(
             scope,
-            Arc::clone(&left_vectors),
+            Arc::clone(&vectors),
             Arc::clone(&sketcher),
             Arc::clone(&hasher),
-            worker_index,
-            matrix,
-            MatrixDirection::Rows,
         );
-        let right = simple_source(
-            scope,
-            Arc::clone(&right_vectors),
-            Arc::clone(&sketcher),
-            Arc::clone(&hasher),
-            worker_index,
-            matrix,
-            MatrixDirection::Columns,
-        );
+        let left = distribute(&hashes, matrix, MatrixDirection::Rows);
+        let right = distribute(&hashes, matrix, MatrixDirection::Columns);
 
         left.binary_frontier(&right, PipelinePact, PipelinePact, "bucket", move |_, _| {
             let mut notificator = FrontierNotificator::new();
