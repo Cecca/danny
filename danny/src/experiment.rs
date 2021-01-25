@@ -104,15 +104,10 @@ impl Experiment {
             "
             SELECT total_time_ms, output_size
             FROM result
-            WHERE left_path = ?1
-              AND right_path = ?2
-              AND threshold = ?3
+            WHERE path = ?1
+              AND threshold = ?2
               AND algorithm = 'all-2-all'",
-            params![
-                self.config.left_path,
-                self.config.right_path,
-                self.config.threshold
-            ],
+            params![self.config.path, self.config.threshold],
             |row| {
                 Ok((
                     row.get(0).expect("error getting time"),
@@ -181,8 +176,7 @@ impl Experiment {
                     no_dedup,
                     no_verify,
                     repetition_batch,
-                    left_path,
-                    right_path,
+                    path,
 
                     total_time_ms,
                     output_size,
@@ -190,7 +184,7 @@ impl Experiment {
                     speedup
                 )
                  VALUES (
-                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22
                  )",
                 params![
                     sha,
@@ -211,8 +205,7 @@ impl Experiment {
                     self.config.no_dedup,
                     self.config.no_verify,
                     self.config.repetition_batch as u32,
-                    self.config.left_path,
-                    self.config.right_path,
+                    self.config.path,
                     self.total_time_ms,
                     self.output_size,
                     recall,
@@ -269,8 +262,7 @@ fn create_tables_if_needed(conn: &Connection) {
             no_dedup         BOOL NOT NULL,
             no_verify        BOOL NOT NULL,
             repetition_batch INTEGER,
-            left_path        TEXT NOT NULL,
-            right_path       TEXT NOT NULL,
+            path             TEXT NOT NULL,
 
             total_time_ms    INTEGER,
             output_size      INTEGER,
@@ -284,11 +276,11 @@ fn create_tables_if_needed(conn: &Connection) {
     conn.execute(
         "CREATE VIEW IF NOT EXISTS result_recent AS
         SELECT sha, code_version, MAX(date) AS date, params_sha, seed, threshold, algorithm, k, k2, sketch_bits, threads, hosts, sketch_epsilon, required_recall, 
-               no_dedup, no_verify, repetition_batch, left_path, right_path,
+               no_dedup, no_verify, repetition_batch, path,
                total_time_ms, output_size, recall, speedup
         FROM result
         GROUP BY seed, threshold, algorithm, k, k2, sketch_bits, threads, hosts, sketch_epsilon, required_recall, 
-                 no_dedup, no_verify, repetition_batch, left_path, right_path",
+                 no_dedup, no_verify, repetition_batch, path",
         params![]
     )
     .expect("Error creating the main_recent view");

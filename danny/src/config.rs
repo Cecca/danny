@@ -7,7 +7,7 @@ use rand_xorshift::XorShiftRng;
 use std::convert::TryFrom;
 use std::fmt::Debug;
 
-use std::process::{Command};
+use std::process::Command;
 
 use timely::communication::{Allocator, Configuration as TimelyConfig, WorkerGuards};
 use timely::worker::Worker;
@@ -78,18 +78,14 @@ pub struct Config {
     #[argh(option, default = "1")]
     pub repetition_batch: usize,
 
-    /// wether to run again the given configuration, 
+    /// wether to run again the given configuration,
     /// even if already present in the database
     #[argh(switch)]
     pub rerun: bool,
 
-    /// the left dataset to be joined
+    /// the dataset to be self-joined
     #[argh(positional)]
-    pub left_path: String,
-
-    /// the right dataset to be joined
-    #[argh(positional)]
-    pub right_path: String,
+    pub path: String,
 }
 
 impl Config {
@@ -122,8 +118,14 @@ impl Config {
         // IMPORTANT: Don't change the order of the following statements!
         sha.input(format!("{}", self.algorithm));
         sha.input(format!("{}", self.threshold));
-        sha.input(format!("{}", self.k.map(|k| format!("{}", k)).unwrap_or("".to_owned())));
-        sha.input(format!("{}", self.k2.map(|k2| format!("{}", k2)).unwrap_or("".to_owned())));
+        sha.input(format!(
+            "{}",
+            self.k.map(|k| format!("{}", k)).unwrap_or("".to_owned())
+        ));
+        sha.input(format!(
+            "{}",
+            self.k2.map(|k2| format!("{}", k2)).unwrap_or("".to_owned())
+        ));
         sha.input(format!("{}", self.sketch_bits));
         sha.input(format!("{}", self.sketch_epsilon));
         sha.input(format!("{}", self.threads));
@@ -133,8 +135,7 @@ impl Config {
         sha.input(format!("{}", self.no_verify));
         sha.input(format!("{}", self.no_dedup));
         sha.input(format!("{}", self.repetition_batch));
-        sha.input(format!("{}", self.left_path));
-        sha.input(format!("{}", self.right_path));
+        sha.input(format!("{}", self.path));
 
         format!("{:x}", sha.result())
     }

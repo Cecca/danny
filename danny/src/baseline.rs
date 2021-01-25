@@ -1,4 +1,3 @@
-use crate::config::Config;
 use crate::io::*;
 use crate::operators::*;
 use abomonation::Abomonation;
@@ -7,7 +6,7 @@ use serde::de::Deserialize;
 use std::clone::Clone;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::sync::{Arc};
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 use timely::communication::Allocator;
@@ -21,49 +20,36 @@ use timely::Data;
 use timely::ExchangeData;
 
 #[cfg(feature = "seq-all-2-all")]
-pub fn sequential<T, F>(thresh: f64, left_path: &str, right_path: &str, sim_fn: F) -> usize
+pub fn sequential<T, F>(thresh: f64, path: &str, sim_fn: F) -> usize
 where
     for<'de> T: ReadDataFile + Deserialize<'de>,
     F: Fn(&T, &T) -> f64,
 {
-    let mut left = Vec::new();
-    let mut right = Vec::new();
-    ReadBinaryFile::read_binary(left_path.into(), |_| true, |_, v| left.push(v));
-    ReadBinaryFile::read_binary(right_path.into(), |_| true, |_, v| right.push(v));
-    println!(
-        "Loaded data:\n  left: {}\n  right: {}",
-        left.len(),
-        right.len(),
-    );
+    let mut vecs = Vec::new();
+    ReadBinaryFile::read_binary(path.into(), |_| true, |_, v| vecs.push(v));
+    println!("Loaded data: {}", vecs.len(),);
     let mut pl = progress_logger::ProgressLogger::builder()
         .with_frequency(Duration::from_secs(10))
         .with_items_name("pairs")
-        .with_expected_updates((left.len() * right.len()) as u64)
+        .with_expected_updates((vecs.len() * vecs.len()) as u64)
         .start();
 
     let mut sim_cnt = 0;
-    for l in left.iter() {
-        for r in right.iter() {
+    for l in vecs.iter() {
+        for r in vecs.iter() {
             let sim = sim_fn(l, r);
             if sim >= thresh {
                 sim_cnt += 1;
             }
         }
-        pl.update_light(right.len() as u64);
+        pl.update_light(vecs.len() as u64);
     }
     pl.stop();
     sim_cnt
 }
 
 #[cfg(feature = "all-2-all")]
-pub fn all_pairs_parallel<T, F>(
-    worker: &mut Worker<Allocator>,
-    _threshold: f64,
-    left_path: &str,
-    _right_path: &str,
-    sim_pred: F,
-    _config: &Config,
-) -> usize
+pub fn all_pairs_parallel<T, F>(worker: &mut Worker<Allocator>, path: &str, sim_pred: F) -> usize
 where
     for<'de> T: Deserialize<'de> + ReadDataFile + Data + Sync + Send + Clone + Abomonation + Debug,
     F: Fn(&T, &T) -> bool + Send + Clone + Sync + 'static,
@@ -78,7 +64,7 @@ where
     let worker_vectors = Arc::new(load_for_worker::<T, _>(
         worker.index(),
         worker.peers(),
-        left_path,
+        path,
     ));
     info!("Worker has {} vectors", worker_vectors.len());
 
@@ -91,18 +77,9 @@ where
         let matrix = MatrixDescription::for_workers(peers as usize);
         let (_row, _col) = matrix.row_major_to_pair(index as u64);
 
-        let left = simple_source(
-            scope,
-            Arc::clone(&worker_vectors),
-            matrix,
-            MatrixDirection::Rows,
-        );
-        let right = simple_source(
-            scope,
-            Arc::clone(&worker_vectors),
-            matrix,
-            MatrixDirection::Columns,
-        );
+        let vectors = simple_source(scope, Arc::clone(&worker_vectors));
+        let left = distribute(&vectors, matrix, MatrixDirection::Rows);
+        let right = distribute(&vectors, matrix, MatrixDirection::Columns);
 
         left.binary_frontier(&right, PipelinePact, PipelinePact, "bucket", move |_, _| {
             let mut notificator = FrontierNotificator::new();
@@ -185,12 +162,7 @@ where
     }
 }
 
-fn simple_source<G, D>(
-    scope: &G,
-    vecs: Arc<Vec<(ElementId, D)>>,
-    matrix: MatrixDescription,
-    direction: MatrixDirection,
-) -> Stream<G, (ElementId, D)>
+fn simple_source<G, D>(scope: &G, vecs: Arc<Vec<(ElementId, D)>>) -> Stream<G, (ElementId, D)>
 where
     G: Scope,
     G::Timestamp: Succ,
@@ -204,26 +176,51 @@ where
                 let mut session = output.session(&cap);
                 for (k, v) in vecs.iter() {
                     let output_element = (k.clone(), v.clone());
-                    match direction {
-                        MatrixDirection::Columns => {
-                            let col = (k.route() % u64::from(matrix.columns)) as u8;
-                            for row in 0..matrix.rows {
-                                session.give(((row, col), output_element.clone()));
-                            }
-                        }
-                        MatrixDirection::Rows => {
-                            let row = (k.route() % u64::from(matrix.rows)) as u8;
-                            for col in 0..matrix.columns {
-                                session.give(((row, col), output_element.clone()));
-                            }
-                        }
-                    };
+                    session.give(output_element);
                 }
                 let end = Instant::now();
                 info!("Distributed vectors in {:?}", end - start);
             }
         }
     })
-    .exchange(move |tuple| matrix.row_major((tuple.0).0, (tuple.0).1))
-    .map(|pair| pair.1)
+}
+
+fn distribute<G, D>(
+    stream: &Stream<G, (ElementId, D)>,
+    matrix: MatrixDescription,
+    direction: MatrixDirection,
+) -> Stream<G, (ElementId, D)>
+where
+    G: Scope,
+    G::Timestamp: Succ,
+    D: ExchangeData,
+{
+    stream
+        .unary(PipelinePact, "distribute", move |_, _| {
+            move |input, output| {
+                input.for_each(|t, data| {
+                    let data = data.replace(Vec::new());
+                    let mut session = output.session(&t);
+                    for (k, d) in data {
+                        let output_element = (k, d);
+                        match direction {
+                            MatrixDirection::Columns => {
+                                let col = (k.route() % u64::from(matrix.columns)) as u8;
+                                for row in 0..matrix.rows {
+                                    session.give(((row, col), output_element.clone()));
+                                }
+                            }
+                            MatrixDirection::Rows => {
+                                let row = (k.route() % u64::from(matrix.rows)) as u8;
+                                for col in 0..matrix.columns {
+                                    session.give(((row, col), output_element.clone()));
+                                }
+                            }
+                        };
+                    }
+                })
+            }
+        })
+        .exchange(move |tuple| matrix.row_major((tuple.0).0, (tuple.0).1))
+        .map(|pair| pair.1)
 }

@@ -30,9 +30,9 @@ where
 {
     let mut hasher_rng = config.get_random_generator(0);
     let mut sketcher_rng = config.get_random_generator(1);
-    match content_type(&config.left_path) {
+    match content_type(&config.path) {
         ContentType::Vector => {
-            let dim = Vector::peek_one(config.left_path.clone().into()).dim();
+            let dim = Vector::peek_one(config.path.clone().into()).dim();
             let threshold = config.threshold;
             let sketch_bits = config.sketch_bits;
             let sketcher = SV::from_cosine(dim, &mut sketcher_rng);
@@ -41,7 +41,7 @@ where
             let k = config.k.expect("K is needed on the command line");
             one_round_lsh::<Vector, _, _, _, _, _, _>(
                 worker,
-                &config.left_path,
+                &config.path,
                 threshold,
                 k,
                 Hyperplane::builder(dim),
@@ -62,7 +62,7 @@ where
                 SketchPredicate::jaccard(sketch_bits, threshold, config.sketch_epsilon);
             one_round_lsh::<BagOfWords, _, _, _, _, _, _>(
                 worker,
-                &config.left_path,
+                &config.path,
                 threshold,
                 k,
                 OneBitMinHash::builder(),
@@ -93,15 +93,15 @@ where
     let k = config.k.expect("K is needed on the command line");
     let k2 = config.k2.expect("k2 is needed on the command line");
 
-    match content_type(&config.left_path) {
+    match content_type(&config.path) {
         ContentType::Vector => {
-            let dim = Vector::peek_one(config.left_path.clone().into()).dim();
+            let dim = Vector::peek_one(config.path.clone().into()).dim();
             let sketcher = SV::from_cosine(dim, &mut sketcher_rng);
             let sketch_predicate =
                 SketchPredicate::cosine(sketch_bits, threshold, config.sketch_epsilon);
             two_round_lsh::<Vector, _, _, _, _, _, _>(
                 worker,
-                &config.left_path,
+                &config.path,
                 threshold,
                 k,
                 k2,
@@ -123,7 +123,7 @@ where
                 SketchPredicate::jaccard(sketch_bits, threshold, config.sketch_epsilon);
             two_round_lsh::<BagOfWords, _, _, _, _, _, _>(
                 worker,
-                &config.left_path,
+                &config.path,
                 threshold,
                 k,
                 k2,
@@ -154,15 +154,15 @@ where
     let sketch_bits = config.sketch_bits;
     let k = config.k.expect("K is needed on the command line");
 
-    match content_type(&config.left_path) {
+    match content_type(&config.path) {
         ContentType::Vector => {
-            let dim = Vector::peek_one(config.left_path.clone().into()).dim();
+            let dim = Vector::peek_one(config.path.clone().into()).dim();
             let sketcher = SV::from_cosine(dim, &mut sketcher_rng);
             let sketch_predicate =
                 SketchPredicate::cosine(sketch_bits, threshold, config.sketch_epsilon);
             hu_baseline::<Vector, _, _, _, _, _, _>(
                 worker,
-                &config.left_path,
+                &config.path,
                 threshold,
                 k,
                 Hyperplane::builder(dim),
@@ -182,7 +182,7 @@ where
                 SketchPredicate::jaccard(sketch_bits, threshold, config.sketch_epsilon);
             hu_baseline::<BagOfWords, _, _, _, _, _, _>(
                 worker,
-                &config.left_path,
+                &config.path,
                 threshold,
                 k,
                 OneBitMinHash::builder(),
@@ -257,7 +257,7 @@ fn main() {
                     bits => panic!("Unsupported number of sketch bits: {}", bits),
                 },
                 #[cfg(feature = "hu-et-al")]
-                "hu-et-al" => match content_type(&config.left_path) {
+                "hu-et-al" => match content_type(&config.path) {
                     ContentType::Vector => match config.sketch_bits {
                         0 => run_hu_et_al::<Sketch0>(&config, worker, &mut experiment),
                         #[cfg(feature = "sketching")]
@@ -284,22 +284,16 @@ fn main() {
                     },
                 },
                 #[cfg(feature = "all-2-all")]
-                "all-2-all" => match content_type(&config.left_path) {
+                "all-2-all" => match content_type(&config.path) {
                     ContentType::Vector => baseline::all_pairs_parallel::<Vector, _>(
                         worker,
-                        config.threshold,
-                        &config.left_path,
-                        &config.right_path,
+                        &config.path,
                         move |a, b| InnerProduct::inner_product(a, b) >= threshold,
-                        &config,
                     ),
                     ContentType::BagOfWords => baseline::all_pairs_parallel::<BagOfWords, _>(
                         worker,
-                        config.threshold,
-                        &config.left_path,
-                        &config.right_path,
+                        &config.path,
                         move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
-                        &config,
                     ),
                 },
                 "" => panic!(), // This is here just for type checking when no features are selected
