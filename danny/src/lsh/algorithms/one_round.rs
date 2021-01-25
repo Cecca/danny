@@ -2,7 +2,7 @@ use crate::config::*;
 use crate::experiment::Experiment;
 use crate::io::*;
 use crate::join::Joiner;
-use crate::logging::init_event_logging;
+
 use crate::logging::*;
 use crate::operators::*;
 use danny_base::lsh::*;
@@ -13,12 +13,12 @@ use serde::de::Deserialize;
 use std::clone::Clone;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::sync::mpsc::channel;
-use std::sync::{Arc, Mutex};
+
+use std::sync::{Arc};
 use std::time::Instant;
 use timely::communication::Allocator;
 use timely::dataflow::channels::pact::Pipeline as PipelinePact;
-use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
+
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
@@ -30,7 +30,7 @@ fn simple_source<G, F, D, S>(
     vecs: Arc<Vec<(ElementId, D)>>,
     sketcher: Arc<S>,
     hash_fns: Arc<TensorCollection<F>>,
-    worker: u64,
+    _worker: u64,
     matrix: MatrixDescription,
     direction: MatrixDirection,
 ) -> Stream<G, (ElementId, (D, TensorPool, S::Output))>
@@ -42,7 +42,7 @@ where
     S::Output: SketchData + Debug,
     F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
 {
-    let logger = scope.danny_logger();
+    let _logger = scope.danny_logger();
     source(scope, "hashed source", move |capability| {
         let mut cap = Some(capability);
         move |output| {
@@ -80,7 +80,7 @@ where
 pub fn one_round_lsh<D, F, H, S, V, B, R>(
     worker: &mut Worker<Allocator>,
     left_path: &str,
-    right_path: &str,
+    _right_path: &str,
     range: f64,
     k: usize,
     hash_function_builder: B,
@@ -89,7 +89,7 @@ pub fn one_round_lsh<D, F, H, S, V, B, R>(
     sim_pred: F,
     rng: &mut R,
     config: &Config,
-    experiment: &mut Experiment,
+    _experiment: &mut Experiment,
 ) -> usize
 where
     for<'de> D: ReadBinaryFile + Deserialize<'de> + ExchangeData + Debug + SketchEstimate,

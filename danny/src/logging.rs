@@ -8,15 +8,15 @@ use std::hash::Hash;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::io::{Read, Write};
-use std::ops::Drop;
+
 use std::process;
 use std::rc::Rc;
-use std::sync::mpsc::Sender;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+
+
+
+use std::time::{Instant};
 use timely::communication::Allocator;
-use timely::dataflow::operators::capture::event::Event as TimelyEvent;
+
 use timely::dataflow::operators::*;
 use timely::dataflow::InputHandle;
 use timely::dataflow::ProbeHandle;
@@ -293,7 +293,7 @@ where
     worker
         .log_register()
         .insert::<(LogEvent, usize), _>("danny", move |_time, data| {
-            for (_time_bound, worker_id, (key, value)) in data.drain(..) {
+            for (_time_bound, _worker_id, (key, value)) in data.drain(..) {
                 input
                     .borrow_mut()
                     .as_mut()

@@ -7,7 +7,7 @@ use serde::de::Deserialize;
 use std::clone::Clone;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use std::time::Duration;
 use std::time::Instant;
 use timely::communication::Allocator;
@@ -58,11 +58,11 @@ where
 #[cfg(feature = "all-2-all")]
 pub fn all_pairs_parallel<T, F>(
     worker: &mut Worker<Allocator>,
-    threshold: f64,
+    _threshold: f64,
     left_path: &str,
-    right_path: &str,
+    _right_path: &str,
     sim_pred: F,
-    config: &Config,
+    _config: &Config,
 ) -> usize
 where
     for<'de> T: Deserialize<'de> + ReadDataFile + Data + Sync + Send + Clone + Abomonation + Debug,
@@ -73,7 +73,7 @@ where
     let result = Rc::new(RefCell::new(0usize));
     let result_read = Rc::clone(&result);
 
-    let start_time = Instant::now();
+    let _start_time = Instant::now();
 
     let worker_vectors = Arc::new(load_for_worker::<T, _>(
         worker.index(),
@@ -89,7 +89,7 @@ where
 
     let probe = worker.dataflow::<u32, _, _>(|scope| {
         let matrix = MatrixDescription::for_workers(peers as usize);
-        let (row, col) = matrix.row_major_to_pair(index as u64);
+        let (_row, _col) = matrix.row_major_to_pair(index as u64);
 
         let left = simple_source(
             scope,

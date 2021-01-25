@@ -1,14 +1,14 @@
 use argh::FromArgs;
-use core::any::Any;
+
 use rand::rngs::StdRng;
 use rand::RngCore;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
 use std::convert::TryFrom;
 use std::fmt::Debug;
-use std::path::Path;
-use std::process::{Child, Command};
-use timely::communication::allocator::generic::GenericBuilder;
+
+use std::process::{Command};
+
 use timely::communication::{Allocator, Configuration as TimelyConfig, WorkerGuards};
 use timely::worker::Worker;
 

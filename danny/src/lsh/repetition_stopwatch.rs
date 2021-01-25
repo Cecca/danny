@@ -1,6 +1,6 @@
 use crate::logging::*;
 
-use std::clone::Clone;
+
 use std::time::Instant;
 use timely::logging::Logger;
 

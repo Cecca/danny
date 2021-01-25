@@ -5,7 +5,7 @@ use crate::config::*;
 use crate::experiment::Experiment;
 use crate::io::*;
 use crate::join::*;
-use crate::logging::init_event_logging;
+
 use crate::logging::*;
 use crate::lsh::repetition_stopwatch::RepetitionStopWatch;
 use crate::operators::*;
@@ -16,10 +16,10 @@ use serde::de::Deserialize;
 use std::clone::Clone;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::sync::mpsc::channel;
-use std::sync::{Arc, Mutex};
+
+use std::sync::{Arc};
 use std::time::Instant;
-use timely::dataflow::operators::capture::{Event as TimelyEvent, Extract};
+
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
@@ -30,7 +30,7 @@ use timely::ExchangeData;
 pub fn two_round_lsh<D, F, H, B, R, S, V>(
     worker: &mut Worker<Allocator>,
     left_path: &str,
-    right_path: &str,
+    _right_path: &str,
     range: f64,
     k: usize,
     k2: usize,
@@ -40,7 +40,7 @@ pub fn two_round_lsh<D, F, H, B, R, S, V>(
     sim_pred: F,
     rng: &mut R,
     config: &Config,
-    experiment: &mut Experiment,
+    _experiment: &mut Experiment,
 ) -> usize
 where
     for<'de> D: ReadBinaryFile + Deserialize<'de> + ExchangeData + Debug + SketchEstimate,
@@ -221,8 +221,8 @@ pub fn source_hashed_two_round<G, T, D, F, S>(
     hash_fns2: Arc<TensorCollection<F>>,
     throttle: ProbeHandle<T>,
     repetition_batch: usize,
-    matrix: MatrixDescription,
-    direction: MatrixDirection,
+    _matrix: MatrixDescription,
+    _direction: MatrixDirection,
 ) -> Stream<G, ((usize, u32), (TensorPool, TensorPool, S::Output, (ElementId, D)))>
 where
     G: Scope<Timestamp = T>,

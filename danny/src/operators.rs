@@ -1,5 +1,5 @@
 use crate::logging::*;
-use abomonation::Abomonation;
+
 use danny_base::bloom::*;
 use danny_base::sketch::*;
 use danny_base::types::*;
@@ -321,7 +321,7 @@ where
 {
     fn stream_sum(&self) -> Stream<G, D> {
         let mut sums: HashMap<Capability<G::Timestamp>, Option<D>> = HashMap::new();
-        let logger = self.scope().danny_logger();
+        let _logger = self.scope().danny_logger();
         self.unary_frontier(PipelinePact, "stream-count", move |_, _| {
             move |input, output| {
                 input.for_each(|t, d| {
@@ -352,11 +352,11 @@ mod tests {
     use danny_base::lsh::*;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
-    use std::sync::mpsc;
-    use std::sync::{Arc, Mutex};
-    use timely::dataflow::operators::capture::event::Event;
-    use timely::dataflow::operators::{Capture, Probe};
-    use timely::dataflow::ProbeHandle;
+    
+    
+    
+    
+    
     
     #[test]
     fn test_matrix_description_builder() {
