@@ -173,7 +173,7 @@ where
             }
         }
         let end = Instant::now();
-        info!("Repetition {} ended in {:?}", rep, end - start);
+        debug!("Repetition {} ended in {:?}", rep, end - start);
         log_event!(logger, (LogEvent::GeneratedPairs(rep), examined_pairs));
         log_event!(logger, (LogEvent::SketchDiscarded(rep), sketch_discarded));
         log_event!(
