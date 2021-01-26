@@ -173,8 +173,8 @@ where
                 let mut duplicate_cnt = 0usize;
                 let start = Instant::now();
 
-                for (_, (_, l_pool, l_sketch, l)) in values {
-                    for (_, (_, r_pool, r_sketch, r)) in values {
+                for (i, (_, (_l, l_pool, l_sketch, l))) in values.iter().enumerate() {
+                    for (_, (_r, r_pool, r_sketch, r)) in values[i..].iter() {
                         total += 1;
                         if sketch_predicate.eval(l_sketch, r_sketch) {
                             if no_verify || sim_pred(l, r) {
