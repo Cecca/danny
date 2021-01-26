@@ -219,6 +219,23 @@ fn main() {
     // prevent the others from returning its information multiple times.
     let network = Arc::new(Mutex::new(Some(NetworkGauge::start())));
 
+    if config.algorithm == "sequential" {
+        let count = match content_type(&config.path) {
+            ContentType::Vector => baseline::sequential::<Vector, _>(
+                config.threshold,
+                &config.path,
+                InnerProduct::inner_product,
+            ),
+            ContentType::BagOfWords => baseline::sequential::<BagOfWords, _>(
+                config.threshold,
+                &config.path,
+                Jaccard::jaccard,
+            ),
+        };
+        info!("Sequential baseline count: {}", count);
+        return;
+    }
+
     config
         .clone()
         .execute(move |worker| {

@@ -35,8 +35,8 @@ where
         .start();
 
     let mut sim_cnt = 0;
-    for l in vecs.iter() {
-        for r in vecs.iter() {
+    for (i, l) in vecs.iter().enumerate() {
+        for r in vecs[i..].iter() {
             let sim = sim_fn(l, r);
             if sim >= thresh {
                 sim_cnt += 1;
