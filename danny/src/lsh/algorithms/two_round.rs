@@ -2,28 +2,27 @@ use crate::config::*;
 use crate::experiment::Experiment;
 use crate::io::*;
 use crate::join::*;
-use danny_base::types::ElementId;
-use timely::communication::Allocator;
-use timely::worker::Worker;
-
 use crate::logging::*;
 use crate::lsh::repetition_stopwatch::RepetitionStopWatch;
 use crate::operators::*;
+use channels::pact;
 use danny_base::lsh::*;
 use danny_base::sketch::*;
+use danny_base::types::ElementId;
+use pact::Pipeline;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
-use std::clone::Clone;
 use std::collections::HashMap;
 use std::fmt::Debug;
-
 use std::sync::Arc;
 use std::time::Instant;
-
+use timely::communication::Allocator;
+use timely::dataflow::operators::aggregation::Aggregate;
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use timely::progress::Timestamp;
+use timely::worker::Worker;
 use timely::ExchangeData;
 
 pub const TWO_ROUND_VERSION: u8 = 2;
@@ -106,12 +105,13 @@ where
             probe.clone(),
             repetition_batch,
         );
+
         info!(
             "Starting {} internal repetitions",
             hasher_intern.repetitions()
         );
         hashes
-            .self_join_map_slice(move |(outer_repetition, _hash), vals| {
+            .self_join_map_slice(move |(outer_repetition, _hash, _subproblem), vals| {
                 let mut cnt = 0;
                 let mut total = 0;
                 let mut sketch_cnt = 0;
@@ -122,32 +122,40 @@ where
                 let start = Instant::now();
                 for rep in 0..repetitions {
                     joiner.clear();
-                    for (_, (outer_pool, inner_pool, s, v)) in vals.iter() {
+                    for (_, (marker, outer_pool, inner_pool, s, v)) in vals.iter() {
                         joiner.push(
                             hasher_intern.hash(inner_pool, rep),
-                            (s, v, outer_pool, inner_pool),
+                            (s, v, outer_pool, inner_pool, marker),
                         );
                     }
 
-                    joiner.join_map(|_hash, l, r| {
-                        total += 1;
-                        if sketch_pred.eval(l.0, r.0) {
-                            if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
-                                if no_dedup
-                                    || (!hasher_intern.already_seen(&l.3, &r.3, rep)
-                                        && !hasher.already_seen(&l.2, &r.2, *outer_repetition))
-                                {
-                                    cnt += 1;
+                    joiner.join_map_slice(|_hash, values| {
+                        for (_, l) in values.iter().filter(|t| (t.1).4.keep_left()) {
+                            for (_, r) in values.iter().filter(|t| (t.1).4.keep_right()) {
+                                total += 1;
+                                if sketch_pred.eval(l.0, r.0) {
+                                    if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
+                                        if no_dedup
+                                            || (!hasher_intern.already_seen(&l.3, &r.3, rep)
+                                                && !hasher.already_seen(
+                                                    &l.2,
+                                                    &r.2,
+                                                    *outer_repetition,
+                                                ))
+                                        {
+                                            cnt += 1;
+                                        } else {
+                                            duplicate_cnt += 1;
+                                        }
+                                    }
                                 } else {
-                                    duplicate_cnt += 1;
+                                    sketch_cnt += 1;
                                 }
                             }
-                        } else {
-                            sketch_cnt += 1;
                         }
                     });
                 }
-                info!(
+                debug!(
                     "Candidates {} ({}): Emitted {} / Discarded {} / Duplicates {} in {:?} ({})",
                     total,
                     all_to_all,
@@ -202,7 +210,7 @@ where
     }
 }
 
-pub fn source_hashed_two_round<G, T, D, F, S>(
+fn source_hashed_two_round<G, T, D, F, S>(
     scope: &G,
     vecs: Arc<Vec<(ElementId, D)>>,
     sketcher: Arc<S>,
@@ -213,8 +221,9 @@ pub fn source_hashed_two_round<G, T, D, F, S>(
 ) -> Stream<
     G,
     (
-        (usize, u32),
-        (TensorPool, TensorPool, S::Output, (ElementId, D)),
+        // (repetition, hash, subproblem split)
+        (usize, u32, u8),
+        (Marker, TensorPool, TensorPool, S::Output, (ElementId, D)),
     ),
 >
 where
@@ -225,6 +234,9 @@ where
     S: Sketcher<Input = D> + Clone + 'static,
     S::Output: SketchData + Debug,
 {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
     let worker: u64 = scope.index() as u64;
     let logger = scope.danny_logger();
     let repetitions = hash_fns.repetitions();
@@ -243,6 +255,9 @@ where
         end - start,
         proc_mem!()
     );
+    let hashes = Rc::new(RefCell::new(HashMap::new()));
+    let hashes1 = Rc::clone(&hashes);
+    let mut subproblem_sizes = HashMap::new();
 
     source(scope, "hashed source two round", move |capability| {
         let mut cap = Some(capability);
@@ -257,11 +272,13 @@ where
                     if worker == 0 {
                         debug!("Repetition {} (two round LSH)", current_repetition);
                     }
+                    let mut hashes = hashes.borrow_mut();
+                    let stash = hashes.entry(cap.time().clone()).or_insert_with(Vec::new);
                     let mut session = output.session(&cap);
                     for (k, v) in vecs.iter() {
                         let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
                         let s = sketcher.sketch(v);
-                        session.give((
+                        stash.push((
                             (current_repetition, h),
                             (
                                 bit_pools[k].clone(),
@@ -270,6 +287,7 @@ where
                                 (k.clone(), v.clone()),
                             ),
                         ));
+                        session.give(((current_repetition, h), 1));
                     }
                     if current_repetition % repetition_batch == 0 {
                         cap.downgrade(&cap.time().succ());
@@ -285,4 +303,132 @@ where
             }
         }
     })
+    // Now accumulate the counters into the first worker to see the subproblem size
+    .aggregate(
+        |_key, val, agg| {
+            *agg += val;
+        },
+        |key, agg: u32| (key, agg),
+        |k| k.route() as u64,
+    )
+    .exchange(|_k| 0)
+    .aggregate(
+        |_key, val, agg| {
+            *agg += val;
+        },
+        |key, agg: u32| (key, agg),
+        |k| k.route() as u64,
+    )
+    .broadcast()
+    // Determine the split points, and replicate vector appropriately
+    .unary_notify(
+        Pipeline,
+        "split point determination",
+        None,
+        move |input, output, notificator| {
+            input.for_each(|t, data| {
+                subproblem_sizes
+                    .entry(t.time().clone())
+                    .or_insert_with(Vec::new)
+                    .extend(data.replace(Vec::new()));
+                notificator.notify_at(t.retain());
+            });
+            notificator.for_each(|t, _, _| {
+                let mut sizes = subproblem_sizes
+                    .remove(t.time())
+                    .expect("missing subproblem sizes!");
+                // Sort by increasing count
+                sizes.sort_unstable_by_key(|x| x.1);
+                // Define a threshold for heavy hitters
+                // let threshold = (total as f64 / peers as f64).ceil() as u32;
+                let threshold = sizes[sizes.len() / 2].1;
+                info!("subproblem sizes {:?}", sizes);
+                info!("heavy hitters threshold: {}", threshold);
+                let heavy_hitters: HashMap<(usize, u32), u32> =
+                    sizes.into_iter().filter(|x| x.1 >= threshold).collect();
+                info!("heavy hitters: {:?}", heavy_hitters);
+
+                // Get the hashes and output them, splitting the subproblem if needed
+                if let Some(hashes) = hashes1.borrow_mut().remove(&t.time()) {
+                    let mut session = output.session(&t);
+                    for (key, payload) in hashes {
+                        if let Some(count) = heavy_hitters.get(&key) {
+                            // Deal with the heavy hitter by replicating it into
+                            // rows and columns
+                            let id = ((payload.3).0).0;
+                            let groups = (count / threshold) as u8;
+                            assert!(groups > 0);
+                            let col = (id % groups as u32) as u8;
+                            for row in col..groups {
+                                let i = row * groups + col; // row major
+                                session.give((
+                                    (key.0, key.1, i),
+                                    (
+                                        Marker::HeavyLeft,
+                                        payload.0.clone(),
+                                        payload.1.clone(),
+                                        payload.2.clone(),
+                                        payload.3.clone(),
+                                    ),
+                                ));
+                            }
+                            let row = (id % groups as u32) as u8;
+                            for col in row..groups {
+                                let i = row * groups + col; // row major
+                                session.give((
+                                    (key.0, key.1, i),
+                                    (
+                                        Marker::HeavyRight,
+                                        payload.0.clone(),
+                                        payload.1.clone(),
+                                        payload.2.clone(),
+                                        payload.3.clone(),
+                                    ),
+                                ));
+                            }
+                        } else {
+                            // This point is light, no need of treating it specially
+                            session.give((
+                                (key.0, key.1, 0u8),
+                                (Marker::Light, payload.0, payload.1, payload.2, payload.3),
+                            ));
+                        }
+                    }
+                }
+            });
+        },
+    )
+}
+
+#[derive(Clone, Copy, Hash, Ord, PartialOrd, Eq, PartialEq, Abomonation, Debug)]
+enum Marker {
+    Light,
+    HeavyLeft,
+    HeavyRight,
+}
+
+impl Marker {
+    fn keep_left(&self) -> bool {
+        match self {
+            Self::Light | Self::HeavyLeft => true,
+            Self::HeavyRight => false,
+        }
+    }
+    fn keep_right(&self) -> bool {
+        match self {
+            Self::Light | Self::HeavyRight => true,
+            Self::HeavyLeft => false,
+        }
+    }
+}
+
+impl Route for (usize, u32, u8) {
+    #[inline(always)]
+    fn route(&self) -> u64 {
+        (self.0 as u64)
+            .wrapping_mul(31u64)
+            .wrapping_add(u64::from(self.1.route()))
+            .wrapping_mul(31u64)
+            .wrapping_add(u64::from(self.2.route()))
+    }
 }
