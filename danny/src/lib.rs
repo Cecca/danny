@@ -24,6 +24,7 @@ pub mod experiment;
 #[macro_use]
 pub mod logging;
 pub mod baseline;
+pub mod cartesian;
 pub mod config;
 pub mod io;
 pub mod join;
