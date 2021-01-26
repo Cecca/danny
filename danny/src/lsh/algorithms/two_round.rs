@@ -1,3 +1,4 @@
+use crate::cartesian::*;
 use crate::config::*;
 use crate::experiment::Experiment;
 use crate::io::*;
@@ -111,7 +112,7 @@ where
             hasher_intern.repetitions()
         );
         hashes
-            .self_join_map_slice(move |(outer_repetition, _hash, _subproblem), vals| {
+            .self_join_map_slice(move |(outer_repetition, _hash, subproblem_key), vals| {
                 let mut cnt = 0;
                 let mut total = 0;
                 let mut sketch_cnt = 0;
@@ -128,32 +129,59 @@ where
                             (s, v, outer_pool, inner_pool, marker),
                         );
                     }
-
-                    joiner.join_map_slice(|_hash, values| {
-                        for (_, l) in values.iter().filter(|t| (t.1).4.keep_left()) {
-                            for (_, r) in values.iter().filter(|t| (t.1).4.keep_right()) {
-                                total += 1;
-                                if sketch_pred.eval(l.0, r.0) {
-                                    if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
-                                        if no_dedup
-                                            || (!hasher_intern.already_seen(&l.3, &r.3, rep)
-                                                && !hasher.already_seen(
-                                                    &l.2,
-                                                    &r.2,
-                                                    *outer_repetition,
-                                                ))
-                                        {
-                                            cnt += 1;
-                                        } else {
-                                            duplicate_cnt += 1;
+                    if subproblem_key.on_diagonal() {
+                        joiner.join_map_slice(|_hash, values| {
+                            for (i, (_, l)) in values.iter().enumerate() {
+                                for (_, r) in values[i..].iter() {
+                                    total += 1;
+                                    if sketch_pred.eval(l.0, r.0) {
+                                        if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
+                                            if no_dedup
+                                                || (!hasher_intern.already_seen(&l.3, &r.3, rep)
+                                                    && !hasher.already_seen(
+                                                        &l.2,
+                                                        &r.2,
+                                                        *outer_repetition,
+                                                    ))
+                                            {
+                                                cnt += 1;
+                                            } else {
+                                                duplicate_cnt += 1;
+                                            }
                                         }
+                                    } else {
+                                        sketch_cnt += 1;
                                     }
-                                } else {
-                                    sketch_cnt += 1;
                                 }
                             }
-                        }
-                    });
+                        });
+                    } else {
+                        joiner.join_map_slice(|_hash, values| {
+                            for (_, l) in values.iter().filter(|t| (t.1).4.keep_left()) {
+                                for (_, r) in values.iter().filter(|t| (t.1).4.keep_right()) {
+                                    total += 1;
+                                    if sketch_pred.eval(l.0, r.0) {
+                                        if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
+                                            if no_dedup
+                                                || (!hasher_intern.already_seen(&l.3, &r.3, rep)
+                                                    && !hasher.already_seen(
+                                                        &l.2,
+                                                        &r.2,
+                                                        *outer_repetition,
+                                                    ))
+                                            {
+                                                cnt += 1;
+                                            } else {
+                                                duplicate_cnt += 1;
+                                            }
+                                        }
+                                    } else {
+                                        sketch_cnt += 1;
+                                    }
+                                }
+                            }
+                        });
+                    }
                 }
                 debug!(
                     "Candidates {} ({}): Emitted {} / Discarded {} / Duplicates {} in {:?} ({})",
@@ -222,7 +250,7 @@ fn source_hashed_two_round<G, T, D, F, S>(
     G,
     (
         // (repetition, hash, subproblem split)
-        (usize, u32, u8),
+        (usize, u32, CartesianKey),
         (Marker, TensorPool, TensorPool, S::Output, (ElementId, D)),
     ),
 >
@@ -352,47 +380,26 @@ where
                 if let Some(hashes) = hashes1.borrow_mut().remove(&t.time()) {
                     let mut session = output.session(&t);
                     for (key, payload) in hashes {
-                        if let Some(count) = heavy_hitters.get(&key) {
-                            // Deal with the heavy hitter by replicating it into
-                            // rows and columns
-                            let id = ((payload.3).0).0;
-                            let groups = (count / threshold) as u8;
-                            assert!(groups > 0);
-                            let col = (id % groups as u32) as u8;
-                            for row in col..groups {
-                                let i = row * groups + col; // row major
-                                session.give((
-                                    (key.0, key.1, i),
-                                    (
-                                        Marker::HeavyLeft,
-                                        payload.0.clone(),
-                                        payload.1.clone(),
-                                        payload.2.clone(),
-                                        payload.3.clone(),
-                                    ),
-                                ));
-                            }
-                            let row = (id % groups as u32) as u8;
-                            for col in row..groups {
-                                let i = row * groups + col; // row major
-                                session.give((
-                                    (key.0, key.1, i),
-                                    (
-                                        Marker::HeavyRight,
-                                        payload.0.clone(),
-                                        payload.1.clone(),
-                                        payload.2.clone(),
-                                        payload.3.clone(),
-                                    ),
-                                ));
-                            }
+                        let groups = if let Some(count) = heavy_hitters.get(&key) {
+                            (count / threshold) as u8
                         } else {
-                            // This point is light, no need of treating it specially
-                            session.give((
-                                (key.0, key.1, 0u8),
-                                (Marker::Light, payload.0, payload.1, payload.2, payload.3),
-                            ));
-                        }
+                            1
+                        };
+                        let cartesian = SelfCartesian::with_groups(groups);
+                        let id = (payload.3).0;
+                        let iter = cartesian.keys_for(id).map(|(subproblem_key, marker)| {
+                            (
+                                (key.0, key.1, subproblem_key),
+                                (
+                                    marker,
+                                    payload.0.clone(),
+                                    payload.1.clone(),
+                                    payload.2.clone(),
+                                    payload.3.clone(),
+                                ),
+                            )
+                        });
+                        session.give_iterator(iter);
                     }
                 }
             });
@@ -400,29 +407,7 @@ where
     )
 }
 
-#[derive(Clone, Copy, Hash, Ord, PartialOrd, Eq, PartialEq, Abomonation, Debug)]
-enum Marker {
-    Light,
-    HeavyLeft,
-    HeavyRight,
-}
-
-impl Marker {
-    fn keep_left(&self) -> bool {
-        match self {
-            Self::Light | Self::HeavyLeft => true,
-            Self::HeavyRight => false,
-        }
-    }
-    fn keep_right(&self) -> bool {
-        match self {
-            Self::Light | Self::HeavyRight => true,
-            Self::HeavyLeft => false,
-        }
-    }
-}
-
-impl Route for (usize, u32, u8) {
+impl Route for (usize, u32, CartesianKey) {
     #[inline(always)]
     fn route(&self) -> u64 {
         (self.0 as u64)
