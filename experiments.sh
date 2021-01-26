@@ -15,7 +15,7 @@ function baselines() {
         --threads 8 \
         --threshold $THRESHOLD \
         --algorithm all-2-all \
-        $DATASET $DATASET
+        $DATASET
     done
   done
 }
@@ -41,7 +41,7 @@ do
           --recall $RECALL \
           --sketch-bits 0 \
           --k 7 \
-          $DATASET $DATASET
+          $DATASET
       done
     done
   done
@@ -65,7 +65,7 @@ do
         --algorithm one-round-lsh \
         --sketch-bits 256 \
         --k $K \
-        $DATASET $DATASET
+        $DATASET
     done
   done
 done
@@ -85,7 +85,7 @@ do
       --algorithm one-round-lsh \
       --sketch-bits 256 \
       --k $K \
-      $DATASET $DATASET
+      $DATASET
   done
 done
 
@@ -112,7 +112,7 @@ do
           --sketch-bits 0 \
           --no-verify \
           --k $K \
-          $DATASET $DATASET
+          $DATASET
 
         danny \
           --seed $SEED \
@@ -123,7 +123,7 @@ do
           --sketch-bits 0 \
           --no-dedup \
           --k $K \
-          $DATASET $DATASET
+          $DATASET
 
         danny \
           --seed $SEED \
@@ -135,15 +135,15 @@ do
           --no-verify \
           --no-dedup \
           --k $K \
-          $DATASET $DATASET
+          $DATASET
       done
     done
   done
 done
 }
 
-#baselines
+baselines
 #recall
 #scalability
-duplicate_removal_cost
+# duplicate_removal_cost
 
