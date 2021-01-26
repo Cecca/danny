@@ -133,8 +133,8 @@ impl<K: Ord, V> SelfJoiner<K, V> {
         F: FnMut(&K, &V, &V),
     {
         self.join_map_slice(|k, vals| {
-            for l in vals {
-                for r in vals {
+            for (i, l) in vals.iter().enumerate() {
+                for r in vals[i..].iter() {
                     f(k, &l.1, &r.1);
                 }
             }

@@ -1,3 +1,4 @@
+use crate::cartesian::*;
 use crate::io::*;
 use crate::operators::*;
 use abomonation::Abomonation;
@@ -35,8 +36,8 @@ where
         .start();
 
     let mut sim_cnt = 0;
-    for l in vecs.iter() {
-        for r in vecs.iter() {
+    for (i, l) in vecs.iter().enumerate() {
+        for r in vecs[i..].iter() {
             let sim = sim_fn(l, r);
             if sim >= thresh {
                 sim_cnt += 1;
@@ -77,80 +78,100 @@ where
         let matrix = MatrixDescription::for_workers(peers as usize);
         let (_row, _col) = matrix.row_major_to_pair(index as u64);
 
-        let vectors = simple_source(scope, Arc::clone(&worker_vectors));
-        let left = distribute(&vectors, matrix, MatrixDirection::Rows);
-        let right = distribute(&vectors, matrix, MatrixDirection::Columns);
+        let vectors = distribute(&simple_source(scope, Arc::clone(&worker_vectors)));
 
-        left.binary_frontier(&right, PipelinePact, PipelinePact, "bucket", move |_, _| {
-            let mut notificator = FrontierNotificator::new();
-            let mut left_vectors = HashMap::new();
-            let mut right_vectors = HashMap::new();
-            move |left_in, right_in, output| {
-                left_in.for_each(|t, data| {
-                    let local_vectors = left_vectors
-                        .entry(t.time().clone())
-                        .or_insert_with(HashMap::new);
-                    for (k, v) in data.replace(Vec::new()).drain(..) {
-                        local_vectors.entry(k).or_insert(v);
-                    }
-                    notificator.notify_at(t.retain());
-                });
-                right_in.for_each(|t, data| {
-                    let local_vectors = right_vectors
-                        .entry(t.time().clone())
-                        .or_insert_with(HashMap::new);
-                    for (k, v) in data.replace(Vec::new()).drain(..) {
-                        local_vectors.entry(k).or_insert(v);
-                    }
-                    notificator.notify_at(t.retain());
-                });
-                notificator.for_each(&[left_in.frontier(), &right_in.frontier()], |t, _| {
-                    if let Some(left_vectors) = left_vectors.remove(&t) {
-                        let right_vectors =
-                            right_vectors.remove(&t).expect("missing right vectors");
-                        let mut pl = progress_logger::ProgressLogger::builder()
-                            .with_frequency(Duration::from_secs(60))
-                            .with_items_name("pairs")
-                            .with_expected_updates(
-                                (left_vectors.len() * right_vectors.len()) as u64,
-                            )
-                            .start();
-
-                        let mut cnt = 0;
-                        for (_lk, lv) in left_vectors.iter() {
-                            let mut pairs_looked = 0_u64;
-                            for (_rk, rv) in right_vectors.iter() {
-                                if sim_pred(lv, rv) {
-                                    cnt += 1;
-                                }
-                                pairs_looked += 1;
-                            }
-                            pl.update_light(pairs_looked);
-                        }
-                        pl.stop();
-                        info!("Matching pairs: {}", cnt);
-                        output.session(&t).give(cnt);
-                    }
-                });
-            }
-        })
-        .exchange(|_| 0)
-        .unary(
-            timely::dataflow::channels::pact::Pipeline,
-            "count collection",
-            move |_, _| {
+        vectors
+            .unary_frontier(PipelinePact, "bucket", move |_, _| {
+                let mut notificator = FrontierNotificator::new();
+                let mut vectors = HashMap::new();
                 move |input, output| {
                     input.for_each(|t, data| {
-                        let data = data.replace(Vec::new());
-                        for c in data.into_iter() {
-                            *result.borrow_mut() += c;
+                        let local_vectors =
+                            vectors.entry(t.time().clone()).or_insert_with(HashMap::new);
+                        for (k, marker, v) in data.replace(Vec::new()).drain(..) {
+                            local_vectors
+                                .entry(k)
+                                .or_insert_with(Vec::new)
+                                .push((marker, v));
                         }
-                        output.session(&t).give(());
+                        notificator.notify_at(t.retain());
+                    });
+
+                    notificator.for_each(&[input.frontier()], |t, _| {
+                        if let Some(subproblems) = vectors.remove(&t) {
+                            for (subproblem_key, subproblem) in subproblems {
+                                let mut cnt = 0;
+
+                                let mut pl = progress_logger::ProgressLogger::builder()
+                                    .with_frequency(Duration::from_secs(60))
+                                    .with_items_name("pairs")
+                                    .with_expected_updates(
+                                        (subproblem.len() * subproblem.len()) as u64,
+                                    )
+                                    .start();
+
+                                // we deal differently with subproblems on the diagonal. For those, we look at all pairs
+                                // without duplicates by appropriately indexing into the subproblem.
+                                // As for the other subproblems, we filter items marked as to be considered
+                                // `Left` or `Right` in order to avoid duplicates
+                                if subproblem_key.on_diagonal() {
+                                    for (i, (_, (_lk, lv))) in subproblem.iter().enumerate() {
+                                        let mut pairs_looked = 0_u64;
+                                        for (_, (_rk, rv)) in subproblem[i..].iter() {
+                                            if sim_pred(lv, rv) {
+                                                cnt += 1;
+                                            }
+                                            pairs_looked += 1;
+                                        }
+                                        pl.update_light(pairs_looked);
+                                    }
+                                } else {
+                                    for (_, (_lk, lv)) in
+                                        subproblem.iter().filter(|t| t.0.keep_left())
+                                    {
+                                        let mut pairs_looked = 0_u64;
+                                        for (_, (_rk, rv)) in
+                                            subproblem.iter().filter(|t| t.0.keep_right())
+                                        {
+                                            if sim_pred(lv, rv) {
+                                                cnt += 1;
+                                            }
+                                            pairs_looked += 1;
+                                        }
+                                        pl.update_light(pairs_looked);
+                                    }
+                                }
+                                pl.stop();
+
+                                info!(
+                                    "{:?} matching pairs: {} (subproblem size {})",
+                                    subproblem_key,
+                                    cnt,
+                                    subproblem.len()
+                                );
+                                output.session(&t).give(cnt);
+                            }
+                        }
                     });
                 }
-            },
-        )
-        .probe()
+            })
+            .exchange(|_| 0)
+            .unary(
+                timely::dataflow::channels::pact::Pipeline,
+                "count collection",
+                move |_, _| {
+                    move |input, output| {
+                        input.for_each(|t, data| {
+                            let data = data.replace(Vec::new());
+                            for c in data.into_iter() {
+                                *result.borrow_mut() += c;
+                            }
+                            output.session(&t).give(());
+                        });
+                    }
+                },
+            )
+            .probe()
     });
 
     worker.step_while(|| !probe.done());
@@ -187,14 +208,13 @@ where
 
 fn distribute<G, D>(
     stream: &Stream<G, (ElementId, D)>,
-    matrix: MatrixDescription,
-    direction: MatrixDirection,
-) -> Stream<G, (ElementId, D)>
+) -> Stream<G, (CartesianKey, Marker, (ElementId, D))>
 where
     G: Scope,
     G::Timestamp: Succ,
     D: ExchangeData,
 {
+    let cartesian = SelfCartesian::for_peers(stream.scope().peers());
     stream
         .unary(PipelinePact, "distribute", move |_, _| {
             move |input, output| {
@@ -203,24 +223,13 @@ where
                     let mut session = output.session(&t);
                     for (k, d) in data {
                         let output_element = (k, d);
-                        match direction {
-                            MatrixDirection::Columns => {
-                                let col = (k.route() % u64::from(matrix.columns)) as u8;
-                                for row in 0..matrix.rows {
-                                    session.give(((row, col), output_element.clone()));
-                                }
-                            }
-                            MatrixDirection::Rows => {
-                                let row = (k.route() % u64::from(matrix.rows)) as u8;
-                                for col in 0..matrix.columns {
-                                    session.give(((row, col), output_element.clone()));
-                                }
-                            }
-                        };
+                        let iter = cartesian
+                            .keys_for(k)
+                            .map(|key| (key.0, key.1, output_element.clone()));
+                        session.give_iterator(iter);
                     }
                 })
             }
         })
-        .exchange(move |tuple| matrix.row_major((tuple.0).0, (tuple.0).1))
-        .map(|pair| pair.1)
+        .exchange(move |tuple| tuple.0.route())
 }
