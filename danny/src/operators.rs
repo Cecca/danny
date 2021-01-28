@@ -1,6 +1,5 @@
 use crate::logging::*;
 
-use danny_base::bloom::*;
 use danny_base::sketch::*;
 use danny_base::types::*;
 use std::collections::HashMap;
@@ -8,8 +7,6 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::ops::Add;
-use std::sync::Arc;
-use timely::dataflow::channels::pact::ParallelizationContract;
 use timely::dataflow::channels::pact::Pipeline as PipelinePact;
 
 use timely::dataflow::operators::*;
@@ -241,70 +238,6 @@ impl MatrixDescription {
     }
 }
 
-pub trait ApproximateDistinct<G, K>
-where
-    G: Scope,
-    K: ExchangeData + Hash + Into<u64> + Copy,
-{
-    fn approximate_distinct_atomic<P>(
-        &self,
-        pact: P,
-        filter: Arc<AtomicBloomFilter<K>>,
-    ) -> Stream<G, (K, K)>
-    where
-        P: ParallelizationContract<G::Timestamp, (K, K)>;
-}
-
-impl<G, T, K> ApproximateDistinct<G, K> for Stream<G, (K, K)>
-where
-    G: Scope<Timestamp = T>,
-    T: Timestamp + ToStepId,
-    K: ExchangeData + Hash + Into<u64> + Copy,
-{
-    fn approximate_distinct_atomic<P>(
-        &self,
-        pact: P,
-        filter: Arc<AtomicBloomFilter<K>>,
-    ) -> Stream<G, (K, K)>
-    where
-        P: ParallelizationContract<G::Timestamp, (K, K)>,
-    {
-        let logger = self.scope().danny_logger();
-        self.unary(pact, "approximate-distinct-atomic", move |_, _| {
-            move |input, output| {
-                input.for_each(|t, d| {
-                    let mut data = d.replace(Vec::new());
-                    let mut cnt = 0;
-                    let mut received = 0;
-                    for v in data.drain(..) {
-                        received += 1;
-                        if !filter.test_and_insert(&v) {
-                            output.session(&t).give(v);
-                            cnt += 1;
-                        }
-                    }
-                    log_event!(
-                        logger,
-                        (LogEvent::DistinctPairs(t.time().to_step_id()), cnt)
-                    );
-                    log_event!(
-                        logger,
-                        (
-                            LogEvent::DuplicatesDiscarded(t.time().to_step_id()),
-                            received - cnt
-                        )
-                    );
-                    debug!(
-                        "Filtered {} elements out of {} received",
-                        received - cnt,
-                        received
-                    );
-                });
-            }
-        })
-    }
-}
-
 pub trait StreamSum<G, D>
 where
     G: Scope,
@@ -352,12 +285,7 @@ mod tests {
     use danny_base::lsh::*;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
-    
-    
-    
-    
-    
-    
+
     #[test]
     fn test_matrix_description_builder() {
         let m = MatrixDescription::for_workers(16);
