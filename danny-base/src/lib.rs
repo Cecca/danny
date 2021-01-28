@@ -12,7 +12,6 @@ extern crate rand_xorshift;
 extern crate siphasher;
 extern crate statrs;
 
-pub mod bloom;
 pub mod lsh;
 pub mod measure;
 pub mod sketch;

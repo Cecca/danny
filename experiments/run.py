@@ -95,13 +95,13 @@ class DerivedDataset(object):
 
     def __init__(self, name, filename, base, preprocess_fn):
         self.name = name
-        self.base_path = base.get_path()
+        self.base = base
         self.filename = os.path.join(DATA_DIRECTORY, filename)
         self.preprocess_fn = preprocess_fn
 
     def prepare(self):
         print("Preparing dataset", self.name)
-        self.preprocess_fn(self.base_path, self.filename)
+        self.preprocess_fn(self.base.get_path(), self.filename)
 
     def get_path(self):
         if not os.path.exists(self.filename):
@@ -110,6 +110,34 @@ class DerivedDataset(object):
         # sync()
         return self.filename
 
+
+def preprocess_random(download_file, final_output):
+    import sklearn.datasets
+
+    X, _ = sklearn.datasets.make_blobs(
+        n_samples=1000, n_features=50,
+        centers=10, random_state=1)
+    
+    txt = os.path.join(os.path.dirname(download_file), "random.txt")
+    with open(txt, 'w') as f:
+        for x in X:
+            f.write(" ".join(map(str, x)) + "\n")
+    
+    print("Converting {} to {}".format(txt, final_output))
+    subprocess.run(
+        [
+            "danny_convert",
+            "-i",
+            txt,
+            "-o",
+            final_output,
+            "-t",
+            "vector-normalized",
+            "-n",
+            "40",
+        ],
+        check=True
+    )
 
 def preprocess_glove_6b(download_file, final_output):
     """Preprocess all datasets present in the glove archive"""
@@ -501,6 +529,12 @@ DATASETS = {
         "Livejournal.bin",
         preprocess_livejournal,
     ),
+    "RandomAngular" : Dataset(
+        "RandAngular",
+        "",
+        "random.bin",
+        preprocess_random,
+    )
 }
 
 derived_datasets = []
@@ -656,6 +690,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--list-datasets", action="store_true", help="list the available datasets"
     )
+    parser.add_argument(
+        "--dataset-prefix", help="install only datasets that have this prefix"
+    )
     parser.add_argument("--sync", action="store_true", help="sync the datasets")
     parser.add_argument("--tags", help="run only experiments with these tags")
     parser.add_argument(
@@ -664,10 +701,12 @@ if __name__ == "__main__":
 
     args = vars(parser.parse_args())
 
+    print(args)
     if args["list_datasets"]:
         print("Available datasets are:")
         for k in DATASETS.keys():
-            print("  - {} ({})".format(k, DATASETS[k].get_path()))
+            if not "dataset_prefix" in args or k.lower().startswith(args["dataset_prefix"].lower()):
+                print("  - {} ({})".format(k, DATASETS[k].get_path()))
         sys.exit(0)
 
     if args["sync"]:

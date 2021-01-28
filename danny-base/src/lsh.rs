@@ -58,8 +58,8 @@ where
         let coll_prob_left = F::probability_at_range(range).powi(k_left as i32);
         let coll_prob_right = F::probability_at_range(range).powi(k_right as i32);
         let repetitions = ((1_f64 - recall.sqrt()).ln().powi(2)
-            / ((1_f64 - coll_prob_left).ln() * (1_f64 - coll_prob_right).ln())).ceil()
-            as usize;
+            / ((1_f64 - coll_prob_left).ln() * (1_f64 - coll_prob_right).ln()))
+        .ceil() as usize;
         assert!(repetitions > 0);
         let part_repetitions = (repetitions as f64).sqrt().ceil() as usize;
         let mut hashers = Vec::new();
@@ -372,12 +372,12 @@ mod tests {
 
         let dim = 300;
         for _ in 0..10 {
-            let a = Vector::random_normal(dim, &mut rng);
-            let b = Vector::random_normal(dim, &mut rng);
-            let cos = InnerProduct::cosine(&a, &b);
-            println!("Cosine between the vectors is {}", cos);
-            assert!(cos >= -1.0 && cos <= 1.0);
-            let acos = cos.acos();
+            let a = Vector::random_normal(dim, &mut rng).normalize();
+            let b = Vector::random_normal(dim, &mut rng).normalize();
+            let ip = InnerProduct::inner_product(&a, &b);
+            println!("Inner product between the vectors is {}", ip);
+            assert!(ip >= -1.0 && ip <= 1.0, "inner product is {}", ip);
+            let acos = ip.acos();
             assert!(!acos.is_nan());
             let expected = 1.0 - acos / std::f64::consts::PI;
             let mut collisions = 0;
@@ -470,7 +470,7 @@ mod tests {
     fn test_tensor_1() {
         let mut rng = StdRng::seed_from_u64(1223132);
         let a = BagOfWords::random(3000, 0.01, &mut rng);
-        let coll = TensorCollection::new(4, 0.5, OneBitMinHash::builder(), &mut rng);
+        let coll = TensorCollection::new(4, 0.5, 0.8, OneBitMinHash::builder(), &mut rng);
         let pool = coll.pool(&a);
         for rep in 0..coll.repetitions() {
             let h = coll.hash(&pool, rep);

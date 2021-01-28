@@ -80,7 +80,7 @@ mod tests {
         let expected = 1.0;
         let actual = generic_dist(&a, &b, InnerProduct::inner_product);
         println!("Actual distance is {}", actual);
-        assert!((expected - actual).abs() < 10e-10_f64)
+        assert!((expected - actual).abs() < 10e-7_f64)
     }
 
     #[test]
