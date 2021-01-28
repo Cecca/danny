@@ -58,8 +58,8 @@ where
         let coll_prob_left = F::probability_at_range(range).powi(k_left as i32);
         let coll_prob_right = F::probability_at_range(range).powi(k_right as i32);
         let repetitions = ((1_f64 - recall.sqrt()).ln().powi(2)
-            / ((1_f64 - coll_prob_left).ln() * (1_f64 - coll_prob_right).ln())).ceil()
-            as usize;
+            / ((1_f64 - coll_prob_left).ln() * (1_f64 - coll_prob_right).ln()))
+        .ceil() as usize;
         assert!(repetitions > 0);
         let part_repetitions = (repetitions as f64).sqrt().ceil() as usize;
         let mut hashers = Vec::new();
@@ -372,11 +372,11 @@ mod tests {
 
         let dim = 300;
         for _ in 0..10 {
-            let a = Vector::random_normal(dim, &mut rng);
-            let b = Vector::random_normal(dim, &mut rng);
+            let a = Vector::random_normal(dim, &mut rng).normalize();
+            let b = Vector::random_normal(dim, &mut rng).normalize();
             let ip = InnerProduct::inner_product(&a, &b);
             println!("Inner product between the vectors is {}", ip);
-            assert!(ip >= -1.0 && ip <= 1.0);
+            assert!(ip >= -1.0 && ip <= 1.0, "inner product is {}", ip);
             let acos = ip.acos();
             assert!(!acos.is_nan());
             let expected = 1.0 - acos / std::f64::consts::PI;
