@@ -2,10 +2,7 @@ use crate::config::*;
 use chrono::prelude::*;
 
 use rusqlite::*;
-use std::{
-    path::{Path, PathBuf},
-    str::pattern::Pattern,
-};
+use std::path::{Path, PathBuf};
 
 pub struct Experiment {
     db_path: PathBuf,
