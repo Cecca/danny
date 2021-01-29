@@ -105,7 +105,10 @@ where
     F: Fn(&D, &D) -> bool + Send + Clone + Copy + Sync + 'static,
 {
     let repetitions = hasher.repetitions();
-    info!("Starting {} repetitions", repetitions);
+    info!(
+        "Starting {} repetitions for subproblem {:?}",
+        repetitions, subproblem_key
+    );
 
     let mut cnt = 0;
 
