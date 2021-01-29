@@ -20,7 +20,10 @@ impl SelfCartesian {
         if peers == 1 {
             Self::with_groups(1)
         } else {
-            let groups = (0.5 + (0.25 + 2.0 * peers as f64).sqrt()).ceil() as u8;
+            // upper rounded solution to the equation
+            //         g*(g+1) / 2 = p
+            // where g is the number of groups we seek and p is the number of peers
+            let groups = (-0.5 + (0.25 + 2.0 * peers as f64).sqrt()).ceil() as u8;
             Self::with_groups(groups)
         }
     }
@@ -79,6 +82,14 @@ impl CartesianKey {
     pub fn on_diagonal(&self) -> bool {
         self.0 == self.1
     }
+}
+
+#[test]
+fn test_for_peers() {
+    let p = 40;
+    let cartesian = SelfCartesian::for_peers(p);
+    assert_eq!(cartesian.num_cells, 45);
+    assert_eq!(cartesian.groups, 9);
 }
 
 #[test]
