@@ -1,7 +1,12 @@
+use crate::cartesian::*;
 use crate::logging::*;
 use crate::operators::*;
+use channels::pact::Pipeline;
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 use timely::dataflow::channels::pact::Exchange as ExchangePact;
+use timely::dataflow::operators::aggregation::Aggregate;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use timely::ExchangeData;
@@ -17,6 +22,12 @@ where
         I: IntoIterator<Item = O>,
         O: ExchangeData,
         F: FnMut(&K, &[(K, V)]) -> I + 'static;
+
+    fn self_join_map<F, I, O>(&self, f: F) -> Stream<G, O>
+    where
+        I: IntoIterator<Item = O>,
+        O: ExchangeData,
+        F: FnMut(&K, &V, &V) -> I + 'static;
 }
 
 impl<G, K, V> Join<G, K, V> for Stream<G, (K, V)>
@@ -26,6 +37,176 @@ where
     K: KeyData + Ord,
     V: ExchangeData,
 {
+    fn self_join_map<F, I, O>(&self, mut f: F) -> Stream<G, O>
+    where
+        I: IntoIterator<Item = O>,
+        O: ExchangeData,
+        F: FnMut(&K, &V, &V) -> I + 'static,
+    {
+        let worker_index = self.scope().index();
+        let logger = self.scope().danny_logger();
+        let stash = Rc::new(RefCell::new(HashMap::new()));
+        let stash1 = Rc::clone(&stash);
+        let mut bucket_stash: HashMap<G::Timestamp, HashMap<CartesianKey, Vec<(K, (Marker, V))>>> =
+            HashMap::new();
+        let mut histograms: HashMap<G::Timestamp, HashMap<K, u32>> = HashMap::new();
+        let mut subproblem_sizes: HashMap<G::Timestamp, Vec<(K, u32)>> = HashMap::new();
+
+        self.unary_notify(
+            Pipeline,
+            "count subproblem size",
+            None,
+            move |input, output, notificator| {
+                notificator.for_each(|t, _, _| {
+                    if let Some(histogram) = histograms.remove(&t) {
+                        let mut session = output.session(&t);
+                        session.give_iterator(histogram.into_iter());
+                    }
+                });
+
+                input.for_each(|t, data| {
+                    let data = data.replace(Vec::new());
+                    for (k, v) in data {
+                        stash
+                            .borrow_mut()
+                            .entry(t.time().clone())
+                            .or_insert_with(Vec::new)
+                            .push((k, v));
+                        *histograms
+                            .entry(t.time().clone())
+                            .or_insert_with(HashMap::new)
+                            .entry(k)
+                            .or_insert(0u32) += 1;
+                    }
+                    notificator.notify_at(t.retain());
+                });
+            },
+        )
+        // Now accumulate the counters into the first worker to compute the subproblem size
+        .exchange(|_k| 0)
+        .aggregate(
+            |_key, val, agg| {
+                *agg += val;
+            },
+            |key, agg: u32| (key, agg),
+            |k| k.route() as u64,
+        )
+        .broadcast()
+        .unary_notify(
+            Pipeline,
+            "split subproblems",
+            None,
+            move |input, output, notificator| {
+                notificator.for_each(|t, _, _| {
+                    let mut sizes = subproblem_sizes.remove(&t).expect("missing histograms!");
+
+                    // Sort by increasing count
+                    sizes.sort_unstable_by_key(|x| x.1);
+
+                    // Define a threshold for heavy hitters
+                    let threshold = sizes[sizes.len() / 2].1;
+                    let heavy_hitters: HashMap<K, u32> =
+                        sizes.into_iter().filter(|x| x.1 >= threshold).collect();
+
+                    // Get the hashes and output them, splitting the subproblem if needed
+                    if let Some(pairs) = stash1.borrow_mut().remove(&t.time()) {
+                        let mut session = output.session(&t);
+                        for (key, payload) in pairs {
+                            let groups = if let Some(count) = heavy_hitters.get(&key) {
+                                (count / threshold) as u8
+                            } else {
+                                1
+                            };
+                            let cartesian = SelfCartesian::with_groups(groups);
+                            let iter = cartesian.keys_for(key).map(|(subproblem_key, marker)| {
+                                // order of the subproblem in diagonal-major order
+                                let dmaj = cartesian.diagonal_major(subproblem_key);
+                                ((key, subproblem_key, dmaj), (marker, payload.clone()))
+                            });
+                            session.give_iterator(iter);
+                        }
+                    }
+                });
+
+                input.for_each(|t, data| {
+                    let data = data.replace(Vec::new());
+                    subproblem_sizes
+                        .entry(t.time().clone())
+                        .or_insert_with(Vec::new)
+                        .extend(data.into_iter());
+                    notificator.notify_at(t.retain());
+                })
+            },
+        )
+        .unary_notify(
+            ExchangePact::new(|(key, _payload): &((K, CartesianKey, u64), (Marker, V))| {
+                if key.1 == CartesianKey(0, 0) {
+                    // leave it where it was already routed
+                    key.0.route()
+                } else {
+                    // shuffle it somewhere else
+                    key.0.route() + 31 * key.2
+                }
+            }),
+            "bucket",
+            None,
+            move |input, output, notificator| {
+                notificator.for_each(|t, _, _| {
+                    if let Some(subproblems) = bucket_stash.remove(&t) {
+                        info!(
+                            "Worker {} has {} subproblems",
+                            worker_index,
+                            subproblems.len()
+                        );
+                        let mut session = output.session(&t);
+                        for (subproblem_key, subproblem) in subproblems {
+                            if subproblem_key.on_diagonal() {
+                                let mut joiner = SelfJoiner::default();
+                                for (key, (_marker, payload)) in subproblem {
+                                    joiner.push(key, payload);
+                                }
+                                // already skips duplicates
+                                joiner.join_map(|k, l, r| {
+                                    let res = f(k, l, r);
+                                    session.give_iterator(res.into_iter());
+                                });
+                            } else {
+                                let mut joiner = Joiner::default();
+                                for (key, (marker, payload)) in subproblem {
+                                    match marker {
+                                        Marker::Both => panic!("Cannot have a Both marker here"),
+                                        Marker::Left => joiner.push_left(key, payload),
+                                        Marker::Right => joiner.push_right(key, payload),
+                                    }
+                                }
+
+                                joiner.join_map(|k, l, r| {
+                                    let res = f(k, l, r);
+                                    session.give_iterator(res.into_iter());
+                                });
+                            }
+                        }
+                    }
+                });
+
+                input.for_each(|t, data| {
+                    log_event!(logger, (LogEvent::Load(t.time().to_step_id()), data.len()));
+                    let data = data.replace(Vec::new());
+                    let stash = bucket_stash
+                        .entry(t.time().clone())
+                        .or_insert_with(HashMap::new);
+                    for ((k, subproblem, _), payload) in data {
+                        stash
+                            .entry(subproblem)
+                            .or_insert_with(Vec::new)
+                            .push((k, payload));
+                    }
+                });
+            },
+        )
+
+    }
+
     fn self_join_map_slice<F, I, O>(&self, mut f: F) -> Stream<G, O>
     where
         G: Scope,

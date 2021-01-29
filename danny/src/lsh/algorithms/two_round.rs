@@ -414,6 +414,5 @@ impl Route for (usize, u32, CartesianKey) {
             .wrapping_mul(31u64)
             .wrapping_add(u64::from(self.1.route()))
             .wrapping_mul(31u64)
-            .wrapping_add(u64::from(self.2.route()))
     }
 }

@@ -1,4 +1,4 @@
-use danny_base::types::ElementId;
+use crate::operators::Route;
 
 /// Utilities to compute the (self) cartesian product of a stream.
 ///
@@ -28,8 +28,8 @@ impl SelfCartesian {
         }
     }
 
-    pub fn keys_for(&self, k: ElementId) -> impl Iterator<Item = (CartesianKey, Marker)> {
-        let diag_id = (k.0 % self.groups as u32) as u8;
+    pub fn keys_for<R: Route>(&self, k: R) -> impl Iterator<Item = (CartesianKey, Marker)> {
+        let diag_id = (k.route() % self.groups as u64) as u8;
         let diag = Some((CartesianKey(diag_id, diag_id), Marker::Both));
         let rows = (0..diag_id).map(move |i| (CartesianKey(i, diag_id), Marker::Left));
         let cols =
