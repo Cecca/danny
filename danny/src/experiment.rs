@@ -103,7 +103,7 @@ impl Experiment {
         conn.query_row(
             "
             SELECT total_time_ms, output_size
-            FROM result
+            FROM result_recent
             WHERE path = ?1
               AND threshold = ?2
               AND algorithm = 'all-2-all'",
