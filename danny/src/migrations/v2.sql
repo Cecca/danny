@@ -3,7 +3,7 @@ BEGIN TRANSACTION;
 DROP VIEW result_recent;
 
 CREATE VIEW latest_version AS
-SELECT algorithm, MAX(algorithm_version)
+SELECT algorithm, MAX(algorithm_version) as algorithm_version
 FROM result
 GROUP BY algorithm;
 
