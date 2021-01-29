@@ -101,6 +101,7 @@ where
 
                     notificator.for_each(&[input.frontier()], |t, _| {
                         if let Some(subproblems) = vectors.remove(&t) {
+                            info!("Worker {} has {} subproblems", index, subproblems.len());
                             for (subproblem_key, subproblem) in subproblems {
                                 let mut cnt = 0;
 
