@@ -2,7 +2,10 @@ use crate::config::*;
 use chrono::prelude::*;
 
 use rusqlite::*;
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    str::pattern::Pattern,
+};
 
 pub struct Experiment {
     db_path: PathBuf,
@@ -107,7 +110,10 @@ impl Experiment {
             WHERE path = ?1
               AND threshold = ?2
               AND algorithm = 'all-2-all'",
-            params![self.config.path, self.config.threshold],
+            params![
+                self.config.path.trim_end_matches("/"),
+                self.config.threshold
+            ],
             |row| {
                 Ok((
                     row.get(0).expect("error getting time"),
@@ -207,7 +213,7 @@ impl Experiment {
                     self.config.no_dedup,
                     self.config.no_verify,
                     self.config.repetition_batch as u32,
-                    self.config.path,
+                    self.config.path.trim_end_matches("/"),
                     self.total_time_ms,
                     self.output_size,
                     recall,
