@@ -23,12 +23,11 @@ function baselines() {
 function recall() {
 for RECALL in 0.5 0.8 0.9
 do
-  for BASE_DATA in Livejournal Orkut
-  # for BASE_DATA in sift-100nn-0.5 Livejournal Orkut Glove
+  for BASE_DATA in sift-100nn-0.5 Livejournal Orkut Glove
   do
-    for ALGORITHM in one-round-lsh hu-et-al
+    for ALGORITHM in one-round-lsh 
     do
-      for THRESHOLD in 0.9
+      for THRESHOLD in 0.5 0.8 0.9 
       do
         DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-sample-200000.bin
         echo "Running on $DATASET"
@@ -143,7 +142,7 @@ done
 }
 
 baselines
-#recall
+recall
 #scalability
 # duplicate_removal_cost
 
