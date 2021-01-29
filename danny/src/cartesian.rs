@@ -1,17 +1,19 @@
-use crate::operators::Route;
 use danny_base::types::ElementId;
 
 /// Utilities to compute the (self) cartesian product of a stream.
 ///
 /// In particular, this struct allows to replicate each item of the stream
 /// to each subproblem of the cartesian product
+#[derive(Clone, Copy)]
 pub struct SelfCartesian {
     groups: u8,
+    num_cells: u64,
 }
 
 impl SelfCartesian {
     pub fn with_groups(groups: u8) -> Self {
-        Self { groups }
+        let num_cells = groups as u64 * (groups as u64 + 1) / 2;
+        Self { groups, num_cells }
     }
 
     pub fn for_peers(peers: usize) -> Self {
@@ -30,6 +32,15 @@ impl SelfCartesian {
         let cols =
             ((diag_id + 1)..self.groups).map(move |j| (CartesianKey(diag_id, j), Marker::Right));
         diag.into_iter().chain(rows).chain(cols)
+    }
+
+    /// Route by mapping the coordinate in diagonal major order
+    pub fn diagonal_major(&self, k: CartesianKey) -> u64 {
+        let g = self.groups as u64;
+        let diag = (k.1 - k.0) as u64;
+        let offset = k.1 as u64 - diag;
+        let triangle_elements = ((g - diag) * ((g - diag) + 1)) / 2;
+        self.num_cells - triangle_elements + offset
     }
 }
 
@@ -64,16 +75,6 @@ impl Marker {
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Abomonation)]
 pub struct CartesianKey(pub u8, pub u8);
 
-impl Route for CartesianKey {
-    // Route by mapping the coordinate in diagonal major order
-    fn route(&self) -> u64 {
-        // let diagonal = self.1 - self.0;
-        // let diagonal_position = self.1 - diagonal;
-        // let diagonal_lengthV
-        self.0 as u64 * 31 + self.1 as u64
-    }
-}
-
 impl CartesianKey {
     pub fn on_diagonal(&self) -> bool {
         self.0 == self.1
@@ -84,16 +85,31 @@ impl CartesianKey {
 fn test_diagonal_order() {
     let mut keys = Vec::new();
     let n = 5;
+    let cartesian = SelfCartesian::with_groups(n);
     for i in 0..n {
         for j in i..n {
             let k = CartesianKey(i, j);
-            let r = k.route();
+            let r = cartesian.diagonal_major(k);
             keys.push((r, k));
         }
     }
     keys.sort_by_key(|p| p.0);
-    for (r, k) in keys {
-        println!("{:?} -> {}", k, r);
-    }
-    panic!();
+    let expected = vec![
+        (0, CartesianKey(0, 0)),
+        (1, CartesianKey(1, 1)),
+        (2, CartesianKey(2, 2)),
+        (3, CartesianKey(3, 3)),
+        (4, CartesianKey(4, 4)),
+        (5, CartesianKey(0, 1)),
+        (6, CartesianKey(1, 2)),
+        (7, CartesianKey(2, 3)),
+        (8, CartesianKey(3, 4)),
+        (9, CartesianKey(0, 2)),
+        (10, CartesianKey(1, 3)),
+        (11, CartesianKey(2, 4)),
+        (12, CartesianKey(0, 3)),
+        (13, CartesianKey(1, 4)),
+        (14, CartesianKey(0, 4)),
+    ];
+    assert_eq!(keys, expected);
 }

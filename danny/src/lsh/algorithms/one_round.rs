@@ -53,7 +53,7 @@ where
                 })
             }
         })
-        .exchange(move |tuple| tuple.0.route())
+        .exchange(move |tuple| cartesian.diagonal_major(tuple.0))
 }
 
 fn simple_source<G, F, D, S>(
