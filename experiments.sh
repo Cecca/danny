@@ -27,7 +27,7 @@ do
   do
     for ALGORITHM in one-round-lsh 
     do
-      for THRESHOLD in 0.5 0.8 0.9 
+      for THRESHOLD in 0.5 0.7 0.9 
       do
         DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-sample-200000.bin
         echo "Running on $DATASET"
