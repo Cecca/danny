@@ -26,6 +26,8 @@ use timely::dataflow::*;
 use timely::progress::Timestamp;
 use timely::ExchangeData;
 
+pub const TWO_ROUND_VERSION: u8 = 2;
+
 #[allow(clippy::too_many_arguments)]
 pub fn two_round_lsh<D, F, H, B, R, S, V>(
     worker: &mut Worker<Allocator>,

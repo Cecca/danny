@@ -117,6 +117,7 @@ impl Config {
 
         // IMPORTANT: Don't change the order of the following statements!
         sha.input(format!("{}", self.algorithm));
+        sha.input(format!("{}", self.algorithm_version()));
         sha.input(format!("{}", self.threshold));
         sha.input(format!(
             "{}",
@@ -138,6 +139,17 @@ impl Config {
         sha.input(format!("{}", self.path));
 
         format!("{:x}", sha.result())
+    }
+
+    pub fn algorithm_version(&self) -> u8 {
+        use crate::lsh::algorithms;
+        match self.algorithm.as_ref() {
+            "hu-et-al" => algorithms::HU_ET_AL_VERSION,
+            "one-round-lsh" => algorithms::ONE_ROUND_VERSION,
+            "two-round-lsh" => algorithms::TWO_ROUND_VERSION,
+            "all-2-all" => crate::baseline::ALL_2_ALL_VERSION,
+            algorithm => panic!("don't know the version of {}", algorithm),
+        }
     }
 
     pub fn master_hostname(&self) -> Option<String> {

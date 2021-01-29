@@ -166,6 +166,7 @@ impl Experiment {
                     seed,
                     threshold,
                     algorithm,
+                    algorithm_version,
                     k,
                     k2,
                     sketch_bits,
@@ -184,7 +185,7 @@ impl Experiment {
                     speedup
                 )
                  VALUES (
-                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23
                  )",
                 params![
                     sha,
@@ -194,6 +195,7 @@ impl Experiment {
                     self.config.seed as u32,
                     self.config.threshold,
                     self.config.algorithm,
+                    self.config.algorithm_version(),
                     // We insert 0 instad of null because the handling of NULL in SQL is complicated
                     self.config.k.unwrap_or(0) as u32,
                     self.config.k2.unwrap_or(0) as u32,
@@ -252,6 +254,7 @@ fn create_tables_if_needed(conn: &Connection) {
             seed             INTEGER NOT NULL,
             threshold        REAL NOT NULL,
             algorithm        TEXT NOT NULL,
+            algorithm_version        INTEGER NOT NULL,
             k                INTEGER NOT NULL,
             k2               INTEGER NOT NULL,
             sketch_bits      INTEGER NOT NULL,
@@ -275,7 +278,7 @@ fn create_tables_if_needed(conn: &Connection) {
 
     conn.execute(
         "CREATE VIEW IF NOT EXISTS result_recent AS
-        SELECT sha, code_version, MAX(date) AS date, params_sha, seed, threshold, algorithm, k, k2, sketch_bits, threads, hosts, sketch_epsilon, required_recall, 
+        SELECT sha, code_version, date, params_sha, seed, threshold, algorithm, MAX(algorithm_version) AS algorithm_version, k, k2, sketch_bits, threads, hosts, sketch_epsilon, required_recall, 
                no_dedup, no_verify, repetition_batch, path,
                total_time_ms, output_size, recall, speedup
         FROM result

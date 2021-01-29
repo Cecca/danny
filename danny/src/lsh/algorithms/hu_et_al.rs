@@ -26,6 +26,8 @@ use timely::progress::Timestamp;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
+pub const HU_ET_AL_VERSION: u8 = 1;
+
 pub fn source_hashed_one_round<G, T, D, S, F>(
     scope: &G,
     global_vecs: Arc<Vec<(ElementId, D)>>,

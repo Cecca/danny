@@ -20,6 +20,8 @@ use timely::worker::Worker;
 use timely::Data;
 use timely::ExchangeData;
 
+pub const ALL_2_ALL_VERSION: u8 = 1;
+
 #[cfg(feature = "seq-all-2-all")]
 pub fn sequential<T, F>(thresh: f64, path: &str, sim_fn: F) -> usize
 where
