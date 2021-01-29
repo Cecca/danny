@@ -105,10 +105,14 @@ where
     F: Fn(&D, &D) -> bool + Send + Clone + Copy + Sync + 'static,
 {
     let repetitions = hasher.repetitions();
-    info!(
-        "Starting {} repetitions for subproblem {:?}",
-        repetitions, subproblem_key
-    );
+    // info!(
+    //     "Starting {} repetitions for subproblem {:?}",
+    //     repetitions, subproblem_key
+    // );
+    let mut pl = progress_logger::ProgressLogger::builder()
+        .with_expected_updates(repetitions as u64)
+        .with_items_name("repetitions")
+        .start();
 
     let mut cnt = 0;
 
@@ -176,6 +180,7 @@ where
             }
         }
         let end = Instant::now();
+        pl.update(1u64);
         debug!("Repetition {} ended in {:?}", rep, end - start);
         log_event!(logger, (LogEvent::GeneratedPairs(rep), examined_pairs));
         log_event!(logger, (LogEvent::SketchDiscarded(rep), sketch_discarded));
@@ -184,6 +189,7 @@ where
             (LogEvent::DuplicatesDiscarded(rep), duplicates_discarded)
         );
     }
+    pl.stop();
 
     cnt
 }
@@ -215,6 +221,8 @@ where
 
     let no_dedup = config.no_dedup;
     let no_verify = config.no_verify;
+
+    let worker_index = worker.index();
 
     let result = Rc::new(RefCell::new(0usize));
     let result_read = Rc::clone(&result);
@@ -275,6 +283,11 @@ where
 
                     notificator.for_each(&[input.frontier()], |t, _| {
                         if let Some(subproblems) = subproblems.remove(&t) {
+                            info!(
+                                "Worker {} has {} subproblems",
+                                worker_index,
+                                subproblems.len()
+                            );
                             let vectors = vectors.remove(&t).expect("missing left vectors");
 
                             for (subproblem_key, subproblem) in subproblems {
