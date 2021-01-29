@@ -65,7 +65,11 @@ impl Marker {
 pub struct CartesianKey(pub u8, pub u8);
 
 impl Route for CartesianKey {
+    // Route by mapping the coordinate in diagonal major order
     fn route(&self) -> u64 {
+        // let diagonal = self.1 - self.0;
+        // let diagonal_position = self.1 - diagonal;
+        // let diagonal_lengthV
         self.0 as u64 * 31 + self.1 as u64
     }
 }
@@ -74,4 +78,22 @@ impl CartesianKey {
     pub fn on_diagonal(&self) -> bool {
         self.0 == self.1
     }
+}
+
+#[test]
+fn test_diagonal_order() {
+    let mut keys = Vec::new();
+    let n = 5;
+    for i in 0..n {
+        for j in i..n {
+            let k = CartesianKey(i, j);
+            let r = k.route();
+            keys.push((r, k));
+        }
+    }
+    keys.sort_by_key(|p| p.0);
+    for (r, k) in keys {
+        println!("{:?} -> {}", k, r);
+    }
+    panic!();
 }

@@ -26,7 +26,7 @@ use timely::dataflow::*;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
-pub const ONE_ROUND_VERSION: u8 = 1;
+pub const ONE_ROUND_VERSION: u8 = 2;
 
 fn distribute<G, D>(
     stream: &Stream<G, (ElementId, D)>,
@@ -150,36 +150,28 @@ where
                 }
             });
         } else {
-            // separate the two halves of the subproblems
-            let left: Vec<&(ElementId, TensorPool, V, Marker)> =
-                subproblem.iter().filter(|t| t.3.keep_left()).collect();
-            let right: Vec<&(ElementId, TensorPool, V, Marker)> =
-                subproblem.iter().filter(|t| t.3.keep_right()).collect();
-
-            for rep in 0..repetitions {
-                let mut joiner = Joiner::default();
-                for (k, pool, sketch, _marker) in left.iter() {
-                    joiner.push_left(hasher.hash(pool, rep), (*k, *sketch, pool));
-                }
-                for (k, pool, sketch, _marker) in right.iter() {
-                    joiner.push_right(hasher.hash(pool, rep), (*k, *sketch, pool));
-                }
-
-                joiner.join_map(|_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
-                    examined_pairs += 1;
-                    if sketch_predicate.eval(l_sketch, r_sketch) {
-                        if no_verify || sim_pred(&vectors[lk], &vectors[rk]) {
-                            if no_dedup || !hasher.already_seen(l_pool, r_pool, rep) {
-                                cnt += 1;
-                            } else {
-                                duplicates_discarded += 1;
-                            }
-                        }
-                    } else {
-                        sketch_discarded += 1;
-                    }
-                });
+            let mut joiner = Joiner::default();
+            for (k, pool, sketch, _marker) in subproblem.iter().filter(|t| t.3.keep_left()) {
+                joiner.push_left(hasher.hash(pool, rep), (*k, *sketch, pool));
             }
+            for (k, pool, sketch, _marker) in subproblem.iter().filter(|t| t.3.keep_right()) {
+                joiner.push_right(hasher.hash(pool, rep), (*k, *sketch, pool));
+            }
+
+            joiner.join_map(|_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
+                examined_pairs += 1;
+                if sketch_predicate.eval(l_sketch, r_sketch) {
+                    if no_verify || sim_pred(&vectors[lk], &vectors[rk]) {
+                        if no_dedup || !hasher.already_seen(l_pool, r_pool, rep) {
+                            cnt += 1;
+                        } else {
+                            duplicates_discarded += 1;
+                        }
+                    }
+                } else {
+                    sketch_discarded += 1;
+                }
+            });
         }
         let end = Instant::now();
         pl.update(1u64);
