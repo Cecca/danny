@@ -1,5 +1,4 @@
 use argh::FromArgs;
-
 use rand::rngs::StdRng;
 use rand::RngCore;
 use rand::SeedableRng;
@@ -141,6 +140,7 @@ impl Config {
         sha.input(format!("{}", self.recall));
         sha.input(format!("{}", self.no_verify));
         sha.input(format!("{}", self.no_dedup));
+        sha.input(format!("{:?}", self.balance));
         sha.input(format!("{}", self.repetition_batch));
         sha.input(format!("{}", self.path));
 
