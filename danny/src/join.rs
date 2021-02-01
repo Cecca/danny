@@ -104,7 +104,7 @@ where
                     sizes.sort_unstable_by_key(|x| x.1);
 
                     // Define a threshold for heavy hitters
-                    let threshold = sizes[0].1 * 2;
+                    let threshold = sizes[sizes.len() / 2].1;
                     if worker_index == 0 {
                         info!(
                             "there are {} subproblems, threshold {}",
