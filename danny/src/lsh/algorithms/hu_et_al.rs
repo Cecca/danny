@@ -1,7 +1,7 @@
 use crate::config::*;
 use crate::experiment::Experiment;
 use crate::io::*;
-use crate::join::Join;
+use crate::join::*;
 
 use crate::logging::*;
 use crate::lsh::repetition_stopwatch::*;
@@ -26,7 +26,7 @@ use timely::progress::Timestamp;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
-pub const HU_ET_AL_VERSION: u8 = 1;
+pub const HU_ET_AL_VERSION: u8 = 3;
 
 pub fn source_hashed_one_round<G, T, D, S, F>(
     scope: &G,
@@ -168,30 +168,60 @@ where
         );
 
         hashes
-            .self_join_map_slice(move |(repetition, _hash), values| {
-                let mut cnt = 0usize;
-                let mut total = 0usize;
-                let mut sketch_discarded = 0;
-                let mut duplicate_cnt = 0usize;
-                let start = Instant::now();
+            .self_join_map(
+                Balance::Load,
+                move |((repetition, _hash), subproblem_key), values| {
+                    let mut cnt = 0usize;
+                    let mut total = 0usize;
+                    let mut sketch_discarded = 0;
+                    let mut duplicate_cnt = 0usize;
+                    let start = Instant::now();
 
-                for (i, (_, (_l, l_pool, l_sketch, l))) in values.iter().enumerate() {
-                    for (_, (_r, r_pool, r_sketch, r)) in values[i..].iter() {
-                        total += 1;
-                        if sketch_predicate.eval(l_sketch, r_sketch) {
-                            if no_verify || sim_pred(l, r) {
-                                if no_dedup || !hasher.already_seen(l_pool, r_pool, *repetition) {
-                                    cnt += 1;
+                    if subproblem_key.on_diagonal() {
+                        for (i, (_, (_l, l_pool, l_sketch, l))) in values.iter().enumerate() {
+                            for (_, (_r, r_pool, r_sketch, r)) in values[i..].iter() {
+                                total += 1;
+                                if sketch_predicate.eval(l_sketch, r_sketch) {
+                                    if no_verify || sim_pred(l, r) {
+                                        if no_dedup
+                                            || !hasher.already_seen(l_pool, r_pool, repetition)
+                                        {
+                                            cnt += 1;
+                                        } else {
+                                            duplicate_cnt += 1;
+                                        }
+                                    }
                                 } else {
-                                    duplicate_cnt += 1;
+                                    sketch_discarded += 1;
                                 }
                             }
-                        } else {
-                            sketch_discarded += 1;
+                        }
+                    } else {
+                        for (l_marker, (_l, l_pool, l_sketch, l)) in values.iter() {
+                            if l_marker.keep_left() {
+                                for (r_marker, (_r, r_pool, r_sketch, r)) in values.iter() {
+                                    if r_marker.keep_right() {
+                                        total += 1;
+                                        if sketch_predicate.eval(l_sketch, r_sketch) {
+                                            if no_verify || sim_pred(l, r) {
+                                                if no_dedup
+                                                    || !hasher
+                                                        .already_seen(l_pool, r_pool, repetition)
+                                                {
+                                                    cnt += 1;
+                                                } else {
+                                                    duplicate_cnt += 1;
+                                                }
+                                            }
+                                        } else {
+                                            sketch_discarded += 1;
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
-                }
-                info!(
+                    debug!(
                     "Candidates {}: Emitted {} / Sketch discarded {} / Duplicates {} in {:?} ({})",
                     total,
                     cnt,
@@ -200,17 +230,18 @@ where
                     Instant::now() - start,
                     proc_mem!(),
                 );
-                log_event!(
-                    logger,
-                    (LogEvent::SketchDiscarded(*repetition), sketch_discarded)
-                );
-                log_event!(logger, (LogEvent::GeneratedPairs(*repetition), cnt));
-                log_event!(
-                    logger,
-                    (LogEvent::DuplicatesDiscarded(*repetition), duplicate_cnt)
-                );
-                vec![cnt]
-            })
+                    log_event!(
+                        logger,
+                        (LogEvent::SketchDiscarded(repetition), sketch_discarded)
+                    );
+                    log_event!(logger, (LogEvent::OutputPairs(repetition), cnt));
+                    log_event!(
+                        logger,
+                        (LogEvent::DuplicatesDiscarded(repetition), duplicate_cnt)
+                    );
+                    Some(cnt)
+                },
+            )
             .exchange(|_| 0) // Bring all the counts to the first worker
             .unary(
                 timely::dataflow::channels::pact::Pipeline,

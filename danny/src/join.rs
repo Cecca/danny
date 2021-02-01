@@ -1,15 +1,47 @@
+use crate::cartesian::*;
 use crate::logging::*;
 use crate::operators::*;
+use channels::pact::Pipeline;
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 use timely::dataflow::channels::pact::Exchange as ExchangePact;
+use timely::dataflow::operators::aggregation::Aggregate;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use timely::ExchangeData;
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum Balance {
+    Load,
+    SubproblemSize,
+}
+
+impl std::str::FromStr for Balance {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Load" | "load" => Ok(Self::Load),
+            "SubproblemSize" | "subproblemsize" | "size" => Ok(Self::SubproblemSize),
+            _ => Err(format!("unknown balancing {}", s)),
+        }
+    }
+}
+
+impl Balance {
+    fn size(&self, x: u64) -> u64 {
+        match self {
+            Self::Load => x,
+            Self::SubproblemSize => x * (x + 1) / 2,
+        }
+    }
+}
+
 pub trait Join<G, K, V>
 where
     G: Scope,
-    K: KeyData + Ord,
+    K: KeyData + Ord + std::fmt::Debug,
     V: ExchangeData,
 {
     fn self_join_map_slice<F, I, O>(&self, f: F) -> Stream<G, O>
@@ -17,15 +49,205 @@ where
         I: IntoIterator<Item = O>,
         O: ExchangeData,
         F: FnMut(&K, &[(K, V)]) -> I + 'static;
+
+    fn self_join_map<F, I, O>(&self, balance: Balance, f: F) -> Stream<G, O>
+    where
+        I: IntoIterator<Item = O>,
+        O: ExchangeData,
+        F: FnMut((K, CartesianKey), &[(Marker, V)]) -> I + 'static;
 }
 
 impl<G, K, V> Join<G, K, V> for Stream<G, (K, V)>
 where
     G: Scope,
     G::Timestamp: ToStepId,
-    K: KeyData + Ord,
+    K: KeyData + Ord + std::fmt::Debug,
     V: ExchangeData,
 {
+    fn self_join_map<F, I, O>(&self, balance: Balance, mut f: F) -> Stream<G, O>
+    where
+        I: IntoIterator<Item = O>,
+        O: ExchangeData,
+        F: FnMut((K, CartesianKey), &[(Marker, V)]) -> I + 'static,
+    {
+        let peers = self.scope().peers();
+        let worker_index = self.scope().index();
+        let logger = self.scope().danny_logger();
+        let stash = Rc::new(RefCell::new(HashMap::new()));
+        let stash1 = Rc::clone(&stash);
+        let mut bucket_stash: HashMap<G::Timestamp, HashMap<(K, CartesianKey), Vec<(Marker, V)>>> =
+            HashMap::new();
+        let mut histograms: HashMap<G::Timestamp, HashMap<K, u32>> = HashMap::new();
+        let mut subproblem_sizes: HashMap<G::Timestamp, Vec<(K, u32)>> = HashMap::new();
+
+        self.unary_notify(
+            Pipeline,
+            "count subproblem size",
+            None,
+            move |input, output, notificator| {
+                notificator.for_each(|t, _, _| {
+                    if let Some(histogram) = histograms.remove(&t) {
+                        let mut session = output.session(&t);
+                        session.give_iterator(histogram.into_iter());
+                    }
+                });
+
+                input.for_each(|t, data| {
+                    let data = data.replace(Vec::new());
+                    for (k, v) in data {
+                        stash
+                            .borrow_mut()
+                            .entry(t.time().clone())
+                            .or_insert_with(Vec::new)
+                            .push((k, v));
+                        *histograms
+                            .entry(t.time().clone())
+                            .or_insert_with(HashMap::new)
+                            .entry(k)
+                            .or_insert(0u32) += 1;
+                    }
+                    notificator.notify_at(t.retain());
+                });
+            },
+        )
+        // Now accumulate the counters into the first worker to compute the subproblem size
+        .exchange(|_k| 0)
+        .aggregate(
+            |_key, val, agg| {
+                *agg += val;
+            },
+            |key, agg: u32| (key, agg),
+            |k| k.route() as u64,
+        )
+        .broadcast()
+        .unary_notify(
+            Pipeline,
+            "split subproblems",
+            None,
+            move |input, output, notificator| {
+                notificator.for_each(|t, _, _| {
+                    let mut sizes = subproblem_sizes.remove(&t).expect("missing histograms!");
+
+                    // Sort by decreasing count
+                    sizes.sort_unstable_by_key(|x| std::cmp::Reverse(x.1));
+                    let total_pairs = sizes.iter().map(|p| balance.size(p.1 as u64)).sum::<u64>();
+
+                    // Split subproblems that are too big
+                    let threshold = (total_pairs as f64 / peers as f64).ceil() as u64;
+                    let mut subproblems: Vec<(K, CartesianKey, Marker, u64)> = sizes
+                        .into_iter()
+                        .flat_map(|(key, size)| {
+                            let groups = if size as u64 > threshold {
+                                (size as f64 / threshold as f64).ceil() as u8
+                            } else {
+                                1
+                            };
+                            let subproblem_size = balance.size(size as u64 / groups as u64);
+                            let cartesian = SelfCartesian::with_groups(groups);
+                            cartesian
+                                .keys_for(key)
+                                .map(move |(sk, m)| (key, sk, m, subproblem_size))
+                        })
+                        .collect();
+                    subproblems.sort_unstable_by_key(|x| std::cmp::Reverse(x.3));
+                    let n_subproblems = subproblems.len();
+
+                    // Allocate subproblems to processors
+                    let mut processor_allocations = vec![Vec::new(); peers];
+                    info!("threshold {}", threshold);
+                    let mut i = 0;
+                    let mut cur = 0u64;
+                    for (sub_idx, (key, subproblem_key, marker, subproblem_size)) in
+                        subproblems.into_iter().enumerate()
+                    {
+                        if cur > threshold {
+                            cur = 0;
+                            i += 1;
+                        }
+                        if i >= processor_allocations.len() {
+                            panic!(
+                                "number or processors ({}) exceeded: still {} to go",
+                                peers,
+                                n_subproblems - sub_idx
+                            );
+                        }
+                        processor_allocations[i].push((key, subproblem_key, marker));
+                        cur += subproblem_size;
+                    }
+
+                    let mut subproblem_allocations = HashMap::new();
+                    for (p, allocs) in processor_allocations.into_iter().enumerate() {
+                        for (key, subproblem_key, marker) in allocs {
+                            subproblem_allocations
+                                .entry(key)
+                                .or_insert_with(Vec::new)
+                                .push((p as u64, subproblem_key, marker));
+                        }
+                    }
+
+                    // Get the keys and output them to the appropriate processor
+                    if let Some(pairs) = stash1.borrow_mut().remove(&t.time()) {
+                        let mut session = output.session(&t);
+                        for (key, payload) in pairs {
+                            for &(p, subproblem_key, marker) in subproblem_allocations
+                                .get(&key)
+                                .expect("missing key!")
+                                .iter()
+                            {
+                                session.give(((p, key, subproblem_key), (marker, payload.clone())));
+                            }
+                        }
+                    }
+                });
+
+                input.for_each(|t, data| {
+                    let data = data.replace(Vec::new());
+                    subproblem_sizes
+                        .entry(t.time().clone())
+                        .or_insert_with(Vec::new)
+                        .extend(data.into_iter());
+                    notificator.notify_at(t.retain());
+                })
+            },
+        )
+        .unary_notify(
+            ExchangePact::new(|(key, _payload): &((u64, K, CartesianKey), (Marker, V))| key.0),
+            "bucket",
+            None,
+            move |input, output, notificator| {
+                notificator.for_each(|t, _, _| {
+                    if let Some(subproblems) = bucket_stash.remove(&t) {
+                        info!(
+                            "Worker {} has {} subproblems",
+                            worker_index,
+                            subproblems.len()
+                        );
+                        let mut session = output.session(&t);
+                        for (key, subproblem) in subproblems {
+                            let res = f(key, &subproblem);
+                            session.give_iterator(res.into_iter());
+                        }
+                    }
+                });
+
+                input.for_each(|t, data| {
+                    log_event!(logger, (LogEvent::Load(t.time().to_step_id()), data.len()));
+                    let data = data.replace(Vec::new());
+                    let stash = bucket_stash
+                        .entry(t.time().clone())
+                        .or_insert_with(HashMap::new);
+                    for ((_processor, k, subproblem), payload) in data {
+                        stash
+                            .entry((k, subproblem))
+                            .or_insert_with(Vec::new)
+                            .push(payload);
+                    }
+                    notificator.notify_at(t.retain());
+                });
+            },
+        )
+    }
+
     fn self_join_map_slice<F, I, O>(&self, mut f: F) -> Stream<G, O>
     where
         G: Scope,

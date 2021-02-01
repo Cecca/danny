@@ -123,6 +123,13 @@ impl Route for u64 {
     }
 }
 
+impl Route for u8 {
+    #[inline(always)]
+    fn route(&self) -> u64 {
+        *self as u64
+    }
+}
+
 impl Route for Vec<bool> {
     #[inline(always)]
     #[allow(clippy::cast_lossless)]
@@ -195,6 +202,7 @@ impl<R: Route> Route for (usize, R) {
             .wrapping_add(u64::from(self.1.route()))
     }
 }
+
 
 #[derive(Clone, Copy, Debug)]
 pub enum MatrixDirection {

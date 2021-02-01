@@ -1,4 +1,4 @@
-use danny_base::types::ElementId;
+use crate::operators::Route;
 
 /// Utilities to compute the (self) cartesian product of a stream.
 ///
@@ -28,8 +28,8 @@ impl SelfCartesian {
         }
     }
 
-    pub fn keys_for(&self, k: ElementId) -> impl Iterator<Item = (CartesianKey, Marker)> {
-        let diag_id = (k.0 % self.groups as u32) as u8;
+    pub fn keys_for<R: Route>(&self, k: R) -> impl Iterator<Item = (CartesianKey, Marker)> {
+        let diag_id = (k.route() % self.groups as u64) as u8;
         let diag = Some((CartesianKey(diag_id, diag_id), Marker::Both));
         let rows = (0..diag_id).map(move |i| (CartesianKey(i, diag_id), Marker::Left));
         let cols =
@@ -90,6 +90,29 @@ fn test_for_peers() {
     let cartesian = SelfCartesian::for_peers(p);
     assert_eq!(cartesian.num_cells, 45);
     assert_eq!(cartesian.groups, 9);
+}
+
+#[test]
+fn test_with_groups() {
+    let cartesian = SelfCartesian::with_groups(2);
+    assert_eq!(cartesian.num_cells, 3);
+    assert_eq!(cartesian.groups, 2);
+}
+
+#[test]
+fn test_keys_for() {
+    use Marker::*;
+    let cartesian = SelfCartesian::with_groups(2);
+    let k0: Vec<(CartesianKey, Marker)> = cartesian.keys_for(0).collect();
+    assert_eq!(
+        k0,
+        vec![(CartesianKey(0, 0), Both), (CartesianKey(0, 1), Right)]
+    );
+    let k1: Vec<(CartesianKey, Marker)> = cartesian.keys_for(1).collect();
+    assert_eq!(
+        k1,
+        vec![(CartesianKey(1, 1), Both), (CartesianKey(0, 1), Left)]
+    );
 }
 
 #[test]

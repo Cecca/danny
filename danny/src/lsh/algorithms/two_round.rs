@@ -1,32 +1,29 @@
+use crate::cartesian::*;
 use crate::config::*;
 use crate::experiment::Experiment;
 use crate::io::*;
 use crate::join::*;
-use danny_base::types::ElementId;
-use timely::communication::Allocator;
-use timely::worker::Worker;
-
 use crate::logging::*;
 use crate::lsh::repetition_stopwatch::RepetitionStopWatch;
 use crate::operators::*;
 use danny_base::lsh::*;
 use danny_base::sketch::*;
+use danny_base::types::ElementId;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
-use std::clone::Clone;
 use std::collections::HashMap;
 use std::fmt::Debug;
-
 use std::sync::Arc;
 use std::time::Instant;
-
+use timely::communication::Allocator;
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use timely::progress::Timestamp;
+use timely::worker::Worker;
 use timely::ExchangeData;
 
-pub const TWO_ROUND_VERSION: u8 = 2;
+pub const TWO_ROUND_VERSION: u8 = 5;
 
 #[allow(clippy::too_many_arguments)]
 pub fn two_round_lsh<D, F, H, B, R, S, V>(
@@ -106,71 +103,108 @@ where
             probe.clone(),
             repetition_batch,
         );
+
         info!(
             "Starting {} internal repetitions",
             hasher_intern.repetitions()
         );
         hashes
-            .self_join_map_slice(move |(outer_repetition, _hash), vals| {
-                let mut cnt = 0;
-                let mut total = 0;
-                let mut sketch_cnt = 0;
-                let mut duplicate_cnt = 0;
-                let repetitions = hasher_intern.repetitions();
-                let mut joiner = SelfJoiner::default();
-                let all_to_all = vals.len() * vals.len();
-                let start = Instant::now();
-                for rep in 0..repetitions {
-                    joiner.clear();
-                    for (_, (outer_pool, inner_pool, s, v)) in vals.iter() {
-                        joiner.push(
-                            hasher_intern.hash(inner_pool, rep),
-                            (s, v, outer_pool, inner_pool),
+            .self_join_map(
+                Balance::Load,
+                move |((outer_repetition, _h), subproblem_key), subproblem| {
+                    let mut self_joiner = SelfJoiner::default();
+                    let mut joiner = Joiner::default();
+                    let mut cnt = 0;
+                    let repetitions = hasher_intern.repetitions();
+                    for rep in 0..repetitions {
+                        let mut total = 0;
+                        let mut sketch_cnt = 0;
+                        let mut duplicate_cnt = 0;
+                        if subproblem_key.on_diagonal() {
+                            // let mut joiner = SelfJoiner::default();
+                            self_joiner.clear();
+                            for (_marker, (outer_pool, inner_pool, s, v)) in subproblem.iter() {
+                                self_joiner.push(
+                                    hasher_intern.hash(inner_pool, rep),
+                                    (s, v, outer_pool, inner_pool),
+                                );
+                            }
+                            self_joiner.join_map(|_h, l, r| {
+                                total += 1;
+                                if sketch_pred.eval(l.0, r.0) {
+                                    if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
+                                        if no_dedup
+                                            || (!hasher_intern.already_seen(&l.3, &r.3, rep)
+                                                && !hasher.already_seen(
+                                                    &l.2,
+                                                    &r.2,
+                                                    outer_repetition,
+                                                ))
+                                        {
+                                            cnt += 1;
+                                        } else {
+                                            duplicate_cnt += 1;
+                                        }
+                                    }
+                                } else {
+                                    sketch_cnt += 1;
+                                }
+                            })
+                        } else {
+                            // let mut joiner = Joiner::default();
+                            joiner.clear();
+                            for (marker, (outer_pool, inner_pool, s, v)) in subproblem.iter() {
+                                match marker {
+                                    Marker::Left => joiner.push_left(
+                                        hasher_intern.hash(inner_pool, rep),
+                                        (s, v, outer_pool, inner_pool),
+                                    ),
+                                    Marker::Right => joiner.push_right(
+                                        hasher_intern.hash(inner_pool, rep),
+                                        (s, v, outer_pool, inner_pool),
+                                    ),
+                                    Marker::Both => panic!("cannot get a both here"),
+                                }
+                            }
+                            joiner.join_map(|_h, l, r| {
+                                total += 1;
+                                if sketch_pred.eval(l.0, r.0) {
+                                    if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
+                                        if no_dedup
+                                            || (!hasher_intern.already_seen(&l.3, &r.3, rep)
+                                                && !hasher.already_seen(
+                                                    &l.2,
+                                                    &r.2,
+                                                    outer_repetition,
+                                                ))
+                                        {
+                                            cnt += 1;
+                                        } else {
+                                            duplicate_cnt += 1;
+                                        }
+                                    }
+                                } else {
+                                    sketch_cnt += 1;
+                                }
+                            })
+                        }
+                        log_event!(logger, (LogEvent::OutputPairs(outer_repetition), cnt));
+                        log_event!(
+                            logger,
+                            (LogEvent::SketchDiscarded(outer_repetition), sketch_cnt)
+                        );
+                        log_event!(
+                            logger,
+                            (
+                                LogEvent::DuplicatesDiscarded(outer_repetition),
+                                duplicate_cnt
+                            )
                         );
                     }
 
-                    joiner.join_map(|_hash, l, r| {
-                        total += 1;
-                        if sketch_pred.eval(l.0, r.0) {
-                            if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
-                                if no_dedup
-                                    || (!hasher_intern.already_seen(&l.3, &r.3, rep)
-                                        && !hasher.already_seen(&l.2, &r.2, *outer_repetition))
-                                {
-                                    cnt += 1;
-                                } else {
-                                    duplicate_cnt += 1;
-                                }
-                            }
-                        } else {
-                            sketch_cnt += 1;
-                        }
-                    });
-                }
-                info!(
-                    "Candidates {} ({}): Emitted {} / Discarded {} / Duplicates {} in {:?} ({})",
-                    total,
-                    all_to_all,
-                    cnt,
-                    sketch_cnt,
-                    duplicate_cnt,
-                    Instant::now() - start,
-                    proc_mem!(),
-                );
-                log_event!(logger, (LogEvent::GeneratedPairs(*outer_repetition), cnt));
-                log_event!(
-                    logger,
-                    (LogEvent::SketchDiscarded(*outer_repetition), sketch_cnt)
-                );
-                log_event!(
-                    logger,
-                    (
-                        LogEvent::DuplicatesDiscarded(*outer_repetition),
-                        duplicate_cnt
-                    )
-                );
-                vec![cnt]
-            })
+                    Some(cnt)
+                },
+            )
             .exchange(|_| 0) // Bring all the counts to the first worker
             .unary(
                 timely::dataflow::channels::pact::Pipeline,
@@ -202,7 +236,7 @@ where
     }
 }
 
-pub fn source_hashed_two_round<G, T, D, F, S>(
+fn source_hashed_two_round<G, T, D, F, S>(
     scope: &G,
     vecs: Arc<Vec<(ElementId, D)>>,
     sketcher: Arc<S>,
@@ -213,6 +247,7 @@ pub fn source_hashed_two_round<G, T, D, F, S>(
 ) -> Stream<
     G,
     (
+        // (repetition, hash, subproblem split)
         (usize, u32),
         (TensorPool, TensorPool, S::Output, (ElementId, D)),
     ),

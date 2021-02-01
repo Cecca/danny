@@ -332,7 +332,7 @@ pub enum LogEvent {
     SketchDiscarded(usize),
     DistinctPairs(usize),
     DuplicatesDiscarded(usize),
-    GeneratedPairs(usize),
+    OutputPairs(usize),
     /// The number of received hashes during bucketing. This is a proxy for the load measure
     ReceivedHashes(usize),
     // The hashes generated in each iteration
@@ -347,7 +347,7 @@ impl LogEvent {
             SketchDiscarded(_) => String::from("SketchDiscarded"),
             DistinctPairs(_) => String::from("DistinctPairs"),
             DuplicatesDiscarded(_) => String::from("DuplicatesDiscarded"),
-            GeneratedPairs(_) => String::from("GeneratedPairs"),
+            OutputPairs(_) => String::from("OutputPairs"),
             ReceivedHashes(_) => String::from("ReceivedHashes"),
             GeneratedHashes(_) => String::from("GeneratedHashes"),
         }
@@ -360,7 +360,7 @@ impl LogEvent {
             SketchDiscarded(step) => *step as u32,
             DistinctPairs(step) => *step as u32,
             DuplicatesDiscarded(step) => *step as u32,
-            GeneratedPairs(step) => *step as u32,
+            OutputPairs(step) => *step as u32,
             ReceivedHashes(step) => *step as u32,
             GeneratedHashes(step) => *step as u32,
         }

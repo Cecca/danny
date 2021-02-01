@@ -185,10 +185,12 @@ impl Experiment {
                     total_time_ms,
                     output_size,
                     recall,
-                    speedup
+                    speedup,
+
+                    balance
                 )
                  VALUES (
-                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24
                  )",
                 params![
                     sha,
@@ -214,7 +216,8 @@ impl Experiment {
                     self.total_time_ms,
                     self.output_size,
                     recall,
-                    speedup
+                    speedup,
+                    format!("{:?}", self.config.balance)
                 ],
             )
             .expect("error inserting into main table");
@@ -266,6 +269,11 @@ fn db_migrate(conn: &Connection) {
         info!("Applying migration v2");
         conn.execute_batch(include_str!("migrations/v2.sql"))
             .expect("error applying version 2");
+    }
+    if version < 3 {
+        info!("Applying migration v3");
+        conn.execute_batch(include_str!("migrations/v3.sql"))
+            .expect("error applying version 3");
     }
 
     info!("Database migration completed!");
