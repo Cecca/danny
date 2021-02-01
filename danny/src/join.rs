@@ -14,7 +14,7 @@ use timely::ExchangeData;
 pub trait Join<G, K, V>
 where
     G: Scope,
-    K: KeyData + Ord,
+    K: KeyData + Ord + std::fmt::Debug,
     V: ExchangeData,
 {
     fn self_join_map_slice<F, I, O>(&self, f: F) -> Stream<G, O>
@@ -34,7 +34,7 @@ impl<G, K, V> Join<G, K, V> for Stream<G, (K, V)>
 where
     G: Scope,
     G::Timestamp: ToStepId,
-    K: KeyData + Ord,
+    K: KeyData + Ord + std::fmt::Debug,
     V: ExchangeData,
 {
     fn self_join_map<F, I, O>(&self, mut f: F) -> Stream<G, O>
@@ -105,6 +105,17 @@ where
 
                     // Define a threshold for heavy hitters
                     let threshold = sizes[sizes.len() / 2].1;
+                    if worker_index == 0 {
+                        info!(
+                            "there are {} subproblems, threshold {}",
+                            sizes.len(),
+                            threshold
+                        );
+                        info!(
+                            "sizes: {:?}",
+                            sizes.iter().map(|p| p.1).collect::<Vec<u32>>()
+                        );
+                    }
                     let heavy_hitters: HashMap<K, u32> =
                         sizes.into_iter().filter(|x| x.1 >= threshold).collect();
 
@@ -113,13 +124,13 @@ where
                         let mut session = output.session(&t);
                         for (key, payload) in pairs {
                             let groups = if let Some(count) = heavy_hitters.get(&key) {
-                                (count / threshold) as u8
+                                (*count as f64 / threshold as f64).ceil() as u8
                             } else {
                                 1
                             };
                             let cartesian = SelfCartesian::with_groups(groups);
                             let iter = cartesian.keys_for(key).map(|(subproblem_key, marker)| {
-                                // order of the subproblem in diagonal-major order
+                                // order the subproblems in diagonal-major order
                                 let dmaj = cartesian.diagonal_major(subproblem_key);
                                 ((key, subproblem_key, dmaj), (marker, payload.clone()))
                             });

@@ -93,6 +93,29 @@ fn test_for_peers() {
 }
 
 #[test]
+fn test_with_groups() {
+    let cartesian = SelfCartesian::with_groups(2);
+    assert_eq!(cartesian.num_cells, 3);
+    assert_eq!(cartesian.groups, 2);
+}
+
+#[test]
+fn test_keys_for() {
+    use Marker::*;
+    let cartesian = SelfCartesian::with_groups(2);
+    let k0: Vec<(CartesianKey, Marker)> = cartesian.keys_for(0).collect();
+    assert_eq!(
+        k0,
+        vec![(CartesianKey(0, 0), Both), (CartesianKey(0, 1), Right)]
+    );
+    let k1: Vec<(CartesianKey, Marker)> = cartesian.keys_for(1).collect();
+    assert_eq!(
+        k1,
+        vec![(CartesianKey(1, 1), Both), (CartesianKey(0, 1), Left)]
+    );
+}
+
+#[test]
 fn test_diagonal_order() {
     let mut keys = Vec::new();
     let n = 5;
