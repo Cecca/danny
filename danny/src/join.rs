@@ -43,6 +43,7 @@ where
         O: ExchangeData,
         F: FnMut((K, CartesianKey), &[(Marker, V)]) -> I + 'static,
     {
+        let peers = self.scope().peers();
         let worker_index = self.scope().index();
         let logger = self.scope().danny_logger();
         let stash = Rc::new(RefCell::new(HashMap::new()));
@@ -100,41 +101,67 @@ where
                 notificator.for_each(|t, _, _| {
                     let mut sizes = subproblem_sizes.remove(&t).expect("missing histograms!");
 
-                    // Sort by increasing count
-                    sizes.sort_unstable_by_key(|x| x.1);
+                    let subproblem_pairs = |size: u32| (size + 1) * size / 2;
 
-                    // Define a threshold for heavy hitters
-                    let threshold = sizes[sizes.len() / 2].1;
-                    if worker_index == 0 {
-                        info!(
-                            "there are {} subproblems, threshold {}",
-                            sizes.len(),
-                            threshold
-                        );
-                        info!(
-                            "sizes: {:?}",
-                            sizes.iter().map(|p| p.1).collect::<Vec<u32>>()
-                        );
-                    }
-                    let heavy_hitters: HashMap<K, u32> =
-                        sizes.into_iter().filter(|x| x.1 >= threshold).collect();
+                    // Sort by decreasing count
+                    sizes.sort_unstable_by_key(|x| std::cmp::Reverse(x.1));
+                    let total_pairs = sizes.iter().map(|p| subproblem_pairs(p.1)).sum::<u32>();
 
-                    // Get the hashes and output them, splitting the subproblem if needed
-                    if let Some(pairs) = stash1.borrow_mut().remove(&t.time()) {
-                        let mut session = output.session(&t);
-                        for (key, payload) in pairs {
-                            let groups = if let Some(count) = heavy_hitters.get(&key) {
-                                (*count as f64 / threshold as f64).ceil() as u8
+                    // Split subproblems that are too big
+                    let threshold = total_pairs / peers as u32;
+                    let mut subproblems: Vec<(K, CartesianKey, Marker, u32)> = sizes
+                        .into_iter()
+                        .flat_map(|(key, size)| {
+                            let groups = if size > threshold {
+                                (size as f64 / threshold as f64).ceil() as u8
                             } else {
                                 1
                             };
+                            let subproblem_size = subproblem_pairs(size / groups as u32);
                             let cartesian = SelfCartesian::with_groups(groups);
-                            let iter = cartesian.keys_for(key).map(|(subproblem_key, marker)| {
-                                // order the subproblems in diagonal-major order
-                                let dmaj = cartesian.diagonal_major(subproblem_key);
-                                ((key, subproblem_key, dmaj), (marker, payload.clone()))
-                            });
-                            session.give_iterator(iter);
+                            cartesian
+                                .keys_for(key)
+                                .map(move |(sk, m)| (key, sk, m, subproblem_size))
+                        })
+                        .collect();
+                    subproblems.sort_unstable_by_key(|x| std::cmp::Reverse(x.3));
+
+                    // Allocate subproblems to processors
+                    let mut processor_allocations = vec![Vec::new(); peers];
+                    info!("threshold {}", threshold);
+                    let mut i = 0;
+                    let mut cur = 0;
+                    for (key, subproblem_key, marker, subproblem_size) in subproblems {
+                        if cur > threshold {
+                            cur = 0;
+                            i += 1;
+                        }
+                        processor_allocations[i].push((key, subproblem_key, marker));
+                        cur += subproblem_size;
+                    }
+                    info!("allocations: {:?}", processor_allocations);
+
+                    let mut subproblem_allocations = HashMap::new();
+                    for (p, allocs) in processor_allocations.into_iter().enumerate() {
+                        for (key, subproblem_key, marker) in allocs {
+                            subproblem_allocations
+                                .entry(key)
+                                .or_insert_with(Vec::new)
+                                .push((p as u64, subproblem_key, marker));
+                        }
+                    }
+
+                    // Get the keys and output them to the appropriate processor
+                    if let Some(pairs) = stash1.borrow_mut().remove(&t.time()) {
+                        let mut session = output.session(&t);
+                        for (key, payload) in pairs {
+                            for &(p, subproblem_key, marker) in subproblem_allocations
+                                .get(&key)
+                                .expect("missing key!")
+                                .iter()
+                            {
+                                session.give(((p, key, subproblem_key), (marker, payload.clone())));
+                            }
                         }
                     }
                 });
@@ -150,15 +177,7 @@ where
             },
         )
         .unary_notify(
-            ExchangePact::new(|(key, _payload): &((K, CartesianKey, u64), (Marker, V))| {
-                if key.1 == CartesianKey(0, 0) {
-                    // leave it where it was already routed
-                    key.0.route()
-                } else {
-                    // shuffle it somewhere else
-                    key.0.route() + 31 * key.2
-                }
-            }),
+            ExchangePact::new(|(key, _payload): &((u64, K, CartesianKey), (Marker, V))| key.0),
             "bucket",
             None,
             move |input, output, notificator| {
@@ -183,7 +202,7 @@ where
                     let stash = bucket_stash
                         .entry(t.time().clone())
                         .or_insert_with(HashMap::new);
-                    for ((k, subproblem, _), payload) in data {
+                    for ((_processor, k, subproblem), payload) in data {
                         stash
                             .entry((k, subproblem))
                             .or_insert_with(Vec::new)
