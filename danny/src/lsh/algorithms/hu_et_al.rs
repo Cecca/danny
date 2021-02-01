@@ -234,7 +234,7 @@ where
                         logger,
                         (LogEvent::SketchDiscarded(repetition), sketch_discarded)
                     );
-                    log_event!(logger, (LogEvent::GeneratedPairs(repetition), cnt));
+                    log_event!(logger, (LogEvent::OutputPairs(repetition), cnt));
                     log_event!(
                         logger,
                         (LogEvent::DuplicatesDiscarded(repetition), duplicate_cnt)

@@ -188,7 +188,7 @@ where
                                 }
                             })
                         }
-                        log_event!(logger, (LogEvent::GeneratedPairs(outer_repetition), cnt));
+                        log_event!(logger, (LogEvent::OutputPairs(outer_repetition), cnt));
                         log_event!(
                             logger,
                             (LogEvent::SketchDiscarded(outer_repetition), sketch_cnt)
