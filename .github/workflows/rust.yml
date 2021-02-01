@@ -29,7 +29,7 @@ jobs:
     - name: Build dataset
       run: |
         cd datasets/
-        DANNY_DATA_DIR=$(pwd) DANNY_MINIONS=localhost python prepare.py random
+        DANNY_DATA_DIR=$(pwd) DANNY_MINIONS=localhost python prepare.py RandomAngular
     - name: Run algorithms
       run: |
         danny --threshold 0.5 --algorithm all-2-all experiments/random.bin
