@@ -152,7 +152,6 @@ where
                         processor_allocations[i].push((key, subproblem_key, marker));
                         cur += subproblem_size;
                     }
-                    info!("allocations: {:?}", processor_allocations);
 
                     let mut subproblem_allocations = HashMap::new();
                     for (p, allocs) in processor_allocations.into_iter().enumerate() {
