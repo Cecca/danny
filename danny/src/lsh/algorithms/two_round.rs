@@ -23,7 +23,7 @@ use timely::progress::Timestamp;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
-pub const TWO_ROUND_VERSION: u8 = 4;
+pub const TWO_ROUND_VERSION: u8 = 5;
 
 #[allow(clippy::too_many_arguments)]
 pub fn two_round_lsh<D, F, H, B, R, S, V>(
@@ -110,6 +110,7 @@ where
         );
         hashes
             .self_join_map(
+                Balance::Load,
                 move |((outer_repetition, _h), subproblem_key), subproblem| {
                     let mut self_joiner = SelfJoiner::default();
                     let mut joiner = Joiner::default();

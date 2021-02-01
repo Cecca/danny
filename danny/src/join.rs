@@ -11,6 +11,20 @@ use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use timely::ExchangeData;
 
+pub enum Balance {
+    Load,
+    SubproblemSize,
+}
+
+impl Balance {
+    fn size(&self, x: u64) -> u64 {
+        match self {
+            Self::Load => x,
+            Self::SubproblemSize => x * (x + 1) / 2,
+        }
+    }
+}
+
 pub trait Join<G, K, V>
 where
     G: Scope,
@@ -23,7 +37,7 @@ where
         O: ExchangeData,
         F: FnMut(&K, &[(K, V)]) -> I + 'static;
 
-    fn self_join_map<F, I, O>(&self, f: F) -> Stream<G, O>
+    fn self_join_map<F, I, O>(&self, balance: Balance, f: F) -> Stream<G, O>
     where
         I: IntoIterator<Item = O>,
         O: ExchangeData,
@@ -37,7 +51,7 @@ where
     K: KeyData + Ord + std::fmt::Debug,
     V: ExchangeData,
 {
-    fn self_join_map<F, I, O>(&self, mut f: F) -> Stream<G, O>
+    fn self_join_map<F, I, O>(&self, balance: Balance, mut f: F) -> Stream<G, O>
     where
         I: IntoIterator<Item = O>,
         O: ExchangeData,
@@ -101,14 +115,9 @@ where
                 notificator.for_each(|t, _, _| {
                     let mut sizes = subproblem_sizes.remove(&t).expect("missing histograms!");
 
-                    let subproblem_pairs = |size: u64| (size + 1) * size / 2;
-
                     // Sort by decreasing count
                     sizes.sort_unstable_by_key(|x| std::cmp::Reverse(x.1));
-                    let total_pairs = sizes
-                        .iter()
-                        .map(|p| subproblem_pairs(p.1 as u64))
-                        .sum::<u64>();
+                    let total_pairs = sizes.iter().map(|p| balance.size(p.1 as u64)).sum::<u64>();
 
                     // Split subproblems that are too big
                     let threshold = (total_pairs as f64 / peers as f64).ceil() as u64;
@@ -120,7 +129,7 @@ where
                             } else {
                                 1
                             };
-                            let subproblem_size = subproblem_pairs(size as u64 / groups as u64);
+                            let subproblem_size = balance.size(size as u64 / groups as u64);
                             let cartesian = SelfCartesian::with_groups(groups);
                             cartesian
                                 .keys_for(key)
