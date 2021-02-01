@@ -108,7 +108,7 @@ where
                     let total_pairs = sizes.iter().map(|p| subproblem_pairs(p.1)).sum::<u32>();
 
                     // Split subproblems that are too big
-                    let threshold = total_pairs / peers as u32;
+                    let threshold = (total_pairs as f64 / peers as f64).ceil() as u32;
                     let mut subproblems: Vec<(K, CartesianKey, Marker, u32)> = sizes
                         .into_iter()
                         .flat_map(|(key, size)| {
