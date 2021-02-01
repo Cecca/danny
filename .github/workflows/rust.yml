@@ -32,9 +32,9 @@ jobs:
         DANNY_DATA_DIR=$(pwd) DANNY_MINIONS=localhost python prepare.py RandomAngular
     - name: Run algorithms
       run: |
-        danny --threshold 0.5 --algorithm all-2-all experiments/random.bin
-        danny --threshold 0.5 --algorithm hu-et-al --k 2 experiments/random.bin 
-        danny --threshold 0.5 --algorithm one-round-lsh --k 2 experiments/random.bin 
-        danny --threshold 0.5 --algorithm two-round-lsh --k 2 --k2 2 experiments/random.bin 
+        danny --threshold 0.5 --algorithm all-2-all datasets/random.bin
+        danny --threshold 0.5 --algorithm hu-et-al --k 2 datasets/random.bin 
+        danny --threshold 0.5 --algorithm one-round-lsh --k 2 datasets/random.bin 
+        danny --threshold 0.5 --algorithm two-round-lsh --k 2 --k2 2 datasets/random.bin 
     - name: Run tests
       run: cargo +nightly test --verbose
