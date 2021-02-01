@@ -201,7 +201,7 @@ case $1 in
     ;;
 
   best)
-    best
+    search_best
     ;;
 
   recall)
