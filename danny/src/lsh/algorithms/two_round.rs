@@ -6,11 +6,9 @@ use crate::join::*;
 use crate::logging::*;
 use crate::lsh::repetition_stopwatch::RepetitionStopWatch;
 use crate::operators::*;
-use channels::pact;
 use danny_base::lsh::*;
 use danny_base::sketch::*;
 use danny_base::types::ElementId;
-use pact::Pipeline;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
 use std::collections::HashMap;
@@ -18,7 +16,6 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Instant;
 use timely::communication::Allocator;
-use timely::dataflow::operators::aggregation::Aggregate;
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
@@ -26,7 +23,7 @@ use timely::progress::Timestamp;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
-pub const TWO_ROUND_VERSION: u8 = 2;
+pub const TWO_ROUND_VERSION: u8 = 3;
 
 #[allow(clippy::too_many_arguments)]
 pub fn two_round_lsh<D, F, H, B, R, S, V>(
@@ -112,101 +109,101 @@ where
             hasher_intern.repetitions()
         );
         hashes
-            .self_join_map_slice(move |(outer_repetition, _hash, subproblem_key), vals| {
-                let mut cnt = 0;
-                let mut total = 0;
-                let mut sketch_cnt = 0;
-                let mut duplicate_cnt = 0;
-                let repetitions = hasher_intern.repetitions();
-                let mut joiner = SelfJoiner::default();
-                let all_to_all = vals.len() * vals.len();
-                let start = Instant::now();
-                for rep in 0..repetitions {
-                    joiner.clear();
-                    for (_, (marker, outer_pool, inner_pool, s, v)) in vals.iter() {
-                        joiner.push(
-                            hasher_intern.hash(inner_pool, rep),
-                            (s, v, outer_pool, inner_pool, marker),
+            .self_join_map(
+                move |((outer_repetition, _h), subproblem_key), subproblem| {
+                    let mut self_joiner = SelfJoiner::default();
+                    let mut joiner = Joiner::default();
+                    let mut cnt = 0;
+                    let repetitions = hasher_intern.repetitions();
+                    for rep in 0..repetitions {
+                        let mut total = 0;
+                        let mut sketch_cnt = 0;
+                        let mut duplicate_cnt = 0;
+                        if subproblem_key.on_diagonal() {
+                            // let mut joiner = SelfJoiner::default();
+                            self_joiner.clear();
+                            for (_marker, (outer_pool, inner_pool, s, v)) in subproblem.iter() {
+                                self_joiner.push(
+                                    hasher_intern.hash(inner_pool, rep),
+                                    (s, v, outer_pool, inner_pool),
+                                );
+                            }
+                            self_joiner.join_map(|_h, l, r| {
+                                total += 1;
+                                if sketch_pred.eval(l.0, r.0) {
+                                    if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
+                                        if no_dedup
+                                            || (!hasher_intern.already_seen(&l.3, &r.3, rep)
+                                                && !hasher.already_seen(
+                                                    &l.2,
+                                                    &r.2,
+                                                    outer_repetition,
+                                                ))
+                                        {
+                                            cnt += 1;
+                                        } else {
+                                            duplicate_cnt += 1;
+                                        }
+                                    }
+                                } else {
+                                    sketch_cnt += 1;
+                                }
+                            })
+                        } else {
+                            // let mut joiner = Joiner::default();
+                            joiner.clear();
+                            for (marker, (outer_pool, inner_pool, s, v)) in subproblem.iter() {
+                                match marker {
+                                    Marker::Left => joiner.push_left(
+                                        hasher_intern.hash(inner_pool, rep),
+                                        (s, v, outer_pool, inner_pool),
+                                    ),
+                                    Marker::Right => joiner.push_right(
+                                        hasher_intern.hash(inner_pool, rep),
+                                        (s, v, outer_pool, inner_pool),
+                                    ),
+                                    Marker::Both => panic!("cannot get a both here"),
+                                }
+                            }
+                            joiner.join_map(|_h, l, r| {
+                                total += 1;
+                                if sketch_pred.eval(l.0, r.0) {
+                                    if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
+                                        if no_dedup
+                                            || (!hasher_intern.already_seen(&l.3, &r.3, rep)
+                                                && !hasher.already_seen(
+                                                    &l.2,
+                                                    &r.2,
+                                                    outer_repetition,
+                                                ))
+                                        {
+                                            cnt += 1;
+                                        } else {
+                                            duplicate_cnt += 1;
+                                        }
+                                    }
+                                } else {
+                                    sketch_cnt += 1;
+                                }
+                            })
+                        }
+                        log_event!(logger, (LogEvent::GeneratedPairs(outer_repetition), cnt));
+                        log_event!(
+                            logger,
+                            (LogEvent::SketchDiscarded(outer_repetition), sketch_cnt)
+                        );
+                        log_event!(
+                            logger,
+                            (
+                                LogEvent::DuplicatesDiscarded(outer_repetition),
+                                duplicate_cnt
+                            )
                         );
                     }
-                    if subproblem_key.on_diagonal() {
-                        joiner.join_map_slice(|_hash, values| {
-                            for (i, (_, l)) in values.iter().enumerate() {
-                                for (_, r) in values[i..].iter() {
-                                    total += 1;
-                                    if sketch_pred.eval(l.0, r.0) {
-                                        if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
-                                            if no_dedup
-                                                || (!hasher_intern.already_seen(&l.3, &r.3, rep)
-                                                    && !hasher.already_seen(
-                                                        &l.2,
-                                                        &r.2,
-                                                        *outer_repetition,
-                                                    ))
-                                            {
-                                                cnt += 1;
-                                            } else {
-                                                duplicate_cnt += 1;
-                                            }
-                                        }
-                                    } else {
-                                        sketch_cnt += 1;
-                                    }
-                                }
-                            }
-                        });
-                    } else {
-                        joiner.join_map_slice(|_hash, values| {
-                            for (_, l) in values.iter().filter(|t| (t.1).4.keep_left()) {
-                                for (_, r) in values.iter().filter(|t| (t.1).4.keep_right()) {
-                                    total += 1;
-                                    if sketch_pred.eval(l.0, r.0) {
-                                        if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
-                                            if no_dedup
-                                                || (!hasher_intern.already_seen(&l.3, &r.3, rep)
-                                                    && !hasher.already_seen(
-                                                        &l.2,
-                                                        &r.2,
-                                                        *outer_repetition,
-                                                    ))
-                                            {
-                                                cnt += 1;
-                                            } else {
-                                                duplicate_cnt += 1;
-                                            }
-                                        }
-                                    } else {
-                                        sketch_cnt += 1;
-                                    }
-                                }
-                            }
-                        });
-                    }
-                }
-                debug!(
-                    "Candidates {} ({}): Emitted {} / Discarded {} / Duplicates {} in {:?} ({})",
-                    total,
-                    all_to_all,
-                    cnt,
-                    sketch_cnt,
-                    duplicate_cnt,
-                    Instant::now() - start,
-                    proc_mem!(),
-                );
-                log_event!(logger, (LogEvent::GeneratedPairs(*outer_repetition), cnt));
-                log_event!(
-                    logger,
-                    (LogEvent::SketchDiscarded(*outer_repetition), sketch_cnt)
-                );
-                log_event!(
-                    logger,
-                    (
-                        LogEvent::DuplicatesDiscarded(*outer_repetition),
-                        duplicate_cnt
-                    )
-                );
-                vec![cnt]
-            })
+
+                    Some(cnt)
+                },
+            )
             .exchange(|_| 0) // Bring all the counts to the first worker
             .unary(
                 timely::dataflow::channels::pact::Pipeline,
@@ -250,8 +247,8 @@ fn source_hashed_two_round<G, T, D, F, S>(
     G,
     (
         // (repetition, hash, subproblem split)
-        (usize, u32, CartesianKey),
-        (Marker, TensorPool, TensorPool, S::Output, (ElementId, D)),
+        (usize, u32),
+        (TensorPool, TensorPool, S::Output, (ElementId, D)),
     ),
 >
 where
@@ -262,9 +259,6 @@ where
     S: Sketcher<Input = D> + Clone + 'static,
     S::Output: SketchData + Debug,
 {
-    use std::cell::RefCell;
-    use std::rc::Rc;
-
     let worker: u64 = scope.index() as u64;
     let logger = scope.danny_logger();
     let repetitions = hash_fns.repetitions();
@@ -283,9 +277,6 @@ where
         end - start,
         proc_mem!()
     );
-    let hashes = Rc::new(RefCell::new(HashMap::new()));
-    let hashes1 = Rc::clone(&hashes);
-    let mut subproblem_sizes = HashMap::new();
 
     source(scope, "hashed source two round", move |capability| {
         let mut cap = Some(capability);
@@ -300,13 +291,11 @@ where
                     if worker == 0 {
                         debug!("Repetition {} (two round LSH)", current_repetition);
                     }
-                    let mut hashes = hashes.borrow_mut();
-                    let stash = hashes.entry(cap.time().clone()).or_insert_with(Vec::new);
                     let mut session = output.session(&cap);
                     for (k, v) in vecs.iter() {
                         let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
                         let s = sketcher.sketch(v);
-                        stash.push((
+                        session.give((
                             (current_repetition, h),
                             (
                                 bit_pools[k].clone(),
@@ -315,7 +304,6 @@ where
                                 (k.clone(), v.clone()),
                             ),
                         ));
-                        session.give(((current_repetition, h), 1));
                     }
                     if current_repetition % repetition_batch == 0 {
                         cap.downgrade(&cap.time().succ());
@@ -331,88 +319,4 @@ where
             }
         }
     })
-    // Now accumulate the counters into the first worker to see the subproblem size
-    .aggregate(
-        |_key, val, agg| {
-            *agg += val;
-        },
-        |key, agg: u32| (key, agg),
-        |k| k.route() as u64,
-    )
-    .exchange(|_k| 0)
-    .aggregate(
-        |_key, val, agg| {
-            *agg += val;
-        },
-        |key, agg: u32| (key, agg),
-        |k| k.route() as u64,
-    )
-    .broadcast()
-    // Determine the split points, and replicate vector appropriately
-    .unary_notify(
-        Pipeline,
-        "split point determination",
-        None,
-        move |input, output, notificator| {
-            input.for_each(|t, data| {
-                subproblem_sizes
-                    .entry(t.time().clone())
-                    .or_insert_with(Vec::new)
-                    .extend(data.replace(Vec::new()));
-                notificator.notify_at(t.retain());
-            });
-            notificator.for_each(|t, _, _| {
-                let mut sizes = subproblem_sizes
-                    .remove(t.time())
-                    .expect("missing subproblem sizes!");
-                // Sort by increasing count
-                sizes.sort_unstable_by_key(|x| x.1);
-                // Define a threshold for heavy hitters
-                // let threshold = (total as f64 / peers as f64).ceil() as u32;
-                let threshold = sizes[sizes.len() / 2].1;
-                info!("subproblem sizes {:?}", sizes);
-                info!("heavy hitters threshold: {}", threshold);
-                let heavy_hitters: HashMap<(usize, u32), u32> =
-                    sizes.into_iter().filter(|x| x.1 >= threshold).collect();
-                info!("heavy hitters: {:?}", heavy_hitters);
-
-                // Get the hashes and output them, splitting the subproblem if needed
-                if let Some(hashes) = hashes1.borrow_mut().remove(&t.time()) {
-                    let mut session = output.session(&t);
-                    for (key, payload) in hashes {
-                        let groups = if let Some(count) = heavy_hitters.get(&key) {
-                            (count / threshold) as u8
-                        } else {
-                            1
-                        };
-                        let cartesian = SelfCartesian::with_groups(groups);
-                        let id = (payload.3).0;
-                        let iter = cartesian.keys_for(id).map(|(subproblem_key, marker)| {
-                            (
-                                (key.0, key.1, subproblem_key),
-                                (
-                                    marker,
-                                    payload.0.clone(),
-                                    payload.1.clone(),
-                                    payload.2.clone(),
-                                    payload.3.clone(),
-                                ),
-                            )
-                        });
-                        session.give_iterator(iter);
-                    }
-                }
-            });
-        },
-    )
-}
-
-impl Route for (usize, u32, CartesianKey) {
-    #[inline(always)]
-    fn route(&self) -> u64 {
-        (self.0 as u64)
-            .wrapping_mul(31u64)
-            .wrapping_add(u64::from(self.1.route()))
-            .wrapping_mul(31u64)
-    }
 }

@@ -27,7 +27,7 @@ where
     where
         I: IntoIterator<Item = O>,
         O: ExchangeData,
-        F: FnMut(&K, &V, &V) -> I + 'static;
+        F: FnMut((K, CartesianKey), &[(Marker, V)]) -> I + 'static;
 }
 
 impl<G, K, V> Join<G, K, V> for Stream<G, (K, V)>
@@ -41,13 +41,13 @@ where
     where
         I: IntoIterator<Item = O>,
         O: ExchangeData,
-        F: FnMut(&K, &V, &V) -> I + 'static,
+        F: FnMut((K, CartesianKey), &[(Marker, V)]) -> I + 'static,
     {
         let worker_index = self.scope().index();
         let logger = self.scope().danny_logger();
         let stash = Rc::new(RefCell::new(HashMap::new()));
         let stash1 = Rc::clone(&stash);
-        let mut bucket_stash: HashMap<G::Timestamp, HashMap<CartesianKey, Vec<(K, (Marker, V))>>> =
+        let mut bucket_stash: HashMap<G::Timestamp, HashMap<(K, CartesianKey), Vec<(Marker, V)>>> =
             HashMap::new();
         let mut histograms: HashMap<G::Timestamp, HashMap<K, u32>> = HashMap::new();
         let mut subproblem_sizes: HashMap<G::Timestamp, Vec<(K, u32)>> = HashMap::new();
@@ -159,32 +159,9 @@ where
                             subproblems.len()
                         );
                         let mut session = output.session(&t);
-                        for (subproblem_key, subproblem) in subproblems {
-                            if subproblem_key.on_diagonal() {
-                                let mut joiner = SelfJoiner::default();
-                                for (key, (_marker, payload)) in subproblem {
-                                    joiner.push(key, payload);
-                                }
-                                // already skips duplicates
-                                joiner.join_map(|k, l, r| {
-                                    let res = f(k, l, r);
-                                    session.give_iterator(res.into_iter());
-                                });
-                            } else {
-                                let mut joiner = Joiner::default();
-                                for (key, (marker, payload)) in subproblem {
-                                    match marker {
-                                        Marker::Both => panic!("Cannot have a Both marker here"),
-                                        Marker::Left => joiner.push_left(key, payload),
-                                        Marker::Right => joiner.push_right(key, payload),
-                                    }
-                                }
-
-                                joiner.join_map(|k, l, r| {
-                                    let res = f(k, l, r);
-                                    session.give_iterator(res.into_iter());
-                                });
-                            }
+                        for (key, subproblem) in subproblems {
+                            let res = f(key, &subproblem);
+                            session.give_iterator(res.into_iter());
                         }
                     }
                 });
@@ -197,14 +174,14 @@ where
                         .or_insert_with(HashMap::new);
                     for ((k, subproblem, _), payload) in data {
                         stash
-                            .entry(subproblem)
+                            .entry((k, subproblem))
                             .or_insert_with(Vec::new)
-                            .push((k, payload));
+                            .push(payload);
                     }
+                    notificator.notify_at(t.retain());
                 });
             },
         )
-
     }
 
     fn self_join_map_slice<F, I, O>(&self, mut f: F) -> Stream<G, O>

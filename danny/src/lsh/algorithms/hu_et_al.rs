@@ -168,30 +168,56 @@ where
         );
 
         hashes
-            .self_join_map_slice(move |(repetition, _hash), values| {
+            .self_join_map(move |((repetition, _hash), subproblem_key), values| {
                 let mut cnt = 0usize;
                 let mut total = 0usize;
                 let mut sketch_discarded = 0;
                 let mut duplicate_cnt = 0usize;
                 let start = Instant::now();
 
-                for (i, (_, (_l, l_pool, l_sketch, l))) in values.iter().enumerate() {
-                    for (_, (_r, r_pool, r_sketch, r)) in values[i..].iter() {
-                        total += 1;
-                        if sketch_predicate.eval(l_sketch, r_sketch) {
-                            if no_verify || sim_pred(l, r) {
-                                if no_dedup || !hasher.already_seen(l_pool, r_pool, *repetition) {
-                                    cnt += 1;
-                                } else {
-                                    duplicate_cnt += 1;
+                if subproblem_key.on_diagonal() {
+                    for (i, (_, (_l, l_pool, l_sketch, l))) in values.iter().enumerate() {
+                        for (_, (_r, r_pool, r_sketch, r)) in values[i..].iter() {
+                            total += 1;
+                            if sketch_predicate.eval(l_sketch, r_sketch) {
+                                if no_verify || sim_pred(l, r) {
+                                    if no_dedup || !hasher.already_seen(l_pool, r_pool, repetition)
+                                    {
+                                        cnt += 1;
+                                    } else {
+                                        duplicate_cnt += 1;
+                                    }
+                                }
+                            } else {
+                                sketch_discarded += 1;
+                            }
+                        }
+                    }
+                } else {
+                    for (l_marker, (_l, l_pool, l_sketch, l)) in values.iter() {
+                        if l_marker.keep_left() {
+                            for (r_marker, (_r, r_pool, r_sketch, r)) in values.iter() {
+                                if r_marker.keep_right() {
+                                    total += 1;
+                                    if sketch_predicate.eval(l_sketch, r_sketch) {
+                                        if no_verify || sim_pred(l, r) {
+                                            if no_dedup
+                                                || !hasher.already_seen(l_pool, r_pool, repetition)
+                                            {
+                                                cnt += 1;
+                                            } else {
+                                                duplicate_cnt += 1;
+                                            }
+                                        }
+                                    } else {
+                                        sketch_discarded += 1;
+                                    }
                                 }
                             }
-                        } else {
-                            sketch_discarded += 1;
                         }
                     }
                 }
-                info!(
+                debug!(
                     "Candidates {}: Emitted {} / Sketch discarded {} / Duplicates {} in {:?} ({})",
                     total,
                     cnt,
@@ -202,14 +228,14 @@ where
                 );
                 log_event!(
                     logger,
-                    (LogEvent::SketchDiscarded(*repetition), sketch_discarded)
+                    (LogEvent::SketchDiscarded(repetition), sketch_discarded)
                 );
-                log_event!(logger, (LogEvent::GeneratedPairs(*repetition), cnt));
+                log_event!(logger, (LogEvent::GeneratedPairs(repetition), cnt));
                 log_event!(
                     logger,
-                    (LogEvent::DuplicatesDiscarded(*repetition), duplicate_cnt)
+                    (LogEvent::DuplicatesDiscarded(repetition), duplicate_cnt)
                 );
-                vec![cnt]
+                Some(cnt)
             })
             .exchange(|_| 0) // Bring all the counts to the first worker
             .unary(
