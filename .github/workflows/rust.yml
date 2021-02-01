@@ -28,8 +28,8 @@ jobs:
         cargo +nightly install --path danny-utilities
     - name: Build dataset
       run: |
-        cd experiments/
-        DANNY_DATA_DIR=$(pwd) DANNY_MINIONS=localhost python run.py --list-datasets --dataset-prefix random
+        cd datasets/
+        DANNY_DATA_DIR=$(pwd) DANNY_MINIONS=localhost python prepare.py random
     - name: Run algorithms
       run: |
         danny --threshold 0.5 --algorithm all-2-all experiments/random.bin
