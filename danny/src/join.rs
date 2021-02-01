@@ -125,16 +125,26 @@ where
                         })
                         .collect();
                     subproblems.sort_unstable_by_key(|x| std::cmp::Reverse(x.3));
+                    let n_subproblems = subproblems.len();
 
                     // Allocate subproblems to processors
                     let mut processor_allocations = vec![Vec::new(); peers];
                     info!("threshold {}", threshold);
                     let mut i = 0;
                     let mut cur = 0;
-                    for (key, subproblem_key, marker, subproblem_size) in subproblems {
+                    for (sub_idx, (key, subproblem_key, marker, subproblem_size)) in
+                        subproblems.into_iter().enumerate()
+                    {
                         if cur > threshold {
                             cur = 0;
                             i += 1;
+                        }
+                        if i >= processor_allocations.len() {
+                            panic!(
+                                "number or processors ({}) exceeded: still {} to go",
+                                peers,
+                                n_subproblems - sub_idx
+                            );
                         }
                         processor_allocations[i].push((key, subproblem_key, marker));
                         cur += subproblem_size;
