@@ -101,23 +101,26 @@ where
                 notificator.for_each(|t, _, _| {
                     let mut sizes = subproblem_sizes.remove(&t).expect("missing histograms!");
 
-                    let subproblem_pairs = |size: u32| (size + 1) * size / 2;
+                    let subproblem_pairs = |size: u64| (size + 1) * size / 2;
 
                     // Sort by decreasing count
                     sizes.sort_unstable_by_key(|x| std::cmp::Reverse(x.1));
-                    let total_pairs = sizes.iter().map(|p| subproblem_pairs(p.1)).sum::<u32>();
+                    let total_pairs = sizes
+                        .iter()
+                        .map(|p| subproblem_pairs(p.1 as u64))
+                        .sum::<u64>();
 
                     // Split subproblems that are too big
-                    let threshold = (total_pairs as f64 / peers as f64).ceil() as u32;
-                    let mut subproblems: Vec<(K, CartesianKey, Marker, u32)> = sizes
+                    let threshold = (total_pairs as f64 / peers as f64).ceil() as u64;
+                    let mut subproblems: Vec<(K, CartesianKey, Marker, u64)> = sizes
                         .into_iter()
                         .flat_map(|(key, size)| {
-                            let groups = if size > threshold {
+                            let groups = if size as u64 > threshold {
                                 (size as f64 / threshold as f64).ceil() as u8
                             } else {
                                 1
                             };
-                            let subproblem_size = subproblem_pairs(size / groups as u32);
+                            let subproblem_size = subproblem_pairs(size as u64 / groups as u64);
                             let cartesian = SelfCartesian::with_groups(groups);
                             cartesian
                                 .keys_for(key)
@@ -131,7 +134,7 @@ where
                     let mut processor_allocations = vec![Vec::new(); peers];
                     info!("threshold {}", threshold);
                     let mut i = 0;
-                    let mut cur = 0;
+                    let mut cur = 0u64;
                     for (sub_idx, (key, subproblem_key, marker, subproblem_size)) in
                         subproblems.into_iter().enumerate()
                     {
