@@ -694,30 +694,21 @@ if __name__ == "__main__":
         "--dataset-prefix", help="install only datasets that have this prefix"
     )
     parser.add_argument("--sync", action="store_true", help="sync the datasets")
-    parser.add_argument("--tags", help="run only experiments with these tags")
-    parser.add_argument(
-        "exp_file", nargs="?", help="the file storing the experiment specification"
-    )
+    parser.add_argument("dataset_name", help="prepare the given dataset", nargs='?')
 
     args = vars(parser.parse_args())
 
-    print(args)
     if args["list_datasets"]:
-        print("Available datasets are:")
+        print("Declared datasets are:")
         for k in DATASETS.keys():
-            if not "dataset_prefix" in args or k.lower().startswith(args["dataset_prefix"].lower()):
-                print("  - {} ({})".format(k, DATASETS[k].get_path()))
+            print(k)
         sys.exit(0)
 
     if args["sync"]:
         sync()
         sys.exit(0)
 
-    if args["tags"] is not None:
-        tags = args["tags"].split(",")
-        print("Running only experiments tagged with ", tags)
-    else:
-        tags = None
+    if args["dataset_name"] is not None:
+        print(DATASETS[args["dataset_name"]].get_path())
 
-    run_file(args["exp_file"], tags)
 
