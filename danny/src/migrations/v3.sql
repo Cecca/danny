@@ -1,0 +1,7 @@
+BEGIN TRANSACTION;
+
+ALTER TABLE result ADD COLUMN balance TEXT;
+
+PRAGMA user_version = 3;
+
+END TRANSACTION;

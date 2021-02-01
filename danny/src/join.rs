@@ -11,9 +11,22 @@ use timely::dataflow::operators::*;
 use timely::dataflow::*;
 use timely::ExchangeData;
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Balance {
     Load,
     SubproblemSize,
+}
+
+impl std::str::FromStr for Balance {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Load" | "load" => Ok(Self::Load),
+            "SubproblemSize" | "subproblemsize" | "size" => Ok(Self::SubproblemSize),
+            _ => Err(format!("unknown balancing {}", s)),
+        }
+    }
 }
 
 impl Balance {

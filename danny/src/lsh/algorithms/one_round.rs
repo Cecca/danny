@@ -176,7 +176,7 @@ where
         let end = Instant::now();
         pl.update(1u64);
         debug!("Repetition {} ended in {:?}", rep, end - start);
-        log_event!(logger, (LogEvent::GeneratedPairs(rep), examined_pairs));
+        log_event!(logger, (LogEvent::GeneratedPairs(rep), cnt));
         log_event!(logger, (LogEvent::SketchDiscarded(rep), sketch_discarded));
         log_event!(
             logger,

@@ -12,6 +12,8 @@ use std::process::Command;
 use timely::communication::{Allocator, Configuration as TimelyConfig, WorkerGuards};
 use timely::worker::Worker;
 
+use crate::join::Balance;
+
 pub fn get_hostname() -> String {
     let output = Command::new("hostname")
         .output()
@@ -77,6 +79,10 @@ pub struct Config {
     /// number of repetitions to squash together
     #[argh(option, default = "1")]
     pub repetition_batch: usize,
+
+    /// what to load balance
+    #[argh(option, default = "Balance::Load")]
+    pub balance: Balance,
 
     /// wether to run again the given configuration,
     /// even if already present in the database
