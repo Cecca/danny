@@ -106,7 +106,8 @@ impl Experiment {
             FROM result_recent
             WHERE path = ?1
               AND threshold = ?2
-              AND algorithm = 'all-2-all'",
+              AND algorithm = 'all-2-all'
+              AND sketch_bits = 0",
             params![
                 self.config.path.trim_end_matches("/"),
                 self.config.threshold
