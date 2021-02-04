@@ -2,6 +2,7 @@ use crate::cartesian::*;
 use crate::io::*;
 use crate::operators::*;
 use abomonation::Abomonation;
+use danny_base::sketch::{SketchPredicate, Sketcher};
 use danny_base::types::*;
 use serde::de::Deserialize;
 use std::clone::Clone;
@@ -52,10 +53,18 @@ where
 }
 
 #[cfg(feature = "all-2-all")]
-pub fn all_pairs_parallel<T, F>(worker: &mut Worker<Allocator>, path: &str, sim_pred: F) -> usize
+pub fn all_pairs_parallel<T, F, S>(
+    worker: &mut Worker<Allocator>,
+    path: &str,
+    sim_pred: F,
+    sketcher: S,
+    sketch_predicate: SketchPredicate<S::Output>,
+) -> usize
 where
     for<'de> T: Deserialize<'de> + ReadDataFile + Data + Sync + Send + Clone + Abomonation + Debug,
     F: Fn(&T, &T) -> bool + Send + Clone + Sync + 'static,
+    S: Sketcher<Input = T> + Clone + 'static,
+    S::Output: SketchData,
 {
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -80,7 +89,7 @@ where
         let matrix = MatrixDescription::for_workers(peers as usize);
         let (_row, _col) = matrix.row_major_to_pair(index as u64);
 
-        let vectors = distribute(&simple_source(scope, Arc::clone(&worker_vectors)));
+        let vectors = distribute(&simple_source(scope, Arc::clone(&worker_vectors), sketcher));
 
         vectors
             .unary_frontier(PipelinePact, "bucket", move |_, _| {
@@ -118,10 +127,14 @@ where
                                 // As for the other subproblems, we filter items marked as to be considered
                                 // `Left` or `Right` in order to avoid duplicates
                                 if subproblem_key.on_diagonal() {
-                                    for (i, (_, (_lk, lv))) in subproblem.iter().enumerate() {
+                                    for (i, (_, (_lk, lv, l_sketch))) in
+                                        subproblem.iter().enumerate()
+                                    {
                                         let mut pairs_looked = 0_u64;
-                                        for (_, (_rk, rv)) in subproblem[i..].iter() {
-                                            if sim_pred(lv, rv) {
+                                        for (_, (_rk, rv, r_sketch)) in subproblem[i..].iter() {
+                                            if sketch_predicate.eval(l_sketch, r_sketch)
+                                                && sim_pred(lv, rv)
+                                            {
                                                 cnt += 1;
                                             }
                                             pairs_looked += 1;
@@ -129,14 +142,16 @@ where
                                         pl.update_light(pairs_looked);
                                     }
                                 } else {
-                                    for (_, (_lk, lv)) in
+                                    for (_, (_lk, lv, l_sketch)) in
                                         subproblem.iter().filter(|t| t.0.keep_left())
                                     {
                                         let mut pairs_looked = 0_u64;
-                                        for (_, (_rk, rv)) in
+                                        for (_, (_rk, rv, r_sketch)) in
                                             subproblem.iter().filter(|t| t.0.keep_right())
                                         {
-                                            if sim_pred(lv, rv) {
+                                            if sketch_predicate.eval(l_sketch, r_sketch)
+                                                && sim_pred(lv, rv)
+                                            {
                                                 cnt += 1;
                                             }
                                             pairs_looked += 1;
@@ -186,11 +201,17 @@ where
     }
 }
 
-fn simple_source<G, D>(scope: &G, vecs: Arc<Vec<(ElementId, D)>>) -> Stream<G, (ElementId, D)>
+fn simple_source<G, D, S>(
+    scope: &G,
+    vecs: Arc<Vec<(ElementId, D)>>,
+    sketcher: S,
+) -> Stream<G, (ElementId, D, S::Output)>
 where
     G: Scope,
     G::Timestamp: Succ,
     D: ExchangeData + Debug,
+    S: Sketcher<Input = D> + Clone + 'static,
+    S::Output: SketchData,
 {
     source(scope, "hashed source", move |capability| {
         let mut cap = Some(capability);
@@ -199,7 +220,8 @@ where
                 let start = Instant::now();
                 let mut session = output.session(&cap);
                 for (k, v) in vecs.iter() {
-                    let output_element = (k.clone(), v.clone());
+                    let s = sketcher.sketch(v);
+                    let output_element = (k.clone(), v.clone(), s);
                     session.give(output_element);
                 }
                 let end = Instant::now();
@@ -209,13 +231,14 @@ where
     })
 }
 
-fn distribute<G, D>(
-    stream: &Stream<G, (ElementId, D)>,
-) -> Stream<G, (CartesianKey, Marker, (ElementId, D))>
+fn distribute<G, D, V>(
+    stream: &Stream<G, (ElementId, D, V)>,
+) -> Stream<G, (CartesianKey, Marker, (ElementId, D, V))>
 where
     G: Scope,
     G::Timestamp: Succ,
     D: ExchangeData,
+    V: ExchangeData,
 {
     let cartesian = SelfCartesian::for_peers(stream.scope().peers());
     stream
@@ -224,8 +247,8 @@ where
                 input.for_each(|t, data| {
                     let data = data.replace(Vec::new());
                     let mut session = output.session(&t);
-                    for (k, d) in data {
-                        let output_element = (k, d);
+                    for (k, d, sketch) in data {
+                        let output_element = (k, d, sketch);
                         let iter = cartesian
                             .keys_for(k)
                             .map(|key| (key.0, key.1, output_element.clone()));

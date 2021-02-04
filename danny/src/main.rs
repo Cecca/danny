@@ -19,6 +19,46 @@ use std::fmt::Debug;
 use timely::communication::Allocator;
 use timely::worker::Worker;
 
+fn run_cartesian<SV>(
+    config: &Config,
+    worker: &mut Worker<Allocator>,
+    experiment: &mut Experiment,
+) -> usize
+where
+    SV: BitBasedSketch + FromCosine + FromJaccard + SketchData + Debug,
+{
+    let threshold = config.threshold;
+    let mut sketcher_rng = config.get_random_generator(1);
+    let sketch_bits = config.sketch_bits;
+    match content_type(&config.path) {
+        ContentType::Vector => {
+            let dim = Vector::peek_one(config.path.clone().into()).dim();
+            let sketcher = SV::from_cosine(dim, &mut sketcher_rng);
+            let sketch_predicate =
+                SketchPredicate::cosine(sketch_bits, threshold, config.sketch_epsilon);
+            baseline::all_pairs_parallel::<Vector, _, _>(
+                worker,
+                &config.path,
+                move |a, b| InnerProduct::inner_product(a, b) >= threshold,
+                sketcher,
+                sketch_predicate,
+            )
+        }
+        ContentType::BagOfWords => {
+            let sketcher = SV::from_jaccard(&mut sketcher_rng);
+            let sketch_predicate =
+                SketchPredicate::jaccard(sketch_bits, threshold, config.sketch_epsilon);
+            baseline::all_pairs_parallel::<BagOfWords, _, _>(
+                worker,
+                &config.path,
+                move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
+                sketcher,
+                sketch_predicate,
+            )
+        }
+    }
+}
+
 #[cfg(feature = "one-round-lsh")]
 fn run_one_round_lsh<SV>(
     config: &Config,
@@ -301,17 +341,17 @@ fn main() {
                     },
                 },
                 #[cfg(feature = "all-2-all")]
-                "all-2-all" => match content_type(&config.path) {
-                    ContentType::Vector => baseline::all_pairs_parallel::<Vector, _>(
-                        worker,
-                        &config.path,
-                        move |a, b| InnerProduct::inner_product(a, b) >= threshold,
-                    ),
-                    ContentType::BagOfWords => baseline::all_pairs_parallel::<BagOfWords, _>(
-                        worker,
-                        &config.path,
-                        move |a, b| BagOfWords::jaccard_predicate(a, b, threshold),
-                    ),
+                "all-2-all" => match config.sketch_bits {
+                    0 => run_cartesian::<Sketch0>(&config, worker, &mut experiment),
+                    #[cfg(feature = "sketching")]
+                    64 => run_cartesian::<Sketch0>(&config, worker, &mut experiment),
+                    #[cfg(feature = "sketching")]
+                    128 => run_cartesian::<Sketch0>(&config, worker, &mut experiment),
+                    #[cfg(feature = "sketching")]
+                    256 => run_cartesian::<Sketch0>(&config, worker, &mut experiment),
+                    #[cfg(feature = "sketching")]
+                    512 => run_cartesian::<Sketch0>(&config, worker, &mut experiment),
+                    bits => panic!("Unsupported number of sketch bits: {}", bits),
                 },
                 "" => panic!(), // This is here just for type checking when no features are selected
                 _ => unimplemented!("Unknown algorithm {}", config.algorithm),
