@@ -35,6 +35,14 @@ function search_best() {
     do
       for SKETCH_BITS in 0 256 512
       do
+        danny \
+          --hosts ~/hosts.txt \
+          --threads 8 \
+          --threshold $THRESHOLD \
+          --algorithm all-2-all \
+          --sketch-bits $SKETCH_BITS \
+          $DATASET
+
         for K in 4 8 12
         do
           for ALGORITHM in one-round-lsh hu-et-al
