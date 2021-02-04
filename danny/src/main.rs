@@ -30,6 +30,7 @@ where
     let threshold = config.threshold;
     let mut sketcher_rng = config.get_random_generator(1);
     let sketch_bits = config.sketch_bits;
+    info!("using {} sketch bits", sketch_bits);
     match content_type(&config.path) {
         ContentType::Vector => {
             let dim = Vector::peek_one(config.path.clone().into()).dim();
@@ -344,13 +345,13 @@ fn main() {
                 "all-2-all" => match config.sketch_bits {
                     0 => run_cartesian::<Sketch0>(&config, worker, &mut experiment),
                     #[cfg(feature = "sketching")]
-                    64 => run_cartesian::<Sketch0>(&config, worker, &mut experiment),
+                    64 => run_cartesian::<Sketch64>(&config, worker, &mut experiment),
                     #[cfg(feature = "sketching")]
-                    128 => run_cartesian::<Sketch0>(&config, worker, &mut experiment),
+                    128 => run_cartesian::<Sketch128>(&config, worker, &mut experiment),
                     #[cfg(feature = "sketching")]
-                    256 => run_cartesian::<Sketch0>(&config, worker, &mut experiment),
+                    256 => run_cartesian::<Sketch256>(&config, worker, &mut experiment),
                     #[cfg(feature = "sketching")]
-                    512 => run_cartesian::<Sketch0>(&config, worker, &mut experiment),
+                    512 => run_cartesian::<Sketch512>(&config, worker, &mut experiment),
                     bits => panic!("Unsupported number of sketch bits: {}", bits),
                 },
                 "" => panic!(), // This is here just for type checking when no features are selected
