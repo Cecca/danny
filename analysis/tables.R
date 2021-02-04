@@ -24,4 +24,25 @@ table_best <- function() {
         slice_min(total_time)
 }
 
-table_best()
+table_search_best() %>%
+    mutate(total_time = set_units(total_time, "s") %>% drop_units()) %>%
+    mutate(dataset = case_when(
+        str_detect(dataset, "sift") ~ "SIFT",
+        str_detect(dataset, "Livejournal") ~ "Livejournal",
+        str_detect(dataset, "Glove") ~ "Glove",
+        str_detect(dataset, "Orkut") ~ "Orkut"
+    )) %>%
+    ggplot(aes(recall, total_time, color = algorithm)) +
+    geom_point(data = function(d) {
+        filter(d, algorithm != "all-2-all")
+    }) +
+    geom_hline(
+        data = function(d) {
+            filter(d, algorithm == "all-2-all")
+        },
+        mapping = aes(yintercept = total_time),
+        color = "black"
+    ) +
+    scale_y_log10() +
+    facet_grid(vars(dataset), vars(threshold))
+ggsave("best.png")

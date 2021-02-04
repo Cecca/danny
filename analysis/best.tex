@@ -1,0 +1,17 @@
+\begin{table}[H]
+\centering
+\begin{tabular}[t]{llrrlrrrlr}
+\toprule
+\multicolumn{2}{c}{ } & \multicolumn{4}{c}{0.5} & \multicolumn{4}{c}{0.7} \\
+\cmidrule(l{3pt}r{3pt}){3-6} \cmidrule(l{3pt}r{3pt}){7-10}
+dataset & algorithm & total time (s) & recall & k & b & total time (s) & recall & k & b\\
+\midrule
+Glove200000.bin & one-round-lsh & 78.664 & 0.8325492 & 7 & 0 & 35.219 & 0.9757356 & 7 & 0\\
+Livejournal200000.bin & one-round-lsh & 20.144 & 0.9315875 & 7 & 0 & 5.692 & 0.9964331 & 7 & 0\\
+Orkut200000.bin & one-round-lsh & 22.376 & 0.9933868 & 7 & 0 & 6.399 & 0.9999901 & 7 & 0\\
+sift-100nn-0.5200000.bin & hu-et-al & 101.304 & 0.8308695 & 8 & 0 & 9.626 & 0.8303484 & 4 & 256\\
+sift-100nn-0.5200000.bin & one-round-lsh & 51.728 & 0.8622935 & 12 & 0 & 5.308 & 0.8454961 & 8 & 256\\
+sift-100nn-0.5200000.bin & two-round-lsh & 567.348 & 0.8718928 & 8 [k2=2] & 0 & 56.659 & 0.8732542 & 8 [k2=4] & 256\\
+\bottomrule
+\end{tabular}
+\end{table}
