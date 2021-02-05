@@ -63,7 +63,16 @@ where
         path,
     ));
 
-    let individual_recall = config.recall.sqrt();
+    // Until commit `45b1d33` we used a transformed required recall, to
+    // ensure that the overall recall was the required one. However the price to
+    // pay was a very high number of repetitions. Therefore we are now using the
+    // input required recall, to be able to better compare this implementation with
+    // Hu et al.
+    //
+    // The old definition was the following:
+    //
+    //     let individual_recall = config.recall.sqrt();
+    let individual_recall = config.recall;
 
     let hasher = TensorCollection::new(
         k,
@@ -263,6 +272,7 @@ where
     let worker: u64 = scope.index() as u64;
     let logger = scope.danny_logger();
     let repetitions = hash_fns.repetitions();
+    info!("Doing {} external repetitions", repetitions);
     let mut stopwatch = RepetitionStopWatch::new("repetition", worker == 0, logger);
     let mut bit_pools: HashMap<ElementId, TensorPool> = HashMap::new();
     let mut bit_pools_intern: HashMap<ElementId, TensorPool> = HashMap::new();

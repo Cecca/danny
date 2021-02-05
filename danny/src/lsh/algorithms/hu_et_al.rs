@@ -45,6 +45,7 @@ where
     let worker: u64 = scope.index() as u64;
     let logger = scope.danny_logger();
     let repetitions = hash_fns.repetitions();
+    info!("Doing {} repetitions", repetitions);
     let vecs = Arc::clone(&global_vecs);
     let mut stopwatch = RepetitionStopWatch::new("repetition", worker == 0, logger);
     let mut bit_pools: HashMap<ElementId, TensorPool> = HashMap::new();
