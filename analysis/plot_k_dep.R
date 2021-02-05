@@ -28,6 +28,12 @@ plot_threshold <- function(data, t, ylabs = TRUE) {
             group = interaction(algorithm, k2)
         )
     ) +
+        geom_hline(
+            data = function(d) {
+                filter(d, algorithm == "all-2-all", sketch_bits == 0)
+            },
+            mapping = aes(yintercept = total_time)
+        ) +
         geom_point(aes(shape = ismin, size = ismin)) +
         geom_line(aes(linetype = factor(k2))) +
         scale_y_log10(labels = scales::number_format()) +
