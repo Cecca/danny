@@ -11,6 +11,7 @@ RUN install2.r --deps TRUE \
 
 RUN install2.r --deps TRUE languageserver
 RUN install2.r --deps TRUE --error patchwork
+RUN install2.r --deps TRUE --error latex2exp
 
 WORKDIR /work
 

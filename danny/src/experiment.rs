@@ -1,15 +1,15 @@
 use crate::config::*;
 use chrono::prelude::*;
-
 use rusqlite::*;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub struct Experiment {
     db_path: PathBuf,
     date: DateTime<Utc>,
     config: Config,
-    // Table with Counter name, step, and count
-    step_counters: Vec<(String, u32, i64)>,
+    // Table with Counter name, worker, step, and count
+    step_counters: Vec<(String, usize, u32, i64)>,
     // Hostname, interface, transmitted, received
     network: Vec<(String, String, i64, i64)>,
     output_size: Option<u32>,
@@ -57,8 +57,8 @@ impl Experiment {
         self.speedup.replace(speedup);
     }
 
-    pub fn append_step_counter(&mut self, kind: String, step: u32, count: i64) {
-        self.step_counters.push((kind, step, count));
+    pub fn append_step_counter(&mut self, kind: String, worker: usize, step: u32, count: i64) {
+        self.step_counters.push((kind, worker, step, count));
     }
 
     pub fn append_network_info(
@@ -69,19 +69,6 @@ impl Experiment {
         received: i64,
     ) {
         self.network.push((host, iface, transmitted, received));
-    }
-
-    fn sha(&self) -> String {
-        use sha2::Digest;
-        let datestr = self.date.to_rfc2822();
-        let mut sha = sha2::Sha256::new();
-        sha.input(datestr);
-        // I know that the following is implementation-dependent, but I just need
-        // to have a identifier to join different tables created in this run.
-        sha.input(format!("{:?}", self.config));
-        sha.input(format!("{:?}", self.step_counters));
-
-        format!("{:x}", sha.result())
     }
 
     fn default_db_path() -> std::path::PathBuf {
@@ -138,7 +125,6 @@ impl Experiment {
     }
 
     pub fn save(self) {
-        let sha = self.sha();
         let mut conn = self.get_conn();
 
         let output_size = self.output_size.expect("missing output size");
@@ -163,7 +149,6 @@ impl Experiment {
             // Insert into main table
             tx.execute(
                 "INSERT INTO result (
-                    sha,
                     code_version,
                     date,
                     params_sha,
@@ -181,20 +166,18 @@ impl Experiment {
                     no_dedup,
                     no_verify,
                     repetition_batch,
+                    balance,
                     path,
 
                     total_time_ms,
                     output_size,
                     recall,
-                    speedup,
-
-                    balance
+                    speedup
                 )
                  VALUES (
-                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23
                  )",
                 params![
-                    sha,
                     env!("VERGEN_SHA_SHORT"),
                     self.date.to_rfc3339(),
                     self.config.sha(),
@@ -223,25 +206,37 @@ impl Experiment {
             )
             .expect("error inserting into main table");
 
+            let id = tx.last_insert_rowid();
+
+            let kind_id: HashMap<String, i64> = tx
+                .prepare("SELECT kind_id, kind FROM enum_kind")
+                .expect("fail to prepare statement")
+                .query_map(NO_PARAMS, |row| {
+                    Ok((row.get(1).unwrap(), row.get(0).unwrap()))
+                })
+                .expect("fail to prepare query")
+                .map(|p| p.unwrap())
+                .collect();
+
             let mut stmt = tx
                 .prepare(
-                    "INSERT INTO counters ( sha, kind, step, count )
-                 VALUES ( ?1, ?2, ?3, ?4 )",
+                    "INSERT INTO counters_raw ( id, kind_id, worker, step, count )
+                 VALUES ( ?1, ?2, ?3, ?4, ?5 )",
                 )
                 .expect("failed to prepare statement");
-            for (kind, step, count) in self.step_counters.iter() {
-                stmt.execute(params![sha, kind, step, count])
+            for (kind, worker, step, count) in self.step_counters.iter() {
+                stmt.execute(params![id, kind_id[kind], *worker as i64, step, count])
                     .expect("failure in inserting network information");
             }
 
             let mut stmt = tx
                 .prepare(
-                    "INSERT INTO network ( sha, hostname, interface, transmitted, received )
+                    "INSERT INTO network ( id, hostname, interface, transmitted, received )
                  VALUES ( ?1, ?2, ?3, ?4, ?5 )",
                 )
                 .expect("failed to prepare statement");
             for (hostname, interface, transmitted, received) in self.network.iter() {
-                stmt.execute(params![sha, hostname, interface, transmitted, received])
+                stmt.execute(params![id, hostname, interface, transmitted, received])
                     .expect("failure in inserting network information");
             }
         }
@@ -275,6 +270,11 @@ fn db_migrate(conn: &Connection) {
         info!("Applying migration v3");
         conn.execute_batch(include_str!("migrations/v3.sql"))
             .expect("error applying version 3");
+    }
+    if version < 4 {
+        info!("Applying migration v4");
+        conn.execute_batch(include_str!("migrations/v4.sql"))
+            .expect("error applying version 4");
     }
 
     info!("Database migration completed!");

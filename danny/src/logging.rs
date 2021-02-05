@@ -238,8 +238,8 @@ pub fn init_event_logging<A>(
     worker: &mut Worker<A>,
 ) -> (
     ProbeHandle<()>,
-    Rc<RefCell<Option<InputHandle<(), (LogEvent, usize)>>>>,
-    Rc<RefCell<HashMap<LogEvent, usize>>>,
+    Rc<RefCell<Option<InputHandle<(), ((LogEvent, usize), usize)>>>>,
+    Rc<RefCell<HashMap<(LogEvent, usize), usize>>>,
 )
 where
     A: timely::communication::Allocate,
@@ -252,7 +252,7 @@ where
     let events_read = Rc::clone(&events);
 
     let (input, probe) = worker.dataflow::<(), _, _>(move |scope| {
-        let (input, stream) = scope.new_input::<(LogEvent, usize)>();
+        let (input, stream) = scope.new_input::<((LogEvent, usize), usize)>();
         let mut probe = ProbeHandle::new();
 
         stream
@@ -289,11 +289,11 @@ where
     worker
         .log_register()
         .insert::<(LogEvent, usize), _>("danny", move |_time, data| {
-            for (_time_bound, _worker_id, (key, value)) in data.drain(..) {
+            for (_time_bound, worker_id, (key, value)) in data.drain(..) {
                 input
                     .borrow_mut()
                     .as_mut()
-                    .map(|input| input.send((key, value)));
+                    .map(|input| input.send(((key, worker_id), value)));
             }
         });
 

@@ -395,8 +395,13 @@ fn main() {
                     }
                 }
 
-                for (event, count) in events.borrow().iter() {
-                    experiment.append_step_counter(event.kind(), event.step(), *count as i64);
+                for ((event, worker), count) in events.borrow().iter() {
+                    experiment.append_step_counter(
+                        event.kind(),
+                        *worker,
+                        event.step(),
+                        *count as i64,
+                    );
                 }
 
                 experiment.save();
