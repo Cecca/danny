@@ -69,6 +69,7 @@ function search_best() {
               --sketch-bits $SKETCH_BITS \
               --k $K \
               --k2 $K2 \
+              --repetition-batch 10000 \
               $DATASET
           done
         done
