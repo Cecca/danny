@@ -110,15 +110,15 @@ impl Experiment {
         .expect("error running query")
     }
 
-    pub fn already_run(&self) -> Option<String> {
+    pub fn already_run(&self) -> Option<i64> {
         if self.config.rerun {
             return None;
         }
         let conn = self.get_conn();
         conn.query_row(
-            "SELECT sha FROM result WHERE params_sha == ?1",
+            "SELECT id FROM result WHERE params_sha == ?1",
             params![self.config.sha()],
-            |row| Ok(row.get(0).expect("error getting sha")),
+            |row| Ok(row.get(0).expect("error getting id")),
         )
         .optional()
         .expect("error running query")
