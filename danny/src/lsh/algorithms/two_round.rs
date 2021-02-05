@@ -23,7 +23,7 @@ use timely::progress::Timestamp;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
-pub const TWO_ROUND_VERSION: u8 = 5;
+pub const TWO_ROUND_VERSION: u8 = 6;
 
 #[allow(clippy::too_many_arguments)]
 pub fn two_round_lsh<D, F, H, B, R, S, V>(
