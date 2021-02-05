@@ -22,7 +22,7 @@ use timely::worker::Worker;
 fn run_cartesian<SV>(
     config: &Config,
     worker: &mut Worker<Allocator>,
-    experiment: &mut Experiment,
+    _experiment: &mut Experiment,
 ) -> usize
 where
     SV: BitBasedSketch + FromCosine + FromJaccard + SketchData + Debug,
@@ -251,8 +251,6 @@ fn main() {
         warn!("Experiment already run (sha {}), exiting", sha);
         return;
     }
-
-    let threshold = config.threshold;
 
     // init this gauge outside of the worker definition to have it once per machine,
     // instead of once per thread. Furthermore, the mutex machinery allows to

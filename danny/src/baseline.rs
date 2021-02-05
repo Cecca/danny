@@ -1,6 +1,6 @@
-use crate::cartesian::*;
 use crate::io::*;
 use crate::operators::*;
+use crate::{cartesian::*, logging::*};
 use abomonation::Abomonation;
 use danny_base::sketch::{SketchPredicate, Sketcher};
 use danny_base::types::*;
@@ -85,6 +85,8 @@ where
     info!("Started worker {}/{}", index, peers);
     let sim_pred = sim_pred.clone();
 
+    let logger = worker.danny_logger();
+
     let probe = worker.dataflow::<u32, _, _>(|scope| {
         let matrix = MatrixDescription::for_workers(peers as usize);
         let (_row, _col) = matrix.row_major_to_pair(index as u64);
@@ -97,6 +99,7 @@ where
                 let mut vectors = HashMap::new();
                 move |input, output| {
                     input.for_each(|t, data| {
+                        log_event!(logger, (LogEvent::Load(t.time().to_step_id()), data.len()));
                         let local_vectors =
                             vectors.entry(t.time().clone()).or_insert_with(HashMap::new);
                         for (k, marker, v) in data.replace(Vec::new()).drain(..) {
