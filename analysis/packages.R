@@ -3,4 +3,5 @@ suppressPackageStartupMessages({
     library(kableExtra)
     library(DBI)
     library(units)
+    library(patchwork)
 })

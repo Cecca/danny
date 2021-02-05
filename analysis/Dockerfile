@@ -10,6 +10,7 @@ RUN install2.r --deps TRUE \
     ggforce
 
 RUN install2.r --deps TRUE languageserver
+RUN install2.r --deps TRUE --error patchwork
 
 WORKDIR /work
 
