@@ -196,12 +196,12 @@ impl Experiment {
                     self.config.no_dedup,
                     self.config.no_verify,
                     self.config.repetition_batch as u32,
+                    format!("{:?}", self.config.balance),
                     self.config.path.trim_end_matches("/"),
                     self.total_time_ms,
                     self.output_size,
                     recall,
-                    speedup,
-                    format!("{:?}", self.config.balance)
+                    speedup
                 ],
             )
             .expect("error inserting into main table");
