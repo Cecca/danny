@@ -69,3 +69,30 @@ table_load <- function() {
     DBI::dbDisconnect(db)
     all
 }
+
+table_data_info <- function() {
+    db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
+    baseinfo <- tribble(
+        ~dataset, ~n, ~dim,
+        # Sampled datasets
+        "Glove-sample-200000.bin", 199778, 200,
+        "Livejournal-sample-200000.bin", 200035, 7489073,
+        "Orkut-sample-200000.bin", 199588, 8730857,
+        "sift-100nn-0.5-sample-200000.bin", 199786, 128,
+        # Original datasets
+        "glove.twitter.27B.200d.bin", 1193514, 200,
+        "Orkut.bin", 2783196, 8730857,
+        "Livejournal.bin", 3201203, 7489073,
+        "sift-100-0.5.bin", 1000000, 128
+    )
+
+    info <- tbl(db, "result_recent") %>%
+        filter(algorithm == "all-2-all", sketch_bits == 0) %>%
+        collect() %>%
+        mutate(dataset = basename(path)) %>%
+        select(dataset, threshold, output_size) %>%
+        inner_join(baseinfo) %>%
+        mutate(selectivity = output_size / choose(n, 2))
+    DBI::dbDisconnect(db)
+    info
+}

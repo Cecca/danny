@@ -21,4 +21,7 @@ imgs/load.png: plot_load.R tables.R
 tex/best.tex: latex.R tables.R
 	${RSCRIPT} latex.R
 
+tex/info.tex: latex.R tables.R
+	${RSCRIPT} latex.R
+
 
