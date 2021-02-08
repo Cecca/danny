@@ -6,13 +6,7 @@ plotdata <- table_search_best() %>%
     filter(sketch_bits == 0) %>%
     filter(between(k, 4, 12)) %>%
     mutate(
-        total_time = set_units(total_time, "s") %>% drop_units(),
-        dataset = case_when(
-            str_detect(dataset, "sift") ~ "SIFT",
-            str_detect(dataset, "Livejournal") ~ "Livejournal",
-            str_detect(dataset, "Glove") ~ "Glove",
-            str_detect(dataset, "Orkut") ~ "Orkut"
-        )
+        total_time = set_units(total_time, "s") %>% drop_units()
     ) %>%
     group_by(dataset, algorithm, threshold) %>%
     mutate(

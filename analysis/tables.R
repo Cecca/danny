@@ -19,7 +19,13 @@ table_search_best <- function() {
         inner_join(load) %>%
         mutate(
             dataset = basename(path),
-            total_time = set_units(total_time_ms, "ms")
+            total_time = set_units(total_time_ms, "ms"),
+            dataset = case_when(
+                str_detect(dataset, "sift") ~ "SIFT",
+                str_detect(dataset, "Livejournal") ~ "Livejournal",
+                str_detect(dataset, "Glove") ~ "Glove",
+                str_detect(dataset, "Orkut") ~ "Orkut"
+            )
         ) %>%
         select(-total_time_ms)
     DBI::dbDisconnect(db)
@@ -51,7 +57,13 @@ table_load <- function() {
         inner_join(load) %>%
         mutate(
             dataset = basename(path),
-            total_time = set_units(total_time_ms, "ms")
+            total_time = set_units(total_time_ms, "ms"),
+            dataset = case_when(
+                str_detect(dataset, "sift") ~ "SIFT",
+                str_detect(dataset, "Livejournal") ~ "Livejournal",
+                str_detect(dataset, "Glove") ~ "Glove",
+                str_detect(dataset, "Orkut") ~ "Orkut"
+            )
         ) %>%
         select(-total_time_ms)
     DBI::dbDisconnect(db)
