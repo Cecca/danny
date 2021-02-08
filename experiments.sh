@@ -18,6 +18,22 @@ function baselines() {
         $DATASET
     done
   done
+
+  for BASE_DATA in sift-100-0.5 Livejournal Orkut glove.twitter.27B.200d
+  do
+    for THRESHOLD in 0.5 0.7 0.9
+    do
+      DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA.bin
+      echo "Running on $DATASET"
+      test -d $DATASET
+      danny \
+        --hosts ~/hosts.txt \
+        --threads 8 \
+        --threshold $THRESHOLD \
+        --algorithm all-2-all \
+        $DATASET
+    done
+  done
 }
 
 # This set of experiments searches for the best configuration of parameters for all the different datasets.
