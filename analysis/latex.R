@@ -11,7 +11,9 @@ latex_table_best <- function(data) {
             ),
             total_time = total_time %>%
                 set_units("s") %>%
-                drop_units(),
+                drop_units() %>%
+                scales::number(accuracy = 0.01),
+            recall = scales::number(recall, accuracy = 0.01)
             # total_time = cell_spec(total_time,
             #     color = spec_color(total_time)
             # )
@@ -39,4 +41,4 @@ latex_table_best <- function(data) {
 
 table_best() %>%
     latex_table_best() %>%
-    write_file("best.tex")
+    write_file("tex/best.tex")

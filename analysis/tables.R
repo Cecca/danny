@@ -34,7 +34,7 @@ table_search_best <- function() {
 
 table_best <- function() {
     table_search_best() %>%
-        filter(algorithm != "all-2-all") %>%
+        # filter(algorithm != "all-2-all") %>%
         group_by(dataset, threshold, algorithm) %>%
         slice_min(total_time)
 }
