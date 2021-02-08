@@ -5,4 +5,5 @@ suppressPackageStartupMessages({
     library(units)
     library(patchwork)
     library(latex2exp)
+    library(ggridges)
 })

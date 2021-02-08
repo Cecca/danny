@@ -62,7 +62,6 @@ plot_threshold <- function(data, t, ylabs = TRUE) {
         geom_line(aes(linetype = factor(k2))) +
         scale_y_log10(
             labels = scales::number_format(
-                scale = 1 / 1000000,
                 accuracy = 1
             ),
         ) +
@@ -70,9 +69,9 @@ plot_threshold <- function(data, t, ylabs = TRUE) {
         scale_size_manual(values = c(2, 3)) +
         scale_color_algorithm() +
         facet_wrap(vars(dataset), ncol = 4) +
-        guides(shape = FALSE, linetype = FALSE, size = FALSE) +
+        guides(shape = FALSE, size = FALSE) +
         labs(
-            y = TeX(str_c("Load (msgs $\\cdot 10^6$)"))
+            y = TeX(str_c("Load (messages)"))
         ) +
         theme_paper() +
         theme(

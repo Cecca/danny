@@ -3,7 +3,10 @@ source("packages.R")
 
 theme_paper <- function() {
     theme_bw() +
-        theme(legend.position = "bottom")
+        theme(
+            legend.position = "bottom",
+            strip.background = element_blank()
+        )
 }
 
 scale_color_algorithm <- function() {
