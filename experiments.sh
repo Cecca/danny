@@ -49,7 +49,7 @@ function search_best() {
 
     for THRESHOLD in 0.7 0.5
     do
-      for SKETCH_BITS in 0 256 512
+      for SKETCH_BITS in 0 64 128 256 512
       do
         danny \
           --hosts ~/hosts.txt \
@@ -59,7 +59,7 @@ function search_best() {
           --sketch-bits $SKETCH_BITS \
           $DATASET
 
-        for K in 4 8 12
+        for K in 4 8 6 12
         do
           for ALGORITHM in one-round-lsh hu-et-al
           do
@@ -74,7 +74,7 @@ function search_best() {
               $DATASET
           done
 
-          for K2 in 2 4
+          for K2 in 2 4 6
           do
             danny \
               --hosts ~/hosts.txt \
