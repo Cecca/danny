@@ -188,54 +188,83 @@ done
 }
 
 function duplicate_removal_cost() {
-for BASE_DATA in sift-100nn-0.5 Livejournal Orkut Glove
-do
-  for K in 5 7 10
+  K=8
+  K2=6
+  for BASE_DATA in sift-100nn-0.5 Livejournal Orkut Glove
   do
+    DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-sample-200000.bin
     for ALGORITHM in one-round-lsh hu-et-al
     do
-      for SEED in 123 #2351 1251 1235
-      do
-        DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-sample-200000.bin
-        echo "Running on $DATASET"
-        test -d $DATASET
-        danny \
-          --seed $SEED \
-          --hosts ~/hosts.txt \
-          --threads 8 \
-          --threshold 0.5 \
-          --algorithm $ALGORITHM \
-          --sketch-bits 0 \
-          --no-verify \
-          --k $K \
-          $DATASET
+      echo "Running on $DATASET"
+      test -d $DATASET
+      danny \
+        --hosts ~/hosts.txt \
+        --threads 8 \
+        --threshold 0.5 \
+        --algorithm $ALGORITHM \
+        --sketch-bits 0 \
+        --no-verify \
+        --k $K \
+        $DATASET
 
-        danny \
-          --seed $SEED \
-          --hosts ~/hosts.txt \
-          --threads 8 \
-          --threshold 0.5 \
-          --algorithm $ALGORITHM \
-          --sketch-bits 0 \
-          --no-dedup \
-          --k $K \
-          $DATASET
+      danny \
+        --hosts ~/hosts.txt \
+        --threads 8 \
+        --threshold 0.5 \
+        --algorithm $ALGORITHM \
+        --sketch-bits 0 \
+        --no-dedup \
+        --k $K \
+        $DATASET
 
-        danny \
-          --seed $SEED \
-          --hosts ~/hosts.txt \
-          --threads 8 \
-          --threshold 0.5 \
-          --algorithm $ALGORITHM \
-          --sketch-bits 0 \
-          --no-verify \
-          --no-dedup \
-          --k $K \
-          $DATASET
-      done
+      danny \
+        --hosts ~/hosts.txt \
+        --threads 8 \
+        --threshold 0.5 \
+        --algorithm $ALGORITHM \
+        --sketch-bits 0 \
+        --no-verify \
+        --no-dedup \
+        --k $K \
+        $DATASET
     done
+    ALGORITHM="two-round-lsh"
+    echo "Running on $DATASET"
+    test -d $DATASET
+    danny \
+      --hosts ~/hosts.txt \
+      --threads 8 \
+      --threshold 0.5 \
+      --algorithm $ALGORITHM \
+      --sketch-bits 0 \
+      --no-verify \
+      --k $K \
+      --k2 $K2 \
+      $DATASET
+
+    danny \
+      --hosts ~/hosts.txt \
+      --threads 8 \
+      --threshold 0.5 \
+      --algorithm $ALGORITHM \
+      --sketch-bits 0 \
+      --no-dedup \
+      --k $K \
+      --k2 $K2 \
+      $DATASET
+
+    danny \
+      --hosts ~/hosts.txt \
+      --threads 8 \
+      --threshold 0.5 \
+      --algorithm $ALGORITHM \
+      --sketch-bits 0 \
+      --no-verify \
+      --no-dedup \
+      --k $K \
+      --k2 $K2 \
+      $DATASET
   done
-done
 }
 
 case $1 in
