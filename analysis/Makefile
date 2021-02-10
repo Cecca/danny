@@ -9,19 +9,19 @@ all: imgs/dep_k.png imgs/sketches.png imgs/load.png tex/best.tex
 build-docker: Dockerfile
 	docker build -t ${DOCKER_CONTAINER} .
 
-imgs/dep_k.png: plot_k_dep.R tables.R
+imgs/dep_k.png: plot_k_dep.R tables.R danny-results.sqlite
 	${RSCRIPT} plot_k_dep.R
 
-imgs/sketches.png: plot_sketches.R tables.R
+imgs/sketches.png: plot_sketches.R tables.R danny-results.sqlite
 	${RSCRIPT} plot_sketches.R
 
-imgs/load.png: plot_load.R tables.R
+imgs/load.png: plot_load.R tables.R danny-results.sqlite
 	${RSCRIPT} plot_load.R
 
-tex/best.tex: latex.R tables.R
+tex/best.tex: latex.R tables.R danny-results.sqlite
 	${RSCRIPT} latex.R
 
-tex/info.tex: latex.R tables.R
+tex/info.tex: latex.R tables.R danny-results.sqlite
 	${RSCRIPT} latex.R
 
 

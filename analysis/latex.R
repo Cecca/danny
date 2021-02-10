@@ -3,6 +3,7 @@ source("tables.R")
 latex_table_best <- function(data) {
     data %>%
         ungroup() %>%
+        group_by(dataset, threshold) %>%
         mutate(
             dataset = str_remove(dataset, "-sample-*"),
             k = if_else(algorithm == "two-round-lsh",
@@ -16,9 +17,13 @@ latex_table_best <- function(data) {
                 scales::number(accuracy = 0.01),
             recall = scales::number(recall, accuracy = 0.01),
             total_time = cell_spec(total_time,
-                color = spec_color(total_time_num)
+                # background = spec_color(total_time_num, direction = -1),
+                # color = "white",
+                underline = total_time == min(total_time),
+                format = "latex"
             )
         ) %>%
+        ungroup() %>%
         select(dataset, threshold, algorithm, total_time, recall, k, sketch_bits) %>%
         pivot_wider(names_from = threshold, values_from = total_time:sketch_bits) %>%
         select(
@@ -28,6 +33,8 @@ latex_table_best <- function(data) {
         ) %>%
         kbl(
             format = "latex",
+            align = "ll rrll rrll",
+            escape = F,
             booktabs = T,
             linesep = "",
             col.names = c(
@@ -76,8 +83,8 @@ latex_table_info <- function(data) {
         ) %>%
         kable_styling() %>%
         add_header_above(c(" " = 1, "  " = 1, "   " = 1, "selectivity" = 3)) %>%
-        pack_rows("Full dataset", 1, 3) %>%
-        pack_rows("Sample of 200000 vectors", 4, 7)
+        pack_rows("Full dataset", 1, 4) %>%
+        pack_rows("Sample of 200000 vectors", 5, 8)
 }
 
 table_data_info() %>%

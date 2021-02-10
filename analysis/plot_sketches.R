@@ -133,7 +133,7 @@ p_two_round <- plotdata %>%
         widths = c(1, 3, 3, 6)
     ) &
     theme(
-        text = element_text(size = 5),
+        text = element_text(size = 10),
         panel.border = element_blank(),
         axis.line = element_line(color = "black", size = 0.1),
     )
