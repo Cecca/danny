@@ -95,6 +95,53 @@ function search_best() {
 
 }
 
+function full_size() {
+  for BASE_DATA in sift-100-0.5 Livejournal Orkut glove.twitter.27B.200d
+  do
+    for THRESHOLD in 0.5
+    do
+      DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA.bin
+      echo "Running on $DATASET"
+      test -d $DATASET
+      danny \
+        --hosts ~/hosts.txt \
+        --threads 8 \
+        --threshold $THRESHOLD \
+        --algorithm all-2-all \
+        $DATASET
+
+      for K in 6 8
+      do
+        danny \
+          --hosts ~/hosts.txt \
+          --threads 8 \
+          --threshold $THRESHOLD \
+          --algorithm "hu-et-al" \
+          --sketch-bits 256 \
+          --k $K \
+          $DATASET
+        danny \
+          --hosts ~/hosts.txt \
+          --threads 8 \
+          --threshold $THRESHOLD \
+          --algorithm "one-round-lsh" \
+          --sketch-bits 256 \
+          --k $K \
+          $DATASET
+        danny \
+          --hosts ~/hosts.txt \
+          --threads 8 \
+          --threshold $THRESHOLD \
+          --algorithm "two-round-lsh" \
+          --sketch-bits 256 \
+          --k $K \
+          --k2 6 \
+          $DATASET
+      done
+    done
+  done
+}
+
 # This set of experiments studies the effect of different _required recalls_.
 # We look at the actual recall that we get when asking for a specific one.
 # Sketching is disabled in this set of experiments in order not to pollute
@@ -286,5 +333,9 @@ case $1 in
 
   dedup)
     duplicate_removal_cost
+    ;;
+
+  full)
+    full_size
     ;;
 esac
