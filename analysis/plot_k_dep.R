@@ -4,7 +4,7 @@ source("plots.R")
 plotdata <- table_search_best() %>%
     # we focus just on experiments with no sketches, to see the effect of k
     filter(sketch_bits == 0) %>%
-    filter(between(k, 4, 16)) %>%
+    filter((k == 0) || between(k, 4, 16)) %>%
     filter(k2 %in% c(0,6)) %>%
     mutate(
         total_time = set_units(total_time, "s") %>% drop_units()
@@ -15,11 +15,20 @@ plotdata <- table_search_best() %>%
     )
 
 plot_threshold <- function(data, t, ylabs = TRUE) {
+    baseline <- filter(data, algorithm == "all-2-all") %>%
+        ungroup() %>%
+        select(dataset, threshold, base_time = total_time)
+    data <- filter(data, algorithm != "all-2-all") %>%
+        ungroup() %>%
+        inner_join(baseline) %>%
+        filter(total_time < 2 * base_time)
+
     # compute the limits before filtering, so that all plots share the same scale
     limits_time <- pull(data, total_time) %>% range()
     limits_load <- pull(data, Load) %>% range()
 
-    data <- filter(data, threshold == t)
+    data <- filter(data, threshold == t) 
+    baseline <- filter(baseline, threshold == t)
 
     p_time <- ggplot(
         data,
@@ -29,15 +38,13 @@ plot_threshold <- function(data, t, ylabs = TRUE) {
         )
     ) +
         geom_hline(
-            data = function(d) {
-                filter(d, algorithm == "all-2-all", sketch_bits == 0)
-            },
-            mapping = aes(yintercept = total_time)
+            data = baseline,
+            mapping = aes(yintercept = base_time)
         ) +
         # geom_point(aes(shape = ismin, size = ismin)) +
         geom_point(aes(size = ismin)) +
         geom_line() +
-        scale_y_log10(labels = scales::number_format(), limits = limits_time) +
+        scale_y_continuous(labels = scales::number_format(), limits = limits_time) +
         scale_shape_manual(values = c(3, 18)) +
         scale_size_manual(values = c(0.5, 1)) +
         scale_color_algorithm() +
