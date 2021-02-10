@@ -74,7 +74,7 @@ function search_best() {
               $DATASET
           done
 
-          for K2 in 2 4 6
+          for K2 in 2 4 6 8
           do
             danny \
               --hosts ~/hosts.txt \
