@@ -104,23 +104,41 @@ for RECALL in 0.5 0.8 0.9
 do
   for BASE_DATA in sift-100nn-0.5 Livejournal Orkut Glove
   do
-    for ALGORITHM in one-round-lsh 
+    for THRESHOLD in 0.5
     do
-      for THRESHOLD in 0.5
-      do
-        DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-sample-200000.bin
-        echo "Running on $DATASET"
-        test -d $DATASET
-        danny \
-          --hosts ~/hosts.txt \
-          --threads 8 \
-          --threshold $THRESHOLD \
-          --algorithm $ALGORITHM \
-          --recall $RECALL \
-          --sketch-bits 0 \
-          --k 7 \
-          $DATASET
-      done
+      DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-sample-200000.bin
+      echo "Running on $DATASET"
+      test -d $DATASET
+      danny \
+        --hosts ~/hosts.txt \
+        --threads 8 \
+        --threshold $THRESHOLD \
+        --algorithm "one-round-lsh" \
+        --recall $RECALL \
+        --sketch-bits 0 \
+        --k 8 \
+        $DATASET
+
+      danny \
+        --hosts ~/hosts.txt \
+        --threads 8 \
+        --threshold $THRESHOLD \
+        --algorithm "hu-et-al" \
+        --recall $RECALL \
+        --sketch-bits 0 \
+        --k 8 \
+        $DATASET
+
+      danny \
+        --hosts ~/hosts.txt \
+        --threads 8 \
+        --threshold $THRESHOLD \
+        --algorithm "two-round-lsh" \
+        --recall $RECALL \
+        --sketch-bits 0 \
+        --k 8 \
+        --k2 6 \
+        $DATASET
     done
   done
 done
