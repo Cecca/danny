@@ -4,7 +4,7 @@ source("plots.R")
 plotdata <- table_search_best() %>%
     # we focus just on experiments with no sketches, to see the effect of k
     filter(sketch_bits == 0) %>%
-    filter(between(k, 4, 12)) %>%
+    filter(between(k, 4, 16)) %>%
     mutate(
         total_time = set_units(total_time, "s") %>% drop_units()
     ) %>%
