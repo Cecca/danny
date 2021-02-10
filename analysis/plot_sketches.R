@@ -9,6 +9,7 @@ nosketch <- alldata %>%
     select(dataset, threshold, algorithm, k, k2, nosketch_time = total_time)
 
 plotdata <- alldata %>%
+    filter(k2 %in% c(0,6)) %>%
     group_by(dataset, threshold, algorithm, k, k2) %>%
     mutate(is_best = total_time == min(total_time)) %>%
     ungroup() %>%
@@ -23,25 +24,25 @@ plotdata <- alldata %>%
 ## sketches results in higher running times, most likely because of the
 ## larger number of bits to be transmitted in a large number of iterations
 
-plotdata %>%
-    # filter(sketch_bits > 0) %>%
-    ggplot(aes(
-        x = interaction(sketch_bits, k2, k),
-        y = set_units(total_time, "s") %>% drop_units(),
-        group = interaction(k, k2),
-    )) +
-    geom_line() +
-    geom_point(aes(color = is_algo_best)) +
-    scale_y_log10() +
-    scale_color_manual(values = c("black", "red")) +
-    facet_grid(vars(dataset), vars(algorithm), scales = "free") +
-    guides(color = FALSE, shape = FALSE) +
-    labs(
-        x = "params",
-        y = "time (s)"
-    ) +
-    theme_paper() +
-    theme(axis.text.x = element_text(angle = 90))
+# plotdata %>%
+#     # filter(sketch_bits > 0) %>%
+#     ggplot(aes(
+#         x = interaction(sketch_bits, k2, k),
+#         y = set_units(total_time, "s") %>% drop_units(),
+#         group = interaction(k, k2),
+#     )) +
+#     geom_line() +
+#     geom_point(aes(color = is_algo_best)) +
+#     scale_y_log10() +
+#     scale_color_manual(values = c("black", "red")) +
+#     facet_grid(vars(dataset), vars(algorithm), scales = "free") +
+#     guides(color = FALSE, shape = FALSE) +
+#     labs(
+#         x = "params",
+#         y = "time (s)"
+#     ) +
+#     theme_paper() +
+#     theme(axis.text.x = element_text(angle = 90))
 
 # ggsave("imgs/sketches.png", width = 8, height = 4)
 
@@ -64,6 +65,10 @@ plot_one_algo <- function(data, algorithm_name, groups, ylabs = FALSE, strip_tex
             data = data %>% filter({{ groups }} %in% active_groups),
             alpha = 0
         ) +
+        scale_x_discrete(
+            labels = c("0", "", "128", "", "512"),
+            breaks = c("0", "64", "128", "256", "512")
+            ) +
         scale_y_log10() +
         scale_color_manual(values = c("black", "red")) +
         facet_grid(
@@ -123,14 +128,15 @@ p_one_round <- plotdata %>%
 
 p_two_round <- plotdata %>%
     mutate(
-        groups = fct_reorder(str_c("k=", k, " k2=", k2), k)
+        groups = fct_reorder(str_c("k=", k), k)
     ) %>%
-    plot_one_algo("two-round-lsh", groups, strip_text = T)
+    plot_one_algo("two-round-lsh", groups, strip_text = T) +
+    labs(subtitle=TeX("with $k_2 = 6$"))
 
 (p_all2all | p_hu_et_al | p_one_round | p_two_round) +
     plot_layout(
         guides = "collect",
-        widths = c(1, 3, 3, 6)
+        widths = c(1, 4, 4, 4)
     ) &
     theme(
         text = element_text(size = 10),
