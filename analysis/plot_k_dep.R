@@ -5,6 +5,7 @@ plotdata <- table_search_best() %>%
     # we focus just on experiments with no sketches, to see the effect of k
     filter(sketch_bits == 0) %>%
     filter(between(k, 4, 16)) %>%
+    filter(k2 %in% c(0,6)) %>%
     mutate(
         total_time = set_units(total_time, "s") %>% drop_units()
     ) %>%
@@ -33,11 +34,12 @@ plot_threshold <- function(data, t, ylabs = TRUE) {
             },
             mapping = aes(yintercept = total_time)
         ) +
-        geom_point(aes(shape = ismin, size = ismin)) +
-        geom_line(aes(linetype = factor(k2))) +
+        # geom_point(aes(shape = ismin, size = ismin)) +
+        geom_point(aes(size = ismin)) +
+        geom_line() +
         scale_y_log10(labels = scales::number_format(), limits = limits_time) +
         scale_shape_manual(values = c(3, 18)) +
-        scale_size_manual(values = c(2, 3)) +
+        scale_size_manual(values = c(0.5, 1)) +
         scale_color_algorithm() +
         facet_wrap(vars(dataset), ncol = 4) +
         guides(shape = FALSE, linetype = FALSE, size = FALSE) +
@@ -57,8 +59,9 @@ plot_threshold <- function(data, t, ylabs = TRUE) {
         data,
         aes(k, Load, color = algorithm, group = interaction(algorithm, k2))
     ) +
-        geom_point(aes(shape = ismin, size = ismin)) +
-        geom_line(aes(linetype = factor(k2))) +
+        geom_point(aes(size = ismin)) +
+        # geom_point(aes(shape = ismin, size = ismin)) +
+        geom_line() +
         scale_y_log10(
             labels = scales::number_format(
                 accuracy = 1
@@ -66,7 +69,7 @@ plot_threshold <- function(data, t, ylabs = TRUE) {
             limits = limits_load
         ) +
         scale_shape_manual(values = c(3, 18)) +
-        scale_size_manual(values = c(2, 3)) +
+        scale_size_manual(values = c(0.5, 1)) +
         scale_color_algorithm() +
         facet_wrap(vars(dataset), ncol = 4) +
         guides(shape = FALSE, size = FALSE) +
