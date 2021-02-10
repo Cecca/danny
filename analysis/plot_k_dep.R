@@ -14,7 +14,12 @@ plotdata <- table_search_best() %>%
     )
 
 plot_threshold <- function(data, t, ylabs = TRUE) {
+    # compute the limits before filtering, so that all plots share the same scale
+    limits_time <- pull(data, total_time) %>% range()
+    limits_load <- pull(data, Load) %>% range()
+
     data <- filter(data, threshold == t)
+
     p_time <- ggplot(
         data,
         aes(k, total_time,
@@ -30,7 +35,7 @@ plot_threshold <- function(data, t, ylabs = TRUE) {
         ) +
         geom_point(aes(shape = ismin, size = ismin)) +
         geom_line(aes(linetype = factor(k2))) +
-        scale_y_log10(labels = scales::number_format()) +
+        scale_y_log10(labels = scales::number_format(), limits = limits_time) +
         scale_shape_manual(values = c(3, 18)) +
         scale_size_manual(values = c(2, 3)) +
         scale_color_algorithm() +
@@ -58,6 +63,7 @@ plot_threshold <- function(data, t, ylabs = TRUE) {
             labels = scales::number_format(
                 accuracy = 1
             ),
+            limits = limits_load
         ) +
         scale_shape_manual(values = c(3, 18)) +
         scale_size_manual(values = c(2, 3)) +

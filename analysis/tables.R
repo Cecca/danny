@@ -17,6 +17,7 @@ table_search_best <- function() {
         filter(algorithm != "two-round-lsh" | (repetition_batch >= 1000)) %>%
         collect() %>%
         inner_join(load) %>%
+        (function(d) {print(distinct(d, path)); d}) %>%
         mutate(
             dataset = basename(path),
             total_time = set_units(total_time_ms, "ms"),
