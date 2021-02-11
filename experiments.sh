@@ -110,7 +110,7 @@ function full_size() {
         --algorithm all-2-all \
         $DATASET
 
-      for K in 6 8
+      for K in 4 6 8
       do
         danny \
           --hosts ~/hosts.txt \
@@ -134,6 +134,7 @@ function full_size() {
           --threshold $THRESHOLD \
           --algorithm "two-round-lsh" \
           --sketch-bits 256 \
+          --repetition-batch 100000 \
           --k $K \
           --k2 6 \
           $DATASET
