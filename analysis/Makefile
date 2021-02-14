@@ -18,6 +18,9 @@ imgs/sketches.png: plot_sketches.R tables.R danny-results.sqlite
 imgs/load.png: plot_load.R tables.R danny-results.sqlite
 	${RSCRIPT} plot_load.R
 
+imgs/recall_experiment.png: plot_recall_experiment.R tables.R danny-results.sqlite
+	${RSCRIPT} plot_recall_experiment.R
+
 tex/best.tex: latex.R tables.R danny-results.sqlite
 	${RSCRIPT} latex.R
 

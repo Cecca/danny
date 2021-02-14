@@ -71,6 +71,44 @@ table_load <- function() {
     all
 }
 
+table_full <- function() {
+    db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
+    # The load is the maximum load among all the workers in a given experiment
+    load <- tbl(db, "counters") %>%
+        filter(kind == "Load") %>%
+        group_by(id, kind) %>%
+        summarise(count = max(count, na.rm = T)) %>%
+        collect() %>%
+        pivot_wider(names_from = kind, values_from = count)
+    all <- tbl(db, "result_recent") %>%
+        filter(
+            (path %LIKE% "%glove.twitter.27B.200d.bin") |
+            (path %LIKE% "%Orkut.bin") |
+            (path %LIKE% "%Livejournal.bin") |
+            (path %LIKE% "%sift-100-0.5.bin")
+        ) %>%
+        filter(required_recall == 0.8) %>%
+        filter(threshold %in% c(0.5, 0.7)) %>%
+        filter(!no_verify, !no_dedup) %>%
+        filter(algorithm != "two-round-lsh" | (repetition_batch >= 1000)) %>%
+        collect() %>%
+        inner_join(load) %>%
+        mutate(dataset = basename(path)) %>%
+        mutate(
+            total_time = set_units(total_time_ms, "ms"),
+            dataset = case_when(
+                str_detect(dataset, "sift") ~ "SIFT",
+                str_detect(dataset, "Livejournal") ~ "Livejournal",
+                str_detect(dataset, "[Gg]love") ~ "Glove",
+                str_detect(dataset, "Orkut") ~ "Orkut",
+                TRUE ~ dataset
+            )
+        ) %>%
+        select(-total_time_ms)
+    DBI::dbDisconnect(db)
+    all
+}
+
 table_data_info <- function() {
     db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
     baseinfo <- tribble(
@@ -97,3 +135,29 @@ table_data_info <- function() {
     DBI::dbDisconnect(db)
     info
 }
+
+table_recall_experiment <- function() {
+    db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
+    all <- tbl(db, "result_recent") %>%
+        filter(path %LIKE% "%sample-200000.bin") %>%
+        filter(required_recall %in% c(0.5, 0.8, 0.9)) %>%
+        filter(threshold %in% c(0.5)) %>%
+        filter(!no_verify, !no_dedup) %>%
+        filter(algorithm != "two-round-lsh" | (repetition_batch >= 1000)) %>%
+        filter(algorithm != "all-2-all") %>%
+        collect() %>%
+        mutate(
+            dataset = basename(path),
+            total_time = set_units(total_time_ms, "ms"),
+            dataset = case_when(
+                str_detect(dataset, "sift") ~ "SIFT",
+                str_detect(dataset, "Livejournal") ~ "Livejournal",
+                str_detect(dataset, "Glove") ~ "Glove",
+                str_detect(dataset, "Orkut") ~ "Orkut"
+            )
+        ) %>%
+        select(-total_time_ms)
+    DBI::dbDisconnect(db)
+    all
+}
+
