@@ -186,6 +186,7 @@ do
         --sketch-bits 0 \
         --k 8 \
         --k2 6 \
+        --repetition-batch 10000 \
         $DATASET
     done
   done
