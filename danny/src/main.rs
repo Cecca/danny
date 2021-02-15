@@ -15,7 +15,6 @@ use danny_base::lsh::*;
 use danny_base::measure::*;
 use danny_base::sketch::*;
 use danny_base::types::*;
-use std::collections::HashMap;
 use std::fmt::Debug;
 use timely::communication::Allocator;
 use timely::worker::Worker;
@@ -383,12 +382,11 @@ fn main() {
                 .close();
             worker.step_while(|| !events_probe.done());
 
-            if let Some(profiler) = profiler.lock().unwrap().take() {
-                let profile = collect_profiling_info(worker, profiler);
-                for p in profile {
-                    println!("{:?}", p);
-                }
-            }
+            let profile = if let Some(profiler) = profiler.lock().unwrap().take() {
+                collect_profiling_info(worker, profiler)
+            } else {
+                Vec::new()
+            };
 
             if worker.index() == 0 {
                 info!(
@@ -407,6 +405,7 @@ fn main() {
                         )
                     }
                 }
+                experiment.add_profile(profile);
 
                 for ((event, worker), count) in events.borrow().iter() {
                     experiment.append_step_counter(

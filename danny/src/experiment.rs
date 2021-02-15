@@ -1,4 +1,4 @@
-use crate::config::*;
+use crate::{config::*, logging::ProfileFunction};
 use chrono::prelude::*;
 use rusqlite::*;
 use std::collections::HashMap;
@@ -12,6 +12,7 @@ pub struct Experiment {
     step_counters: Vec<(String, usize, u32, i64)>,
     // Hostname, interface, transmitted, received
     network: Vec<(String, String, i64, i64)>,
+    profile: Vec<ProfileFunction>,
     output_size: Option<u32>,
     total_time_ms: Option<u32>,
     recall: Option<f64>,
@@ -26,6 +27,7 @@ impl Experiment {
             config,
             step_counters: Vec::new(),
             network: Vec::new(),
+            profile: Vec::new(),
             output_size: None,
             total_time_ms: None,
             recall: None,
@@ -69,6 +71,10 @@ impl Experiment {
         received: i64,
     ) {
         self.network.push((host, iface, transmitted, received));
+    }
+
+    pub fn add_profile(&mut self, prof: Vec<ProfileFunction>) {
+        self.profile.extend(prof.into_iter())
     }
 
     fn default_db_path() -> std::path::PathBuf {
@@ -172,10 +178,12 @@ impl Experiment {
                     total_time_ms,
                     output_size,
                     recall,
-                    speedup
+                    speedup,
+
+                    profile_frequency
                 )
                  VALUES (
-                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24
                  )",
                 params![
                     env!("VERGEN_SHA_SHORT"),
@@ -201,7 +209,8 @@ impl Experiment {
                     self.total_time_ms,
                     self.output_size,
                     recall,
-                    speedup
+                    speedup,
+                    self.config.profile.unwrap_or(0)
                 ],
             )
             .expect("error inserting into main table");
@@ -239,6 +248,24 @@ impl Experiment {
                 stmt.execute(params![id, hostname, interface, transmitted, received])
                     .expect("failure in inserting network information");
             }
+
+            let mut stmt = tx
+                .prepare(
+                    "INSERT INTO profile (id, hostname, thread, name, frame_total, frame_count)
+                    VALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )",
+                )
+                .expect("failed to prepare statement");
+            for prof in self.profile.iter() {
+                stmt.execute(params![
+                    id,
+                    prof.hostname,
+                    prof.thread,
+                    prof.name,
+                    prof.total,
+                    prof.count
+                ])
+                .expect("failure to run the prepared statement");
+            }
         }
 
         tx.commit().expect("error committing insertions");
@@ -275,6 +302,11 @@ fn db_migrate(conn: &Connection) {
         info!("Applying migration v4");
         conn.execute_batch(include_str!("migrations/v4.sql"))
             .expect("error applying version 4");
+    }
+    if version < 5 {
+        info!("Applying migration v5");
+        conn.execute_batch(include_str!("migrations/v5.sql"))
+            .expect("error applying version 5");
     }
 
     info!("Database migration completed!");

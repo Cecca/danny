@@ -382,12 +382,12 @@ where
 
 #[derive(Abomonation, Clone, Debug)]
 pub struct ProfileFunction {
-    hostname: String,
-    name: String,
-    thread: String,
+    pub hostname: String,
+    pub name: String,
+    pub thread: String,
     /// The total number of frames for the thread
-    total: i32,
-    count: i32,
+    pub total: i32,
+    pub count: i32,
 }
 
 pub fn collect_profiling_info<'a>(
