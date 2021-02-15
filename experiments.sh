@@ -257,85 +257,22 @@ done
 
 }
 
-function duplicate_removal_cost() {
-  K=8
-  K2=6
-  for BASE_DATA in sift-100nn-0.5 Livejournal Orkut Glove
-  do
-    DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-sample-200000.bin
-    for ALGORITHM in one-round-lsh hu-et-al
-    do
-      echo "Running on $DATASET"
-      test -d $DATASET
-      danny \
-        --hosts ~/hosts.txt \
-        --threads 8 \
-        --threshold 0.5 \
-        --algorithm $ALGORITHM \
-        --sketch-bits 0 \
-        --no-verify \
-        --k $K \
-        $DATASET
+function profiling() {
 
-      danny \
-        --hosts ~/hosts.txt \
-        --threads 8 \
-        --threshold 0.5 \
-        --algorithm $ALGORITHM \
-        --sketch-bits 0 \
-        --no-dedup \
-        --k $K \
-        $DATASET
+  DATASET=/mnt/fast_storage/users/mcec/Glove-sample-200000.bin
+  danny \
+    --profile 10000 \
+    --hosts ~/hosts.txt \
+    --threads 8 \
+    --threshold 0.5 \
+    --recall 0.8 \
+    --algorithm one-round-lsh \
+    --sketch-bits 512 \
+    --k 8 \
+    $DATASET
 
-      danny \
-        --hosts ~/hosts.txt \
-        --threads 8 \
-        --threshold 0.5 \
-        --algorithm $ALGORITHM \
-        --sketch-bits 0 \
-        --no-verify \
-        --no-dedup \
-        --k $K \
-        $DATASET
-    done
-    ALGORITHM="two-round-lsh"
-    echo "Running on $DATASET"
-    test -d $DATASET
-    danny \
-      --hosts ~/hosts.txt \
-      --threads 8 \
-      --threshold 0.5 \
-      --algorithm $ALGORITHM \
-      --sketch-bits 0 \
-      --no-verify \
-      --k $K \
-      --k2 $K2 \
-      $DATASET
-
-    danny \
-      --hosts ~/hosts.txt \
-      --threads 8 \
-      --threshold 0.5 \
-      --algorithm $ALGORITHM \
-      --sketch-bits 0 \
-      --no-dedup \
-      --k $K \
-      --k2 $K2 \
-      $DATASET
-
-    danny \
-      --hosts ~/hosts.txt \
-      --threads 8 \
-      --threshold 0.5 \
-      --algorithm $ALGORITHM \
-      --sketch-bits 0 \
-      --no-verify \
-      --no-dedup \
-      --k $K \
-      --k2 $K2 \
-      $DATASET
-  done
 }
+
 
 case $1 in
   baselines)
@@ -354,11 +291,11 @@ case $1 in
     scalability
     ;;
 
-  dedup)
-    duplicate_removal_cost
-    ;;
-
   full)
     full_size
+    ;;
+
+  profiling)
+    profiling
     ;;
 esac
