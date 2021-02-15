@@ -259,6 +259,40 @@ done
 
 function profiling() {
 
+  DATASET=/mnt/fast_storage/users/mcec/sift-100nn-0.5-sample-200000.bin
+  danny \
+    --profile 100 \
+    --hosts ~/hosts.txt \
+    --threads 8 \
+    --threshold 0.5 \
+    --recall 0.8 \
+    --algorithm one-round-lsh \
+    --sketch-bits 512 \
+    --k 8 \
+    $DATASET
+  danny \
+    --profile 100 \
+    --hosts ~/hosts.txt \
+    --threads 8 \
+    --threshold 0.5 \
+    --recall 0.8 \
+    --algorithm two-round-lsh \
+    --sketch-bits 512 \
+    --k 6 \
+    --k2 6 \
+    --repetition-batch 10000 \
+    $DATASET
+  danny \
+    --profile 100 \
+    --hosts ~/hosts.txt \
+    --threads 8 \
+    --threshold 0.5 \
+    --recall 0.8 \
+    --algorithm hu-et-al \
+    --sketch-bits 512 \
+    --k 6 \
+    $DATASET
+
   DATASET=/mnt/fast_storage/users/mcec/Glove-sample-200000.bin
   danny \
     --profile 100 \
@@ -270,7 +304,96 @@ function profiling() {
     --sketch-bits 512 \
     --k 8 \
     $DATASET
+  danny \
+    --profile 100 \
+    --hosts ~/hosts.txt \
+    --threads 8 \
+    --threshold 0.5 \
+    --recall 0.8 \
+    --algorithm two-round-lsh \
+    --sketch-bits 512 \
+    --k 6 \
+    --k2 6 \
+    --repetition-batch 10000 \
+    $DATASET
+  danny \
+    --profile 100 \
+    --hosts ~/hosts.txt \
+    --threads 8 \
+    --threshold 0.5 \
+    --recall 0.8 \
+    --algorithm hu-et-al \
+    --sketch-bits 512 \
+    --k 6 \
+    $DATASET
 
+  DATASET=/mnt/fast_storage/users/mcec/Orkut-sample-200000.bin
+  danny \
+    --profile 100 \
+    --hosts ~/hosts.txt \
+    --threads 8 \
+    --threshold 0.5 \
+    --recall 0.8 \
+    --algorithm one-round-lsh \
+    --sketch-bits 256 \
+    --k 8 \
+    $DATASET
+  danny \
+    --profile 100 \
+    --hosts ~/hosts.txt \
+    --threads 8 \
+    --threshold 0.5 \
+    --recall 0.8 \
+    --algorithm two-round-lsh \
+    --sketch-bits 128 \
+    --k 4 \
+    --k2 6 \
+    --repetition-batch 10000 \
+    $DATASET
+  danny \
+    --profile 100 \
+    --hosts ~/hosts.txt \
+    --threads 8 \
+    --threshold 0.5 \
+    --recall 0.8 \
+    --algorithm hu-et-al \
+    --sketch-bits 128 \
+    --k 4 \
+    $DATASET
+
+  DATASET=/mnt/fast_storage/users/mcec/Livejournal-sample-200000.bin
+  danny \
+    --profile 100 \
+    --hosts ~/hosts.txt \
+    --threads 8 \
+    --threshold 0.5 \
+    --recall 0.8 \
+    --algorithm one-round-lsh \
+    --sketch-bits 256 \
+    --k 8 \
+    $DATASET
+  danny \
+    --profile 100 \
+    --hosts ~/hosts.txt \
+    --threads 8 \
+    --threshold 0.5 \
+    --recall 0.8 \
+    --algorithm two-round-lsh \
+    --sketch-bits 128 \
+    --k 4 \
+    --k2 6 \
+    --repetition-batch 10000 \
+    $DATASET
+  danny \
+    --profile 100 \
+    --hosts ~/hosts.txt \
+    --threads 8 \
+    --threshold 0.5 \
+    --recall 0.8 \
+    --algorithm hu-et-al \
+    --sketch-bits 128 \
+    --k 4 \
+    $DATASET
 }
 
 
