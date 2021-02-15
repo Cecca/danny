@@ -9,7 +9,7 @@ nosketch <- alldata %>%
     select(dataset, threshold, algorithm, k, k2, nosketch_time = total_time)
 
 plotdata <- alldata %>%
-    filter(k2 %in% c(0,6)) %>%
+    filter(k2 %in% c(0, 6)) %>%
     group_by(dataset, threshold, algorithm, k, k2) %>%
     mutate(is_best = total_time == min(total_time)) %>%
     ungroup() %>%
@@ -68,7 +68,7 @@ plot_one_algo <- function(data, algorithm_name, groups, ylabs = FALSE, strip_tex
         scale_x_discrete(
             labels = c("0", "", "128", "", "512"),
             breaks = c("0", "64", "128", "256", "512")
-            ) +
+        ) +
         scale_y_log10() +
         scale_color_manual(values = c("black", "red")) +
         facet_grid(
@@ -131,7 +131,7 @@ p_two_round <- plotdata %>%
         groups = fct_reorder(str_c("k=", k), k)
     ) %>%
     plot_one_algo("two-round-lsh", groups, strip_text = T) +
-    labs(subtitle=TeX("with $k_2 = 6$"))
+    labs(subtitle = TeX("with $k_2 = 6$"))
 
 (p_all2all | p_hu_et_al | p_one_round | p_two_round) +
     plot_layout(
@@ -145,3 +145,19 @@ p_two_round <- plotdata %>%
     )
 
 ggsave("imgs/sketches.png", width = 10, height = 3)
+
+print("Effect of sketching on the accuracy")
+table_search_best() %>%
+    filter(algorithm == "all-2-all") %>%
+    select(dataset, sketch_bits, output_size, threshold) %>%
+    arrange(sketch_bits) %>%
+    pivot_wider(names_from = sketch_bits, values_from = output_size) %>%
+    mutate(
+        loss64 = (`0` - `64`) / `0`,
+        loss128 = (`0` - `128`) / `0`,
+        loss256 = (`0` - `256`) / `0`,
+        loss512 = (`0` - `512`) / `0`
+    ) %>%
+    select(dataset, threshold, loss64, loss128, loss256, loss512) %>%
+    summarise(across(loss64:loss512, max))
+
