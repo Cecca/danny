@@ -41,7 +41,7 @@ where
             baseline::all_pairs_parallel::<Vector, _, _>(
                 worker,
                 &config.path,
-                move |a, b| InnerProduct::inner_product(a, b) >= threshold,
+                move |a, b| Vector::cosine_predicate(a, b, threshold),
                 sketcher,
                 sketch_predicate,
             )
@@ -89,7 +89,7 @@ where
                 Hyperplane::builder(dim),
                 sketcher,
                 sketch_predicate,
-                move |a, b| InnerProduct::inner_product(a, b) >= threshold,
+                move |a, b| Vector::cosine_predicate(a, b, threshold),
                 &mut hasher_rng,
                 &config,
                 experiment,
@@ -150,7 +150,7 @@ where
                 Hyperplane::builder(dim),
                 sketcher,
                 sketch_predicate,
-                move |a, b| InnerProduct::inner_product(a, b) >= threshold,
+                move |a, b| Vector::cosine_predicate(a, b, threshold),
                 &mut hasher_rng,
                 &config,
                 experiment,
@@ -210,7 +210,7 @@ where
                 Hyperplane::builder(dim),
                 sketcher,
                 sketch_predicate,
-                move |a, b| Vector::inner_product(a, b) >= threshold,
+                move |a, b| Vector::cosine_predicate(a, b, threshold),
                 &mut hasher_rng,
                 &config,
                 experiment,
@@ -384,37 +384,9 @@ fn main() {
             worker.step_while(|| !events_probe.done());
 
             if let Some(profiler) = profiler.lock().unwrap().take() {
-                if let Ok(report) = profiler.report().build() {
-                    let mut total_frames: i32 = 0;
-                    let mut symbol_counts = HashMap::new();
-                    for (frames, frame_count) in report.data.iter() {
-                        let frame_count = *frame_count as i32;
-                        total_frames += frame_count;
-                        // let thread_map = symbol_counts
-                        //     .entry(frames.thread_id)
-                        //     .or_insert_with(HashMap::new);
-                        for symb in frames.frames.iter().flatten() {
-                            symbol_counts
-                                .entry(symb.name())
-                                .and_modify(|c| *c += frame_count)
-                                .or_insert(frame_count);
-                        }
-                    }
-
-                    // for (thread, v) in symbol_counts {
-                    //     println!("thread {}", thread);
-                    let mut counts: Vec<(String, i32)> = symbol_counts.into_iter().collect();
-                    counts.sort_unstable_by_key(|p| p.1);
-                    for (k, v) in counts {
-                        println!(
-                            " . {} -> {} ({:.4}%)",
-                            k,
-                            v,
-                            (v as f64 / total_frames as f64) * 100.0
-                        );
-                    }
-                    println!("Total frames {}", total_frames);
-                    // }
+                let profile = collect_profiling_info(worker, profiler);
+                for p in profile {
+                    println!("{:?}", p);
                 }
             }
 

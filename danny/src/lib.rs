@@ -6,7 +6,6 @@ extern crate danny_base;
 #[macro_use]
 extern crate log;
 extern crate env_logger;
-extern crate log_panics;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde;
@@ -16,7 +15,6 @@ extern crate chrono;
 extern crate core;
 extern crate rand;
 extern crate rand_xorshift;
-extern crate siphasher;
 extern crate timely;
 
 #[macro_use]

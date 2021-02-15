@@ -60,6 +60,12 @@ impl Vector {
     pub fn dim(&self) -> usize {
         self.data.len()
     }
+
+    /// Returns true if the vectors are within the given similarity threshold.
+    /// Assumes that the vectors are normalized.
+    pub fn cosine_predicate(a: &Self, b: &Self, sim: f64) -> bool {
+        InnerProduct::inner_product(a, b) >= sim
+    }
 }
 
 #[derive(Abomonation, Serialize, Deserialize, Clone, Debug, Default)]
