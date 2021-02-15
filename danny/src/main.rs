@@ -382,11 +382,8 @@ fn main() {
                 .close();
             worker.step_while(|| !events_probe.done());
 
-            let profile = if let Some(profiler) = profiler.lock().unwrap().take() {
-                collect_profiling_info(worker, profiler)
-            } else {
-                Vec::new()
-            };
+            let profiler = profiler.lock().unwrap().take();
+            let profile = collect_profiling_info(worker, profiler);
 
             if worker.index() == 0 {
                 info!(

@@ -392,7 +392,7 @@ pub struct ProfileFunction {
 
 pub fn collect_profiling_info<'a>(
     worker: &mut Worker<Allocator>,
-    guard: pprof::ProfilerGuard<'a>,
+    guard: Option<pprof::ProfilerGuard<'a>>,
 ) -> Vec<ProfileFunction> {
     use timely::dataflow::channels::pact::Pipeline;
 
@@ -420,37 +420,41 @@ pub fn collect_profiling_info<'a>(
         (input, probe)
     });
 
-    if let Ok(report) = guard.report().build() {
-        let mut symbol_counts = HashMap::new();
-        for (frames, frame_count) in report.data.iter() {
-            let frame_count = *frame_count as i32;
-            let thread_map = symbol_counts
-                .entry(frames.thread_name.clone())
-                .or_insert_with(|| (0, HashMap::new()));
-            thread_map.0 += frame_count;
-            for symb in frames.frames.iter().flatten() {
-                thread_map
-                    .1
-                    .entry(symb.name())
-                    .and_modify(|c| *c += frame_count)
-                    .or_insert(frame_count);
+    if let Some(guard) = guard {
+        if let Ok(report) = guard.report().build() {
+            let mut symbol_counts = HashMap::new();
+            for (frames, frame_count) in report.data.iter() {
+                let frame_count = *frame_count as i32;
+                let thread_map = symbol_counts
+                    .entry(frames.thread_name.clone())
+                    .or_insert_with(|| (0, HashMap::new()));
+                thread_map.0 += frame_count;
+                for symb in frames.frames.iter().flatten() {
+                    thread_map
+                        .1
+                        .entry(symb.name())
+                        .and_modify(|c| *c += frame_count)
+                        .or_insert(frame_count);
+                }
             }
-        }
 
-        for (thread, (total, values)) in symbol_counts {
-            for (name, count) in values {
-                input.send(ProfileFunction {
-                    hostname: hostname.clone(),
-                    thread: thread.clone(),
-                    name,
-                    total,
-                    count,
-                });
+            for (thread, (total, values)) in symbol_counts {
+                for (name, count) in values {
+                    input.send(ProfileFunction {
+                        hostname: hostname.clone(),
+                        thread: thread.clone(),
+                        name,
+                        total,
+                        count,
+                    });
+                }
             }
         }
     }
     input.close();
+    info!("Collecting the profiling information");
     worker.step_while(|| !probe.done());
+    info!("Done");
 
     result_read.replace(Vec::new())
 }
