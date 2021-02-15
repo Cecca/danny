@@ -173,8 +173,8 @@ impl NetworkSummary {
             input.send(machine_summary);
         }
 
-        input.advance_to(1);
-        worker.step_while(|| probe.less_than(&1));
+        input.close();
+        worker.step_while(|| !probe.done());
 
         result_read.replace(Vec::new())
     }
