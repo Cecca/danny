@@ -67,6 +67,10 @@ pub struct Config {
     #[argh(option, default = "0.8")]
     pub recall: f64,
 
+    /// profile the code with the given frequency
+    #[argh(option)]
+    pub profile: Option<i32>,
+
     /// don't remove duplicates from the output
     #[argh(switch)]
     pub no_dedup: bool,
