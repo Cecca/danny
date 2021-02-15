@@ -15,6 +15,7 @@ use danny_base::lsh::*;
 use danny_base::measure::*;
 use danny_base::sketch::*;
 use danny_base::types::*;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use timely::communication::Allocator;
 use timely::worker::Worker;
@@ -278,6 +279,7 @@ fn main() {
     config
         .clone()
         .execute(move |worker| {
+            let profiler = pprof::ProfilerGuard::new(100000).unwrap();
             let mut experiment = Experiment::from_config(config.clone());
             let (events_probe, events_handle, events) = init_event_logging(worker);
 
@@ -374,6 +376,31 @@ fn main() {
                 .expect("missing logging input handle")
                 .close();
             worker.step_while(|| !events_probe.done());
+
+            if let Ok(report) = profiler.report().build() {
+                let mut total_frames: i32 = 0;
+                let mut symbol_counts = HashMap::new();
+                for (frames, frame_count) in report.data.iter() {
+                    let frame_count = *frame_count as i32;
+                    total_frames += frame_count;
+                    let thread_map = symbol_counts
+                        .entry(frames.thread_id)
+                        .or_insert_with(HashMap::new);
+                    for symb in frames.frames.iter().flatten() {
+                        *thread_map.entry(symb.name()).or_insert(0) += frame_count;
+                    }
+                }
+
+                for (thread, v) in symbol_counts {
+                    println!("thread {}", thread);
+                    let mut counts: Vec<(String, i32)> = v.into_iter().collect();
+                    counts.sort_unstable_by_key(|p| p.1);
+                    for (k, v) in counts {
+                        println!(" . {} {}", k, v / total_frames);
+                    }
+                    println!("Total frames {}", total_frames);
+                }
+            }
 
             if worker.index() == 0 {
                 info!(
