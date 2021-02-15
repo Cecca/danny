@@ -261,7 +261,7 @@ function profiling() {
 
   DATASET=/mnt/fast_storage/users/mcec/Glove-sample-200000.bin
   danny \
-    --profile 1000 \
+    --profile 100 \
     --hosts ~/hosts.txt \
     --threads 8 \
     --threshold 0.5 \
