@@ -368,6 +368,7 @@ fn main() {
             let total_time =
                 total_time_d.as_secs() * 1000 + u64::from(total_time_d.subsec_millis());
 
+            info!("collecting network summaries");
             let network_summary = {
                 let mut network = network.lock().unwrap();
                 let network: Option<NetworkGauge> = network.take().flatten();
@@ -375,6 +376,7 @@ fn main() {
             };
             let network_summaries = NetworkSummary::collect_from_workers(worker, network_summary);
 
+            info!("collecting counters");
             // close the events input and perform any outstanding work
             events_handle
                 .replace(None)
@@ -382,6 +384,7 @@ fn main() {
                 .close();
             worker.step_while(|| !events_probe.done());
 
+            info!("collecting profile information (if any)");
             let profiler = profiler.lock().unwrap().take();
             let profile = collect_profiling_info(worker, profiler);
 
