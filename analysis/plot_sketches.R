@@ -159,5 +159,5 @@ table_search_best() %>%
         loss512 = (`0` - `512`) / `0`
     ) %>%
     select(dataset, threshold, loss64, loss128, loss256, loss512) %>%
-    summarise(across(loss64:loss512, max))
+    summarise(across(loss64:loss512, ~max(.x) %>% scales::percent(accuracy=0.001)))
 

@@ -160,3 +160,51 @@ table_recall_experiment <- function() {
     DBI::dbDisconnect(db)
     all
 }
+
+table_duplicate_cost <- function() {
+    db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
+    # The load is the maximum load among all the workers in a given experiment
+    all <- tbl(db, "result_recent") %>%
+        filter(path %LIKE% "%sample-200000.bin") %>%
+        filter(required_recall == 0.8) %>%
+        filter(sketch_bits == 0) %>%
+        filter(threshold %in% c(0.5)) %>%
+        filter(algorithm != "two-round-lsh" | (repetition_batch >= 1000)) %>%
+        filter(algorithm != "all-2-all") %>%
+        collect() %>%
+        mutate(
+            no_dedup = as.logical(no_dedup),
+            no_verify = as.logical(no_verify),
+            dataset = basename(path),
+            total_time = set_units(total_time_ms, "ms"),
+            dataset = case_when(
+                str_detect(dataset, "sift") ~ "SIFT",
+                str_detect(dataset, "Livejournal") ~ "Livejournal",
+                str_detect(dataset, "Glove") ~ "Glove",
+                str_detect(dataset, "Orkut") ~ "Orkut"
+            )
+        ) %>%
+        select(-total_time_ms)
+    DBI::dbDisconnect(db)
+
+    total <- filter(all, !no_dedup, !no_verify) %>%
+        select(dataset, algorithm, threshold, k, k2, time_total = total_time)
+    only_verify <- filter(all, no_dedup, !no_verify) %>%
+        select(dataset, algorithm, threshold, k, k2, time_only_verify = total_time)
+    only_dedup <- filter(all, !no_dedup, no_verify) %>%
+        select(dataset, algorithm, threshold, k, k2, time_only_dedup = total_time)
+    only_join <- filter(all, no_dedup, no_verify) %>%
+        select(dataset, algorithm, threshold, k, k2, time_only_join = total_time)
+
+    inner_join(total, only_verify) %>%
+        inner_join(only_dedup) %>%
+        inner_join(only_join) %>%
+        (function (d) {select(d, dataset, algorithm) %>% print(); d}) %>%
+        mutate(
+            time_dedup = time_total - time_only_verify,
+            time_verify = time_only_verify - time_only_join,
+            time_join = time_only_join
+        ) %>%
+        select(-threshold, -starts_with("time_only"))
+}
+
