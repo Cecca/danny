@@ -154,40 +154,43 @@ do
   do
     for THRESHOLD in 0.5
     do
-      DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-sample-200000.bin
-      echo "Running on $DATASET"
-      test -d $DATASET
-      danny \
-        --hosts ~/hosts.txt \
-        --threads 8 \
-        --threshold $THRESHOLD \
-        --algorithm "one-round-lsh" \
-        --recall $RECALL \
-        --sketch-bits 0 \
-        --k 8 \
-        $DATASET
+      for K in 3 4 6 8
+      do
+        DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-sample-200000.bin
+        echo "Running on $DATASET"
+        test -d $DATASET
+        danny \
+          --hosts ~/hosts.txt \
+          --threads 8 \
+          --threshold $THRESHOLD \
+          --algorithm "one-round-lsh" \
+          --recall $RECALL \
+          --sketch-bits 0 \
+          --k $K \
+          $DATASET
 
-      danny \
-        --hosts ~/hosts.txt \
-        --threads 8 \
-        --threshold $THRESHOLD \
-        --algorithm "hu-et-al" \
-        --recall $RECALL \
-        --sketch-bits 0 \
-        --k 8 \
-        $DATASET
+        danny \
+          --hosts ~/hosts.txt \
+          --threads 8 \
+          --threshold $THRESHOLD \
+          --algorithm "hu-et-al" \
+          --recall $RECALL \
+          --sketch-bits 0 \
+          --k $K \
+          $DATASET
 
-      danny \
-        --hosts ~/hosts.txt \
-        --threads 8 \
-        --threshold $THRESHOLD \
-        --algorithm "two-round-lsh" \
-        --recall $RECALL \
-        --sketch-bits 0 \
-        --k 8 \
-        --k2 6 \
-        --repetition-batch 10000 \
-        $DATASET
+        danny \
+          --hosts ~/hosts.txt \
+          --threads 8 \
+          --threshold $THRESHOLD \
+          --algorithm "two-round-lsh" \
+          --recall $RECALL \
+          --sketch-bits 0 \
+          --k $K \
+          --k2 6 \
+          --repetition-batch 10000 \
+          $DATASET
+      done
     done
   done
 done
