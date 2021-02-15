@@ -13,6 +13,7 @@ RUN install2.r --deps TRUE languageserver
 RUN install2.r --deps TRUE --error patchwork
 RUN install2.r --deps TRUE --error latex2exp
 RUN install2.r --deps TRUE --error ggridges
+RUN install2.r --deps TRUE --error ggrepel
 
 WORKDIR /work
 

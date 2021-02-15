@@ -160,4 +160,3 @@ table_recall_experiment <- function() {
     DBI::dbDisconnect(db)
     all
 }
-

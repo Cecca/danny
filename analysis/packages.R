@@ -6,4 +6,6 @@ suppressPackageStartupMessages({
     library(patchwork)
     library(latex2exp)
     library(ggridges)
+    library(ggforce)
+    library(ggrepel)
 })
