@@ -199,22 +199,40 @@ done
 function scalability() {
 for BASE_DATA in sift-100nn-0.5 Livejournal Orkut Glove
 do
-  for SIZE_SPEC in sample-200000 sample-400000 sample-800000 inflated-2 inflated-5
+  for HOSTS in 1 2 3 4 5
   do
-    for K in 9 10 11 12 13
-    do
-      DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-$SIZE_SPEC.bin
-      echo "Running on $DATASET"
-      test -d $DATASET
-      danny \
-        --hosts ~/hosts.txt \
-        --threads 8 \
-        --threshold 0.5 \
-        --algorithm one-round-lsh \
-        --sketch-bits 256 \
-        --k $K \
-        $DATASET
-    done
+    DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-sample-200000.bin
+    HOSTS_FILE=~/hosts$HOSTS.txt
+    echo "Running on $DATASET"
+    test -d $DATASET
+    danny \
+      --hosts $HOSTS_FILE \
+      --threads 8 \
+      --threshold 0.5 \
+      --algorithm one-round-lsh \
+      --sketch-bits 256 \
+      --k 6 \
+      $DATASET
+
+    danny \
+      --hosts $HOSTS_FILE \
+      --threads 8 \
+      --threshold 0.5 \
+      --algorithm two-round-lsh \
+      --sketch-bits 256 \
+      --k 6 \
+      --k2 6 \
+      --repetition-batch 10000 \
+      $DATASET
+
+    danny \
+      --hosts $HOSTS_FILE \
+      --threads 8 \
+      --threshold 0.5 \
+      --algorithm hu-et-al \
+      --sketch-bits 256 \
+      --k 6 \
+      $DATASET
   done
 done
   
