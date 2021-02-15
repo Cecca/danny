@@ -10,6 +10,7 @@ table_search_best <- function() {
         collect() %>%
         pivot_wider(names_from = kind, values_from = count)
     all <- tbl(db, "result_recent") %>%
+        filter(profile_frequency == 0) %>%
         filter(path %LIKE% "%sample-200000.bin") %>%
         filter(required_recall == 0.8) %>%
         filter(threshold %in% c(0.5, 0.7)) %>%
@@ -49,6 +50,7 @@ table_load <- function() {
         ungroup() %>%
         collect()
     all <- tbl(db, "result_recent") %>%
+        filter(profile_frequency == 0) %>%
         filter(path %LIKE% "%sample-200000.bin") %>%
         filter(required_recall == 0.8) %>%
         filter(threshold %in% c(0.5, 0.7)) %>%
@@ -81,6 +83,7 @@ table_full <- function() {
         collect() %>%
         pivot_wider(names_from = kind, values_from = count)
     all <- tbl(db, "result_recent") %>%
+        filter(profile_frequency == 0) %>%
         filter(
             (path %LIKE% "%glove.twitter.27B.200d.bin") |
             (path %LIKE% "%Orkut.bin") |
@@ -139,6 +142,7 @@ table_data_info <- function() {
 table_recall_experiment <- function() {
     db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
     all <- tbl(db, "result_recent") %>%
+        filter(profile_frequency == 0) %>%
         filter(path %LIKE% "%sample-200000.bin") %>%
         filter(required_recall %in% c(0.5, 0.8, 0.9)) %>%
         filter(threshold %in% c(0.5)) %>%
@@ -165,6 +169,7 @@ table_duplicate_cost <- function() {
     db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
     # The load is the maximum load among all the workers in a given experiment
     all <- tbl(db, "result_recent") %>%
+        filter(profile_frequency == 0) %>%
         filter(path %LIKE% "%sample-200000.bin") %>%
         filter(required_recall == 0.8) %>%
         filter(sketch_bits == 0) %>%
