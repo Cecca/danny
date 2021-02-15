@@ -368,6 +368,10 @@ fn main() {
             let total_time =
                 total_time_d.as_secs() * 1000 + u64::from(total_time_d.subsec_millis());
 
+            info!("collecting profile information (if any)");
+            let profiler = profiler.lock().unwrap().take();
+            let profile = collect_profiling_info(worker, profiler);
+
             info!("collecting network summaries");
             let network_summary = {
                 let mut network = network.lock().unwrap();
@@ -384,9 +388,6 @@ fn main() {
                 .close();
             worker.step_while(|| !events_probe.done());
 
-            info!("collecting profile information (if any)");
-            let profiler = profiler.lock().unwrap().take();
-            let profile = collect_profiling_info(worker, profiler);
 
             if worker.index() == 0 {
                 info!(
