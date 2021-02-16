@@ -3,7 +3,7 @@ source("tables.R")
 source("plots.R")
 
 profile <- table_profile() %>%
-    group_by(algorithm) %>%
+    group_by(dataset, algorithm) %>%
     mutate(
         x = row_number(frame_total)
     ) %>%
@@ -33,6 +33,7 @@ ggplot(
     facet_wrap(vars(algorithm)) +
     scale_color_profile() +
     theme_paper() +
+    labs(x="", title="Frame counts by worker", subtitle="Glove dataset") +
     theme(
         axis.text.x = element_blank(),
         axis.ticks.x = element_blank(),
@@ -61,4 +62,4 @@ ggplot(
         panel.grid = element_blank()
     )
 
-ggsave("imgs/profile_glove.png", width = 8, height = 4)
+ggsave("imgs/profile.png", width = 8, height = 4)

@@ -3,7 +3,7 @@ CWD=`pwd`
 RSCRIPT=docker run -it --rm -v ${CWD}:/work -t ${DOCKER_CONTAINER} Rscript
 
 .PHONY: all
-all: imgs/dep_k.png imgs/sketches.png imgs/load.png tex/best.tex
+all: imgs/dep_k.png imgs/sketches.png imgs/load.png imgs/full.png imgs/profile.png imgs/profile_glove_detail.png tex/best.tex
 
 .PHONY: build-docker
 build-docker: Dockerfile
@@ -23,6 +23,12 @@ imgs/recall_experiment.png: plot_recall_experiment.R tables.R danny-results.sqli
 
 imgs/full.png: plot_full.R tables.R danny-results.sqlite
 	${RSCRIPT} plot_full.R
+
+imgs/profile.png: plot_profile.R tables.R danny-results.sqlite
+	${RSCRIPT} plot_profile.R
+
+imgs/profile_glove_detail.png: plot_profile.R tables.R danny-results.sqlite
+	${RSCRIPT} plot_profile.R
 
 tex/best.tex: latex.R tables.R danny-results.sqlite
 	${RSCRIPT} latex.R
