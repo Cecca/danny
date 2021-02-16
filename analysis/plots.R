@@ -17,3 +17,12 @@ scale_color_algorithm <- function() {
         "all-2-all" = "#76b7b2"
     ), aesthetics = c("fill", "color"))
 }
+
+scale_color_profile <- function() {
+    scale_color_manual(values = c(
+        "deduplicate" = "#4e79a7",
+        "sketch" = "#f28e2c",
+        "verify" = "#e15759",
+        "other" = "#76b7b2"
+    ), aesthetics = c("fill", "color"))
+}

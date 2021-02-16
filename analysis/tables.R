@@ -165,21 +165,40 @@ table_recall_experiment <- function() {
     all
 }
 
-table_duplicate_cost <- function() {
+table_profile <- function() {
     db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
-    # The load is the maximum load among all the workers in a given experiment
+    profile <- tbl(db, "profile") %>%
+        filter(
+            (name %LIKE% "%_predicate") |
+            (name %LIKE% "%already_seen") |
+            (name %LIKE% "%different_bits")
+        ) %>%
+        collect() %>%
+        mutate(
+            name = case_when(
+                str_detect(name, "_predicate") ~ "verify",
+                str_detect(name, "already_seen") ~ "deduplicate",
+                str_detect(name, "different_bits") ~ "sketch"
+            )
+        ) %>%
+        pivot_wider(names_from=name, values_from=frame_count) %>%
+        replace_na(list(
+            deduplicate = 0,
+            sketch = 0,
+            verify = 0,
+            other = 0
+        )) %>%
+        mutate(other = frame_total - (deduplicate + sketch + verify))
     all <- tbl(db, "result_recent") %>%
-        filter(profile_frequency == 0) %>%
+        filter(profile_frequency == 100) %>%
         filter(path %LIKE% "%sample-200000.bin") %>%
         filter(required_recall == 0.8) %>%
-        filter(sketch_bits == 0) %>%
         filter(threshold %in% c(0.5)) %>%
+        filter(!no_verify, !no_dedup) %>%
         filter(algorithm != "two-round-lsh" | (repetition_batch >= 1000)) %>%
         filter(algorithm != "all-2-all") %>%
         collect() %>%
         mutate(
-            no_dedup = as.logical(no_dedup),
-            no_verify = as.logical(no_verify),
             dataset = basename(path),
             total_time = set_units(total_time_ms, "ms"),
             dataset = case_when(
@@ -189,27 +208,8 @@ table_duplicate_cost <- function() {
                 str_detect(dataset, "Orkut") ~ "Orkut"
             )
         ) %>%
+        inner_join(profile) %>%
         select(-total_time_ms)
     DBI::dbDisconnect(db)
-
-    total <- filter(all, !no_dedup, !no_verify) %>%
-        select(dataset, algorithm, threshold, k, k2, time_total = total_time)
-    only_verify <- filter(all, no_dedup, !no_verify) %>%
-        select(dataset, algorithm, threshold, k, k2, time_only_verify = total_time)
-    only_dedup <- filter(all, !no_dedup, no_verify) %>%
-        select(dataset, algorithm, threshold, k, k2, time_only_dedup = total_time)
-    only_join <- filter(all, no_dedup, no_verify) %>%
-        select(dataset, algorithm, threshold, k, k2, time_only_join = total_time)
-
-    inner_join(total, only_verify) %>%
-        inner_join(only_dedup) %>%
-        inner_join(only_join) %>%
-        (function (d) {select(d, dataset, algorithm) %>% print(); d}) %>%
-        mutate(
-            time_dedup = time_total - time_only_verify,
-            time_verify = time_only_verify - time_only_join,
-            time_join = time_only_join
-        ) %>%
-        select(-threshold, -starts_with("time_only"))
+    all
 }
-
