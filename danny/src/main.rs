@@ -264,6 +264,7 @@ fn main() {
             .profile
             .map(|freq| pprof::ProfilerGuard::new(freq).unwrap()),
     ));
+    let profiler_barrier = Arc::new(std::sync::Barrier::new(config.threads));
 
     if config.algorithm == "sequential" {
         let count = match content_type(&config.path) {
@@ -370,7 +371,7 @@ fn main() {
 
             info!("collecting profile information (if any)");
             let profiler = profiler.lock().unwrap().take();
-            let profile = collect_profiling_info(worker, profiler);
+            let profile = collect_profiling_info(worker, profiler, Arc::clone(&profiler_barrier));
 
             info!("collecting network summaries");
             let network_summary = {

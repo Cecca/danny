@@ -19,7 +19,7 @@ profile <- table_profile() %>%
     ))
 
 detail <- profile %>%
-    filter(dataset == "Glove", threshold == 0.5)
+    filter(dataset == "SIFT", threshold == 0.5)
 
 ggplot(
     detail,

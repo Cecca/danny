@@ -393,8 +393,23 @@ pub struct ProfileFunction {
 pub fn collect_profiling_info<'a>(
     worker: &mut Worker<Allocator>,
     guard: Option<pprof::ProfilerGuard<'a>>,
+    // a barrier to sync all the threads local to a host
+    barrier: std::sync::Arc<std::sync::Barrier>
 ) -> Vec<ProfileFunction> {
     use timely::dataflow::channels::pact::Pipeline;
+
+    // resolve the profile and drop it as soon as possible, 
+    // otherwise we are going to capture the setup of the exchange dataflow.
+    // While unintuitive, this can skew the results a lot.
+    // The other threads wait on a barrier
+    let report = guard.as_ref().map(|g| {
+        info!("Building the profile");
+        let report = g.report().build().unwrap();
+        info!("done building the profile");
+        report
+    });
+    drop(guard); // this stops the profiling
+    barrier.wait();
 
     let hostname = get_hostname();
 
@@ -420,44 +435,41 @@ pub fn collect_profiling_info<'a>(
         (input, probe)
     });
 
-    if let Some(guard) = guard {
-        if let Ok(report) = guard.report().build() {
-            use pprof::protos::Message;
-            // dump profile
-            let mut file = File::create("profile.pb").unwrap();
-            let profile = report.pprof().unwrap();
+    if let Some(report) = report {
+        use pprof::protos::Message;
+        let mut file = File::create("profile.pb").unwrap();
+        let profile = report.pprof().unwrap();
 
-            let mut content = Vec::new();
-            profile.encode(&mut content).unwrap();
-            file.write_all(&content).unwrap();
+        let mut content = Vec::new();
+        profile.encode(&mut content).unwrap();
+        file.write_all(&content).unwrap();
 
 
-            let mut symbol_counts = HashMap::new();
-            for (frames, frame_count) in report.data.iter() {
-                let frame_count = *frame_count as i32;
-                let thread_map = symbol_counts
-                    .entry(frames.thread_name.clone())
-                    .or_insert_with(|| (0, HashMap::new()));
-                thread_map.0 += frame_count;
-                for symb in frames.frames.iter().flatten() {
-                    thread_map
-                        .1
-                        .entry(symb.name())
-                        .and_modify(|c| *c += frame_count)
-                        .or_insert(frame_count);
-                }
+        let mut symbol_counts = HashMap::new();
+        for (frames, frame_count) in report.data.iter() {
+            let frame_count = *frame_count as i32;
+            let thread_map = symbol_counts
+                .entry(frames.thread_name.clone())
+                .or_insert_with(|| (0, HashMap::new()));
+            thread_map.0 += frame_count;
+            for symb in frames.frames.iter().flatten() {
+                thread_map
+                    .1
+                    .entry(symb.name())
+                    .and_modify(|c| *c += frame_count)
+                    .or_insert(frame_count);
             }
+        }
 
-            for (thread, (total, values)) in symbol_counts {
-                for (name, count) in values {
-                    input.send(ProfileFunction {
-                        hostname: hostname.clone(),
-                        thread: thread.clone(),
-                        name,
-                        total,
-                        count,
-                    });
-                }
+        for (thread, (total, values)) in symbol_counts {
+            for (name, count) in values {
+                input.send(ProfileFunction {
+                    hostname: hostname.clone(),
+                    thread: thread.clone(),
+                    name,
+                    total,
+                    count,
+                });
             }
         }
     }

@@ -204,7 +204,7 @@ table_profile <- function() {
         mutate(other = frame_total - (deduplicate + sketch + verify))
     all <- tbl(db, "result_recent") %>%
         filter(hosts == "sss00:2001__sss01:2001__sss02:2001__sss03:2001__sss04:2001") %>%
-        filter(profile_frequency == 100) %>%
+        filter(profile_frequency == 998) %>%
         filter(path %LIKE% "%sample-200000.bin") %>%
         filter(required_recall == 0.8) %>%
         filter(threshold %in% c(0.5)) %>%
