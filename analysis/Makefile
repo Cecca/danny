@@ -30,6 +30,9 @@ imgs/profile.png: plot_profile.R tables.R danny-results.sqlite
 imgs/profile_glove_detail.png: plot_profile.R tables.R danny-results.sqlite
 	${RSCRIPT} plot_profile.R
 
+imgs/scalability.png: plot_scalability.R tables.R danny-results.sqlite
+	${RSCRIPT} plot_scalability.R
+
 tex/best.tex: latex.R tables.R danny-results.sqlite
 	${RSCRIPT} latex.R
 

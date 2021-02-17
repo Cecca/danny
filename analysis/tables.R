@@ -10,6 +10,7 @@ table_search_best <- function() {
         collect() %>%
         pivot_wider(names_from = kind, values_from = count)
     all <- tbl(db, "result_recent") %>%
+        filter(hosts == "sss00:2001__sss01:2001__sss02:2001__sss03:2001__sss04:2001") %>%
         filter(profile_frequency == 0) %>%
         filter(path %LIKE% "%sample-200000.bin") %>%
         filter(required_recall == 0.8) %>%
@@ -50,6 +51,7 @@ table_load <- function() {
         ungroup() %>%
         collect()
     all <- tbl(db, "result_recent") %>%
+        filter(hosts == "sss00:2001__sss01:2001__sss02:2001__sss03:2001__sss04:2001") %>%
         filter(profile_frequency == 0) %>%
         filter(path %LIKE% "%sample-200000.bin") %>%
         filter(required_recall == 0.8) %>%
@@ -83,6 +85,7 @@ table_full <- function() {
         collect() %>%
         pivot_wider(names_from = kind, values_from = count)
     all <- tbl(db, "result_recent") %>%
+        filter(hosts == "sss00:2001__sss01:2001__sss02:2001__sss03:2001__sss04:2001") %>%
         filter(profile_frequency == 0) %>%
         filter(
             (path %LIKE% "%glove.twitter.27B.200d.bin") |
@@ -142,6 +145,7 @@ table_data_info <- function() {
 table_recall_experiment <- function() {
     db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
     all <- tbl(db, "result_recent") %>%
+        filter(hosts == "sss00:2001__sss01:2001__sss02:2001__sss03:2001__sss04:2001") %>%
         filter(profile_frequency == 0) %>%
         filter(path %LIKE% "%sample-200000.bin") %>%
         filter(required_recall %in% c(0.5, 0.8, 0.9)) %>%
@@ -171,14 +175,16 @@ table_profile <- function() {
         filter(
             (name %LIKE% "%_predicate") |
             (name %LIKE% "%already_seen") |
-            (name %LIKE% "%different_bits")
+            (name %LIKE% "%different_bits") |
+            (name %LIKE% "%timely_communication%")
         ) %>%
         collect() %>%
         mutate(
             name = case_when(
                 str_detect(name, "_predicate") ~ "verify",
                 str_detect(name, "already_seen") ~ "deduplicate",
-                str_detect(name, "different_bits") ~ "sketch"
+                str_detect(name, "different_bits") ~ "sketch",
+                str_detect(name, "timely_communication") ~ "timely_communication"
             )
         ) %>%
         pivot_wider(names_from=name, values_from=frame_count) %>%
@@ -186,10 +192,12 @@ table_profile <- function() {
             deduplicate = 0,
             sketch = 0,
             verify = 0,
+            timely_communication = 0,
             other = 0
         )) %>%
         mutate(other = frame_total - (deduplicate + sketch + verify))
     all <- tbl(db, "result_recent") %>%
+        filter(hosts == "sss00:2001__sss01:2001__sss02:2001__sss03:2001__sss04:2001") %>%
         filter(profile_frequency == 100) %>%
         filter(path %LIKE% "%sample-200000.bin") %>%
         filter(required_recall == 0.8) %>%
@@ -209,6 +217,37 @@ table_profile <- function() {
             )
         ) %>%
         inner_join(profile) %>%
+        select(-total_time_ms)
+    DBI::dbDisconnect(db)
+    all
+}
+
+table_scalability <- function() {
+    db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
+    selector <- tbl(db, "result_recent") %>%
+        filter(hosts == "sss00:2001") %>%
+        select(path, algorithm, threshold, k, k2, sketch_bits)
+    all <- tbl(db, "result_recent") %>%
+        filter(profile_frequency == 0) %>%
+        filter(path %LIKE% "%sample-200000.bin") %>%
+        filter(required_recall == 0.8) %>%
+        filter(threshold %in% c(0.5, 0.7)) %>%
+        filter(!no_verify, !no_dedup) %>%
+        filter(algorithm != "two-round-lsh" | (repetition_batch >= 1000)) %>%
+        semi_join(selector) %>%
+        collect() %>%
+        mutate(
+            dataset = basename(path),
+            total_time = set_units(total_time_ms, "ms"),
+            dataset = case_when(
+                str_detect(dataset, "sift") ~ "SIFT",
+                str_detect(dataset, "Livejournal") ~ "Livejournal",
+                str_detect(dataset, "Glove") ~ "Glove",
+                str_detect(dataset, "Orkut") ~ "Orkut"
+            ),
+            nhosts = str_count(hosts, "sss"),
+            workers = nhosts * threads
+        ) %>%
         select(-total_time_ms)
     DBI::dbDisconnect(db)
     all
