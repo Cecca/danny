@@ -43,7 +43,7 @@ bincode = "1.0"
 packed_simd = { version = "0.3.4", package = "packed_simd_2" }
 progress-logger = "0.1.1"
 sha2 = "0.8"
-pprof = "0.4.1"
+pprof = {version = "0.4.1", features = ["flamegraph", "protobuf"]}
 
 [build-dependencies]
 vergen = "3.1"

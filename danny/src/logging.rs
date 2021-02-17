@@ -422,6 +422,16 @@ pub fn collect_profiling_info<'a>(
 
     if let Some(guard) = guard {
         if let Ok(report) = guard.report().build() {
+            use pprof::protos::Message;
+            // dump profile
+            let mut file = File::create("profile.pb").unwrap();
+            let profile = report.pprof().unwrap();
+
+            let mut content = Vec::new();
+            profile.encode(&mut content).unwrap();
+            file.write_all(&content).unwrap();
+
+
             let mut symbol_counts = HashMap::new();
             for (frames, frame_count) in report.data.iter() {
                 let frame_count = *frame_count as i32;
