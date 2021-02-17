@@ -385,8 +385,6 @@ pub struct ProfileFunction {
     pub hostname: String,
     pub name: String,
     pub thread: String,
-    /// The total number of frames for the thread
-    pub total: i32,
     pub count: i32,
 }
 
@@ -445,29 +443,24 @@ pub fn collect_profiling_info<'a>(
         file.write_all(&content).unwrap();
 
 
-        let mut symbol_counts = HashMap::new();
+        let mut counts_table = HashMap::new();
         for (frames, frame_count) in report.data.iter() {
             let frame_count = *frame_count as i32;
-            let thread_map = symbol_counts
+            let frame_str = format!("{:?}", frames);
+            counts_table
                 .entry(frames.thread_name.clone())
-                .or_insert_with(|| (0, HashMap::new()));
-            thread_map.0 += frame_count;
-            for symb in frames.frames.iter().flatten() {
-                thread_map
-                    .1
-                    .entry(symb.name())
-                    .and_modify(|c| *c += frame_count)
-                    .or_insert(frame_count);
-            }
+                .or_insert_with(|| HashMap::new())
+                .entry(frame_str)
+                .and_modify(|c| *c += frame_count)
+                .or_insert(frame_count);
         }
 
-        for (thread, (total, values)) in symbol_counts {
+        for (thread, values) in counts_table {
             for (name, count) in values {
                 input.send(ProfileFunction {
                     hostname: hostname.clone(),
                     thread: thread.clone(),
                     name,
-                    total,
                     count,
                 });
             }

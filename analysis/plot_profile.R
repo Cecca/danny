@@ -24,7 +24,7 @@ detail <- profile %>%
 ggplot(
     detail,
     aes(
-        x = x,
+        x = str_c(str_sub(hostname, 1, 5), "-", str_sub(thread, -1)),
         y = frame_count,
         fill = name
     )
@@ -32,15 +32,16 @@ ggplot(
     geom_col(position = "stack", color = "white", size=0.1) +
     facet_wrap(vars(algorithm)) +
     scale_color_profile() +
-    theme_paper() +
     labs(x="", title="Frame counts by worker", subtitle="Glove dataset") +
+    coord_flip() +
+    theme_paper() +
     theme(
         axis.text.x = element_blank(),
         axis.ticks.x = element_blank(),
         panel.grid = element_blank()
     )
 
-ggsave("imgs/profile_glove_detail.png", width = 8, height = 4)
+ggsave("imgs/profile_glove_detail.png", width = 8, height = 8)
 
 
 profile %>% 

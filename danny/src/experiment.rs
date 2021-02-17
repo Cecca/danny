@@ -251,8 +251,8 @@ impl Experiment {
 
             let mut stmt = tx
                 .prepare(
-                    "INSERT INTO profile (id, hostname, thread, name, frame_total, frame_count)
-                    VALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )",
+                    "INSERT INTO profile (id, hostname, thread, name, frame_count)
+                    VALUES ( ?1, ?2, ?3, ?4, ?5 )",
                 )
                 .expect("failed to prepare statement");
             for prof in self.profile.iter() {
@@ -261,7 +261,6 @@ impl Experiment {
                     prof.hostname,
                     prof.thread,
                     prof.name,
-                    prof.total,
                     prof.count
                 ])
                 .expect("failure to run the prepared statement");
@@ -307,6 +306,11 @@ fn db_migrate(conn: &Connection) {
         info!("Applying migration v5");
         conn.execute_batch(include_str!("migrations/v5.sql"))
             .expect("error applying version 5");
+    }
+    if version < 6 {
+        info!("Applying migration v6");
+        conn.execute_batch(include_str!("migrations/v6.sql"))
+            .expect("error applying version 6");
     }
 
     info!("Database migration completed!");

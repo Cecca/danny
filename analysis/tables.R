@@ -172,34 +172,26 @@ table_recall_experiment <- function() {
 table_profile <- function() {
     db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
     profile <- tbl(db, "profile") %>%
+        # there is one type of frame which has twice the number of the total!
+        filter(frame_count <= frame_total) %>%
         filter(
             (name %LIKE% "%_predicate") |
             (name %LIKE% "%already_seen") |
-            (name %LIKE% "%different_bits") |
-            (name %LIKE% "%timely_communication%")
+            (name %LIKE% "%different_bits")
         ) %>%
         collect() %>%
         mutate(
             name = case_when(
                 str_detect(name, "_predicate") ~ "verify",
                 str_detect(name, "already_seen") ~ "deduplicate",
-                str_detect(name, "different_bits") ~ "sketch",
-                str_detect(name, "timely_communication") ~ "timely_communication"
+                str_detect(name, "different_bits") ~ "sketch"
             )
         ) %>%
-        group_by(id, hostname, thread, name) %>%
-        summarise(
-            frame_count = sum(frame_count),
-            frame_total = max(frame_total) # don't sum, since the rame total is repeated for all the rows with the same id
-        ) %>%
-        ungroup() %>%
         pivot_wider(names_from=name, values_from=frame_count) %>%
         replace_na(list(
             deduplicate = 0,
             sketch = 0,
-            verify = 0,
-            timely_communication = 0,
-            other = 0
+            verify = 0
         )) %>%
         mutate(other = frame_total - (deduplicate + sketch + verify))
     all <- tbl(db, "result_recent") %>%
