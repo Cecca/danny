@@ -23,6 +23,7 @@ scale_color_profile <- function() {
         "deduplicate" = "#4e79a7",
         "sketch" = "#f28e2c",
         "verify" = "#e15759",
+        "timely_communication" = "#59a14f",
         "other" = "#76b7b2"
     ), aesthetics = c("fill", "color"))
 }

@@ -187,6 +187,12 @@ table_profile <- function() {
                 str_detect(name, "timely_communication") ~ "timely_communication"
             )
         ) %>%
+        group_by(id, hostname, thread, name) %>%
+        summarise(
+            frame_count = sum(frame_count),
+            frame_total = max(frame_total) # don't sum, since the rame total is repeated for all the rows with the same id
+        ) %>%
+        ungroup() %>%
         pivot_wider(names_from=name, values_from=frame_count) %>%
         replace_na(list(
             deduplicate = 0,

@@ -14,7 +14,7 @@ profile <- table_profile() %>%
         values_to = "frame_count"
     ) %>%
     mutate(name = factor(name,
-        levels = rev(c("other", "sketch", "verify", "deduplicate")),
+        levels = rev(c("other", "timely_communication", "sketch", "verify", "deduplicate")),
         ordered = T
     ))
 
