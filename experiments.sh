@@ -267,7 +267,7 @@ function profiling() {
 
   DATASET=/mnt/fast_storage/users/mcec/sift-100nn-0.5-sample-200000.bin
   danny \
-    --profile 100 \
+    --profile 9998 \
     --hosts ~/hosts.txt \
     --threads 8 \
     --threshold 0.5 \
@@ -277,7 +277,7 @@ function profiling() {
     --k 8 \
     $DATASET
   danny \
-    --profile 100 \
+    --profile 9998 \
     --hosts ~/hosts.txt \
     --threads 8 \
     --threshold 0.5 \
@@ -289,7 +289,7 @@ function profiling() {
     --repetition-batch 10000 \
     $DATASET
   danny \
-    --profile 100 \
+    --profile 9998 \
     --hosts ~/hosts.txt \
     --threads 8 \
     --threshold 0.5 \
@@ -301,7 +301,7 @@ function profiling() {
 
   DATASET=/mnt/fast_storage/users/mcec/Glove-sample-200000.bin
   danny \
-    --profile 100 \
+    --profile 9998 \
     --hosts ~/hosts.txt \
     --threads 8 \
     --threshold 0.5 \
@@ -311,7 +311,7 @@ function profiling() {
     --k 8 \
     $DATASET
   danny \
-    --profile 100 \
+    --profile 9998 \
     --hosts ~/hosts.txt \
     --threads 8 \
     --threshold 0.5 \
@@ -323,7 +323,7 @@ function profiling() {
     --repetition-batch 10000 \
     $DATASET
   danny \
-    --profile 100 \
+    --profile 9998 \
     --hosts ~/hosts.txt \
     --threads 8 \
     --threshold 0.5 \
@@ -335,7 +335,7 @@ function profiling() {
 
   DATASET=/mnt/fast_storage/users/mcec/Orkut-sample-200000.bin
   danny \
-    --profile 100 \
+    --profile 9998 \
     --hosts ~/hosts.txt \
     --threads 8 \
     --threshold 0.5 \
@@ -345,7 +345,7 @@ function profiling() {
     --k 8 \
     $DATASET
   danny \
-    --profile 100 \
+    --profile 9998 \
     --hosts ~/hosts.txt \
     --threads 8 \
     --threshold 0.5 \
@@ -357,7 +357,7 @@ function profiling() {
     --repetition-batch 10000 \
     $DATASET
   danny \
-    --profile 100 \
+    --profile 9998 \
     --hosts ~/hosts.txt \
     --threads 8 \
     --threshold 0.5 \
@@ -369,7 +369,7 @@ function profiling() {
 
   DATASET=/mnt/fast_storage/users/mcec/Livejournal-sample-200000.bin
   danny \
-    --profile 100 \
+    --profile 9998 \
     --hosts ~/hosts.txt \
     --threads 8 \
     --threshold 0.5 \
@@ -379,7 +379,7 @@ function profiling() {
     --k 8 \
     $DATASET
   danny \
-    --profile 100 \
+    --profile 9998 \
     --hosts ~/hosts.txt \
     --threads 8 \
     --threshold 0.5 \
@@ -391,7 +391,7 @@ function profiling() {
     --repetition-batch 10000 \
     $DATASET
   danny \
-    --profile 100 \
+    --profile 9998 \
     --hosts ~/hosts.txt \
     --threads 8 \
     --threshold 0.5 \
