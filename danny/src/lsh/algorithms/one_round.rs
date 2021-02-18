@@ -121,7 +121,7 @@ where
     for rep in 0..repetitions {
         let mut sketch_discarded = 0;
         let mut duplicates_discarded = 0;
-        let mut examined_pairs = 0;
+        let mut candidate_pairs = 0;
 
         let start = Instant::now();
 
@@ -134,7 +134,7 @@ where
             joiner.join_map_slice(|_hash, bucket| {
                 for (i, (_, (lk, l_sketch, l_pool))) in bucket.iter().enumerate() {
                     for (_, (rk, r_sketch, r_pool)) in bucket[i..].iter() {
-                        examined_pairs += 1;
+                        candidate_pairs += 1;
                         if sketch_predicate.eval(l_sketch, r_sketch) {
                             if no_verify || sim_pred(&vectors[lk], &vectors[rk]) {
                                 if no_dedup || !hasher.already_seen(l_pool, r_pool, rep) {
@@ -159,7 +159,7 @@ where
             }
 
             joiner.join_map(|_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
-                examined_pairs += 1;
+                candidate_pairs += 1;
                 if sketch_predicate.eval(l_sketch, r_sketch) {
                     if no_verify || sim_pred(&vectors[lk], &vectors[rk]) {
                         if no_dedup || !hasher.already_seen(l_pool, r_pool, rep) {
@@ -176,6 +176,7 @@ where
         let end = Instant::now();
         pl.update(1u64);
         debug!("Repetition {} ended in {:?}", rep, end - start);
+        log_event!(logger, (LogEvent::CandidatePairs(rep), candidate_pairs));
         log_event!(logger, (LogEvent::OutputPairs(rep), cnt));
         log_event!(logger, (LogEvent::SketchDiscarded(rep), sketch_discarded));
         log_event!(

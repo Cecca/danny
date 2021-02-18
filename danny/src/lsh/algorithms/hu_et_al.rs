@@ -173,7 +173,7 @@ where
                 Balance::Load,
                 move |((repetition, _hash), subproblem_key), values| {
                     let mut cnt = 0usize;
-                    let mut total = 0usize;
+                    let mut candidate_pairs = 0usize;
                     let mut sketch_discarded = 0;
                     let mut duplicate_cnt = 0usize;
                     let start = Instant::now();
@@ -181,7 +181,7 @@ where
                     if subproblem_key.on_diagonal() {
                         for (i, (_, (_l, l_pool, l_sketch, l))) in values.iter().enumerate() {
                             for (_, (_r, r_pool, r_sketch, r)) in values[i..].iter() {
-                                total += 1;
+                                candidate_pairs += 1;
                                 if sketch_predicate.eval(l_sketch, r_sketch) {
                                     if no_verify || sim_pred(l, r) {
                                         if no_dedup
@@ -202,7 +202,7 @@ where
                             if l_marker.keep_left() {
                                 for (r_marker, (_r, r_pool, r_sketch, r)) in values.iter() {
                                     if r_marker.keep_right() {
-                                        total += 1;
+                                        candidate_pairs += 1;
                                         if sketch_predicate.eval(l_sketch, r_sketch) {
                                             if no_verify || sim_pred(l, r) {
                                                 if no_dedup
@@ -224,7 +224,7 @@ where
                     }
                     debug!(
                     "Candidates {}: Emitted {} / Sketch discarded {} / Duplicates {} in {:?} ({})",
-                    total,
+                    candidate_pairs,
                     cnt,
                     sketch_discarded,
                     duplicate_cnt,
@@ -235,6 +235,7 @@ where
                         logger,
                         (LogEvent::SketchDiscarded(repetition), sketch_discarded)
                     );
+                    log_event!(logger, (LogEvent::CandidatePairs(repetition), candidate_pairs));
                     log_event!(logger, (LogEvent::OutputPairs(repetition), cnt));
                     log_event!(
                         logger,

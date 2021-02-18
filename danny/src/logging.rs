@@ -329,14 +329,10 @@ where
 #[derive(Debug, Clone, Abomonation, Eq, Ord, PartialEq, PartialOrd, Hash)]
 pub enum LogEvent {
     Load(usize),
+    CandidatePairs(usize),
     SketchDiscarded(usize),
-    DistinctPairs(usize),
     DuplicatesDiscarded(usize),
     OutputPairs(usize),
-    /// The number of received hashes during bucketing. This is a proxy for the load measure
-    ReceivedHashes(usize),
-    // The hashes generated in each iteration
-    GeneratedHashes(usize),
 }
 
 impl LogEvent {
@@ -344,12 +340,10 @@ impl LogEvent {
         use LogEvent::*;
         match self {
             Load(_) => String::from("Load"),
+            CandidatePairs(_) => String::from("CandidatePairs"),
             SketchDiscarded(_) => String::from("SketchDiscarded"),
-            DistinctPairs(_) => String::from("DistinctPairs"),
             DuplicatesDiscarded(_) => String::from("DuplicatesDiscarded"),
             OutputPairs(_) => String::from("OutputPairs"),
-            ReceivedHashes(_) => String::from("ReceivedHashes"),
-            GeneratedHashes(_) => String::from("GeneratedHashes"),
         }
     }
 
@@ -357,12 +351,10 @@ impl LogEvent {
         use LogEvent::*;
         match self {
             Load(step) => *step as u32,
+            CandidatePairs(step) => *step as u32,
             SketchDiscarded(step) => *step as u32,
-            DistinctPairs(step) => *step as u32,
             DuplicatesDiscarded(step) => *step as u32,
             OutputPairs(step) => *step as u32,
-            ReceivedHashes(step) => *step as u32,
-            GeneratedHashes(step) => *step as u32,
         }
     }
 }

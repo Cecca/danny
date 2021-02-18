@@ -123,14 +123,14 @@ where
                 move |((outer_repetition, _h), subproblem_key), subproblem| {
                     let mut self_joiner = SelfJoiner::default();
                     let mut joiner = Joiner::default();
-                    let mut cnt = 0;
                     let repetitions = hasher_intern.repetitions();
+                    let mut total_matching_cnt = 0;
                     for rep in 0..repetitions {
-                        let mut total = 0;
+                        let mut matching_cnt = 0;
+                        let mut candidate_pairs = 0;
                         let mut sketch_cnt = 0;
                         let mut duplicate_cnt = 0;
                         if subproblem_key.on_diagonal() {
-                            // let mut joiner = SelfJoiner::default();
                             self_joiner.clear();
                             for (_marker, (outer_pool, inner_pool, s, v)) in subproblem.iter() {
                                 self_joiner.push(
@@ -139,7 +139,7 @@ where
                                 );
                             }
                             self_joiner.join_map(|_h, l, r| {
-                                total += 1;
+                                candidate_pairs += 1;
                                 if sketch_pred.eval(l.0, r.0) {
                                     if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
                                         if no_dedup
@@ -150,7 +150,7 @@ where
                                                     outer_repetition,
                                                 ))
                                         {
-                                            cnt += 1;
+                                            matching_cnt += 1;
                                         } else {
                                             duplicate_cnt += 1;
                                         }
@@ -176,7 +176,7 @@ where
                                 }
                             }
                             joiner.join_map(|_h, l, r| {
-                                total += 1;
+                                candidate_pairs += 1;
                                 if sketch_pred.eval(l.0, r.0) {
                                     if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
                                         if no_dedup
@@ -187,7 +187,7 @@ where
                                                     outer_repetition,
                                                 ))
                                         {
-                                            cnt += 1;
+                                            matching_cnt += 1;
                                         } else {
                                             duplicate_cnt += 1;
                                         }
@@ -197,7 +197,8 @@ where
                                 }
                             })
                         }
-                        log_event!(logger, (LogEvent::OutputPairs(outer_repetition), cnt));
+                        log_event!(logger, (LogEvent::CandidatePairs(outer_repetition), candidate_pairs));
+                        log_event!(logger, (LogEvent::OutputPairs(outer_repetition), matching_cnt));
                         log_event!(
                             logger,
                             (LogEvent::SketchDiscarded(outer_repetition), sketch_cnt)
@@ -209,9 +210,10 @@ where
                                 duplicate_cnt
                             )
                         );
+                        total_matching_cnt += matching_cnt;
                     }
 
-                    Some(cnt)
+                    Some(total_matching_cnt)
                 },
             )
             .exchange(|_| 0) // Bring all the counts to the first worker

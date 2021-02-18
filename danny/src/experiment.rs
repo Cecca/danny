@@ -234,6 +234,7 @@ impl Experiment {
                 )
                 .expect("failed to prepare statement");
             for (kind, worker, step, count) in self.step_counters.iter() {
+                println!("{} {}", kind, count);
                 stmt.execute(params![id, kind_id[kind], *worker as i64, step, count])
                     .expect("failure in inserting network information");
             }
@@ -312,6 +313,12 @@ fn db_migrate(conn: &Connection) {
         conn.execute_batch(include_str!("migrations/v6.sql"))
             .expect("error applying version 6");
     }
+    if version < 7 {
+        info!("Applying migration v7");
+        conn.execute_batch(include_str!("migrations/v7.sql"))
+            .expect("error applying version 7");
+    }
+
 
     info!("Database migration completed!");
 }
