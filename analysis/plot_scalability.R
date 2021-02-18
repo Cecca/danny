@@ -22,6 +22,7 @@ ggplot(
     ) +
     geom_line(stat="summary") +
     geom_point(stat="summary") +
+    geom_point(position=position_jitter(height=0, width=1), alpha=0.5, size=0.5) +
     facet_wrap(vars(dataset), ncol = 4, scales = "free_y") +
     scale_color_algorithm() +
     scale_x_continuous(breaks = c(1:5 * 8)) +
