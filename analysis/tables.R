@@ -225,7 +225,8 @@ table_normalized_profile <- function() {
         filter(name %in% c("verify", "deduplicate", "sketch")) %>%
         group_by(id, dataset, algorithm, threshold, name) %>%
         summarise(frame_count = sum(frame_count)) %>%
-        pivot_wider(names_from = name, values_from = frame_count)
+        ungroup() %>%
+        pivot_wider(names_from = name, values_from = frame_count) 
 
     db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
     tbl(db, sql("select * from counters where id in (select id from result_recent where profile_frequency > 0)")) %>%
@@ -234,7 +235,16 @@ table_normalized_profile <- function() {
         collect() %>%
         pivot_wider(names_from = kind, values_from = count) %>%
         transmute(
-            sketch_input = 
+            sketch_input = CandidatePairs,
+            verify_input = sketch_input - SketchDiscarded,
+            dedup_input  = verify_input - SimilarityDiscarded
+        ) %>%
+        inner_join(profile) %>%
+        mutate(
+            # compute the PairsPerFrame
+            sketch_ppf = sketch_input / sketch,
+            verify_ppf = verify_input / verify,
+            dedup_ppf  = dedup_input / deduplicate
         )
 }
 
