@@ -172,31 +172,31 @@ table_recall_experiment <- function() {
 table_profile <- function() {
     db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
     profile <- tbl(db, "profile") %>%
-        # there is one type of frame which has twice the number of the total!
-        filter(frame_count <= frame_total) %>%
-        filter(
-            (name %LIKE% "%_predicate") |
-            (name %LIKE% "%already_seen") |
-            (name %LIKE% "%different_bits")
-        ) %>%
+        filter(thread %like% "%worker%") %>%
         collect() %>%
         mutate(
+            top_level = str_split(name, "->") %>% sapply(magrittr::extract2, 1),
             name = case_when(
                 str_detect(name, "_predicate") ~ "verify",
                 str_detect(name, "already_seen") ~ "deduplicate",
-                str_detect(name, "different_bits") ~ "sketch"
+                str_detect(name, "different_bits") ~ "sketch",
+                str_detect(name, "hashbrown") ~ "hashmap",
+                str_detect(top_level, "timely::progress") ~ "timely progress (self)",
+                str_detect(top_level, "pthread_mutex") ~ "mutex lock/unlock (self)",
+                str_detect(top_level, "(Self)?Joiner") ~ "local join (self)",
+                str_detect(top_level, "timely_communication") ~ "communication (self)",
+                str_detect(name, "Vec.*spec_extend") ~ "extend vector",
+                TRUE ~ "other"
             )
         ) %>%
-        pivot_wider(names_from=name, values_from=frame_count) %>%
-        replace_na(list(
-            deduplicate = 0,
-            sketch = 0,
-            verify = 0
-        )) %>%
-        mutate(other = frame_total - (deduplicate + sketch + verify))
+        # filter(name != "timely progress") %>%
+        group_by(id, hostname, thread, name) %>%
+        summarise(frame_count = sum(frame_count)) %>%
+        ungroup() %>%
+        arrange(id, hostname, thread, desc(frame_count))
     all <- tbl(db, "result_recent") %>%
         filter(hosts == "sss00:2001__sss01:2001__sss02:2001__sss03:2001__sss04:2001") %>%
-        filter(profile_frequency == 998) %>%
+        filter(profile_frequency == 9998) %>%
         filter(path %LIKE% "%sample-200000.bin") %>%
         filter(required_recall == 0.8) %>%
         filter(threshold %in% c(0.5)) %>%
@@ -218,6 +218,18 @@ table_profile <- function() {
         select(-total_time_ms)
     DBI::dbDisconnect(db)
     all
+}
+
+table_normalized_profile <- function() {
+    profile <- table_profile() %>%
+        filter(name %in% c("verify", "deduplicate", "sketch")) %>%
+        group_by(id, dataset, algorithm, threshold, name) %>%
+        summarise(frame_count = sum(frame_count)) %>%
+        pivot_wider(names_from = name, values_from = frame_count)
+
+    db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
+    tbl(db, "counters") %>%
+        distinct(kind)
 }
 
 table_scalability <- function() {

@@ -20,8 +20,8 @@ ggplot(
         stat = "summary",
         size = 0.2
     ) +
-    geom_line(stat="summary") +
-    geom_point(stat="summary") +
+    geom_line(stat="summary", fun.data = mean_se) +
+    geom_linerange(stat="summary", fun.data = mean_cl_boot, position = position_dodge(1)) +
     geom_point(position=position_jitter(height=0, width=1), alpha=0.5, size=0.5) +
     facet_wrap(vars(dataset), ncol = 4, scales = "free_y") +
     scale_color_algorithm() +
