@@ -197,11 +197,11 @@ done
 }
 
 function scalability() {
-for BASE_DATA in sift-100nn-0.5 Livejournal Orkut Glove
+for BASE_DATA in Livejournal Orkut Glove sift-100nn-0.5
 do
   for HOSTS in 1 2 3 4
   do
-    for SEED in 124351 12345 1451234 1345 62345632 452345 2345
+    for SEED in 124351 12345 1451234 1345 62345632 452345 2345 1456 12987 37568912 495
     do
       DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-sample-200000.bin
       HOSTS_FILE=~/hosts$HOSTS.txt
