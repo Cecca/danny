@@ -1,5 +1,9 @@
 source("packages.R")
 
+order_datasets <- function(data) {
+    mutate(data, dataset = factor(dataset, levels = c("Glove", "SIFT", "Livejournal", "Orkut"), ordered = T))
+}
+
 table_search_best <- function() {
     db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
     # The load is the maximum load among all the workers in a given experiment
@@ -19,7 +23,10 @@ table_search_best <- function() {
         filter(algorithm != "two-round-lsh" | (repetition_batch >= 1000)) %>%
         collect() %>%
         inner_join(load) %>%
-        (function(d) {print(distinct(d, path)); d}) %>%
+        (function(d) {
+            print(distinct(d, path))
+            d
+        }) %>%
         mutate(
             dataset = basename(path),
             total_time = set_units(total_time_ms, "ms"),
@@ -30,6 +37,7 @@ table_search_best <- function() {
                 str_detect(dataset, "Orkut") ~ "Orkut"
             )
         ) %>%
+        order_datasets() %>%
         select(-total_time_ms)
     DBI::dbDisconnect(db)
     all
@@ -70,6 +78,7 @@ table_load <- function() {
                 str_detect(dataset, "Orkut") ~ "Orkut"
             )
         ) %>%
+        order_datasets() %>%
         select(-total_time_ms)
     DBI::dbDisconnect(db)
     all
@@ -89,9 +98,9 @@ table_full <- function() {
         filter(profile_frequency == 0) %>%
         filter(
             (path %LIKE% "%glove.twitter.27B.200d.bin") |
-            (path %LIKE% "%Orkut.bin") |
-            (path %LIKE% "%Livejournal.bin") |
-            (path %LIKE% "%sift-100-0.5.bin")
+                (path %LIKE% "%Orkut.bin") |
+                (path %LIKE% "%Livejournal.bin") |
+                (path %LIKE% "%sift-100-0.5.bin")
         ) %>%
         filter(required_recall == 0.8) %>%
         filter(threshold %in% c(0.5, 0.7)) %>%
@@ -110,6 +119,7 @@ table_full <- function() {
                 TRUE ~ dataset
             )
         ) %>%
+        order_datasets() %>%
         select(-total_time_ms)
     DBI::dbDisconnect(db)
     all
@@ -137,6 +147,7 @@ table_data_info <- function() {
         mutate(dataset = basename(path)) %>%
         select(dataset, threshold, output_size) %>%
         inner_join(baseinfo) %>%
+        order_datasets() %>%
         mutate(selectivity = output_size / choose(n, 2))
     DBI::dbDisconnect(db)
     info
@@ -164,6 +175,7 @@ table_recall_experiment <- function() {
                 str_detect(dataset, "Orkut") ~ "Orkut"
             )
         ) %>%
+        order_datasets() %>%
         select(-total_time_ms)
     DBI::dbDisconnect(db)
     all
@@ -215,6 +227,7 @@ table_profile <- function() {
             )
         ) %>%
         inner_join(profile) %>%
+        order_datasets() %>%
         select(-total_time_ms)
     DBI::dbDisconnect(db)
     all
@@ -226,7 +239,8 @@ table_normalized_profile <- function() {
         group_by(id, dataset, algorithm, threshold, name) %>%
         summarise(frame_count = sum(frame_count)) %>%
         ungroup() %>%
-        pivot_wider(names_from = name, values_from = frame_count) 
+        order_datasets() %>%
+        pivot_wider(names_from = name, values_from = frame_count)
 
     db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
     tbl(db, sql("select * from counters where id in (select id from result_recent where profile_frequency > 0)")) %>%
@@ -237,14 +251,14 @@ table_normalized_profile <- function() {
         transmute(
             sketch_input = CandidatePairs,
             verify_input = sketch_input - SketchDiscarded,
-            dedup_input  = verify_input - SimilarityDiscarded
+            dedup_input = verify_input - SimilarityDiscarded
         ) %>%
         inner_join(profile) %>%
         mutate(
             # compute the PairsPerFrame
             sketch_ppf = sketch_input / sketch,
             verify_ppf = verify_input / verify,
-            dedup_ppf  = dedup_input / deduplicate
+            dedup_ppf = dedup_input / deduplicate
         )
 }
 
@@ -274,6 +288,7 @@ table_scalability <- function() {
             nhosts = str_count(hosts, "sss"),
             workers = nhosts * threads
         ) %>%
+        order_datasets() %>%
         select(-total_time_ms)
     DBI::dbDisconnect(db)
     all

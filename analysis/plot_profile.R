@@ -81,8 +81,9 @@ normalized_profile <- table_normalized_profile() %>%
     select(-ends_with("input"), -sketch, -verify, -deduplicate) %>%
     pivot_longer(ends_with("ppf"), names_to = "component", values_to = "ppf") %>%
     mutate(
+        component = str_remove(component, "_ppf"),
         component = factor(component,
-            levels = c("sketch_ppf", "verify_ppf", "dedup_ppf"),
+            levels = c("sketch", "verify", "dedup"),
             ordered = T
         )
     )
