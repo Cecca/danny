@@ -174,6 +174,7 @@ where
                 move |((repetition, _hash), subproblem_key), values| {
                     let mut cnt = 0usize;
                     let mut candidate_pairs = 0usize;
+                    let mut similarity_discarded = 0;
                     let mut sketch_discarded = 0;
                     let mut duplicate_cnt = 0usize;
                     let start = Instant::now();
@@ -191,6 +192,8 @@ where
                                         } else {
                                             duplicate_cnt += 1;
                                         }
+                                    } else {
+                                        similarity_discarded += 1;
                                     }
                                 } else {
                                     sketch_discarded += 1;
@@ -213,6 +216,8 @@ where
                                                 } else {
                                                     duplicate_cnt += 1;
                                                 }
+                                            } else {
+                                                similarity_discarded += 1;
                                             }
                                         } else {
                                             sketch_discarded += 1;
@@ -237,6 +242,7 @@ where
                     );
                     log_event!(logger, (LogEvent::CandidatePairs(repetition), candidate_pairs));
                     log_event!(logger, (LogEvent::OutputPairs(repetition), cnt));
+                    log_event!(logger, (LogEvent::SimilarityDiscarded(repetition), similarity_discarded));
                     log_event!(
                         logger,
                         (LogEvent::DuplicatesDiscarded(repetition), duplicate_cnt)

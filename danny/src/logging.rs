@@ -332,6 +332,7 @@ pub enum LogEvent {
     CandidatePairs(usize),
     SketchDiscarded(usize),
     DuplicatesDiscarded(usize),
+    SimilarityDiscarded(usize),
     OutputPairs(usize),
 }
 
@@ -342,6 +343,7 @@ impl LogEvent {
             Load(_) => String::from("Load"),
             CandidatePairs(_) => String::from("CandidatePairs"),
             SketchDiscarded(_) => String::from("SketchDiscarded"),
+            SimilarityDiscarded(_) => String::from("SimilarityDiscarded"),
             DuplicatesDiscarded(_) => String::from("DuplicatesDiscarded"),
             OutputPairs(_) => String::from("OutputPairs"),
         }
@@ -353,6 +355,7 @@ impl LogEvent {
             Load(step) => *step as u32,
             CandidatePairs(step) => *step as u32,
             SketchDiscarded(step) => *step as u32,
+            SimilarityDiscarded(step) => *step as u32,
             DuplicatesDiscarded(step) => *step as u32,
             OutputPairs(step) => *step as u32,
         }

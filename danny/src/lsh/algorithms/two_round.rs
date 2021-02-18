@@ -128,6 +128,7 @@ where
                     for rep in 0..repetitions {
                         let mut matching_cnt = 0;
                         let mut candidate_pairs = 0;
+                        let mut similarity_discarded = 0;
                         let mut sketch_cnt = 0;
                         let mut duplicate_cnt = 0;
                         if subproblem_key.on_diagonal() {
@@ -154,6 +155,8 @@ where
                                         } else {
                                             duplicate_cnt += 1;
                                         }
+                                    } else {
+                                        similarity_discarded += 1;
                                     }
                                 } else {
                                     sketch_cnt += 1;
@@ -191,6 +194,8 @@ where
                                         } else {
                                             duplicate_cnt += 1;
                                         }
+                                    } else {
+                                        similarity_discarded += 1;
                                     }
                                 } else {
                                     sketch_cnt += 1;
@@ -199,6 +204,7 @@ where
                         }
                         log_event!(logger, (LogEvent::CandidatePairs(outer_repetition), candidate_pairs));
                         log_event!(logger, (LogEvent::OutputPairs(outer_repetition), matching_cnt));
+                        log_event!(logger, (LogEvent::SimilarityDiscarded(outer_repetition), similarity_discarded));
                         log_event!(
                             logger,
                             (LogEvent::SketchDiscarded(outer_repetition), sketch_cnt)

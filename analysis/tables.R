@@ -228,8 +228,14 @@ table_normalized_profile <- function() {
         pivot_wider(names_from = name, values_from = frame_count)
 
     db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
-    tbl(db, "counters") %>%
-        distinct(kind)
+    tbl(db, sql("select * from counters where id in (select id from result_recent where profile_frequency > 0)")) %>%
+        group_by(id, kind) %>%
+        summarise(count = sum(count, na.rm = TRUE)) %>%
+        collect() %>%
+        pivot_wider(names_from = kind, values_from = count) %>%
+        transmute(
+            sketch_input = 
+        )
 }
 
 table_scalability <- function() {

@@ -122,6 +122,7 @@ where
         let mut sketch_discarded = 0;
         let mut duplicates_discarded = 0;
         let mut candidate_pairs = 0;
+        let mut similarity_discarded = 0;
 
         let start = Instant::now();
 
@@ -142,6 +143,8 @@ where
                                 } else {
                                     duplicates_discarded += 1;
                                 }
+                            } else {
+                                similarity_discarded += 1;
                             }
                         } else {
                             sketch_discarded += 1;
@@ -167,6 +170,8 @@ where
                         } else {
                             duplicates_discarded += 1;
                         }
+                    } else {
+                        similarity_discarded += 1
                     }
                 } else {
                     sketch_discarded += 1;
@@ -178,6 +183,7 @@ where
         debug!("Repetition {} ended in {:?}", rep, end - start);
         log_event!(logger, (LogEvent::CandidatePairs(rep), candidate_pairs));
         log_event!(logger, (LogEvent::OutputPairs(rep), cnt));
+        log_event!(logger, (LogEvent::SimilarityDiscarded(rep), similarity_discarded));
         log_event!(logger, (LogEvent::SketchDiscarded(rep), sketch_discarded));
         log_event!(
             logger,
