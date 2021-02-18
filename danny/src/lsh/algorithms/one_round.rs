@@ -116,9 +116,9 @@ where
         .with_items_name("repetitions")
         .start();
 
-    let mut cnt = 0;
-
+    let mut total_cnt = 0;
     for rep in 0..repetitions {
+        let mut cnt = 0;
         let mut sketch_discarded = 0;
         let mut duplicates_discarded = 0;
         let mut candidate_pairs = 0;
@@ -189,10 +189,11 @@ where
             logger,
             (LogEvent::DuplicatesDiscarded(rep), duplicates_discarded)
         );
+        total_cnt += cnt;
     }
     pl.stop();
 
-    cnt
+    total_cnt
 }
 
 pub fn one_round_lsh<D, F, H, S, V, B, R>(
