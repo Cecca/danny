@@ -26,7 +26,7 @@ use timely::dataflow::*;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
-pub const ONE_ROUND_VERSION: u8 = 3;
+pub const ONE_ROUND_VERSION: u8 = 4;
 
 fn distribute<G, D>(
     stream: &Stream<G, (ElementId, D)>,

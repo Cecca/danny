@@ -26,7 +26,7 @@ use timely::progress::Timestamp;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
-pub const HU_ET_AL_VERSION: u8 = 3;
+pub const HU_ET_AL_VERSION: u8 = 4;
 
 pub fn source_hashed_one_round<G, T, D, S, F>(
     scope: &G,
