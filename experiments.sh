@@ -201,43 +201,47 @@ for BASE_DATA in Livejournal Orkut Glove sift-100nn-0.5
 do
   for HOSTS in 1 2 3 4
   do
-    for SEED in 124351 12345 1451234 1345 62345632 452345 2345 1456 12987 37568912 495
+    for SEED in 124351 12345 1451234 #1345 62345632 452345 2345 1456 12987 37568912 495
     do
       DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-sample-200000.bin
       HOSTS_FILE=~/hosts$HOSTS.txt
       echo "Running on $DATASET"
       test -d $DATASET
-      danny \
-        --seed $SEED \
-        --hosts $HOSTS_FILE \
-        --threads 8 \
-        --threshold 0.5 \
-        --algorithm one-round-lsh \
-        --sketch-bits 256 \
-        --k 6 \
-        $DATASET
 
-      danny \
-        --seed $SEED \
-        --hosts $HOSTS_FILE \
-        --threads 8 \
-        --threshold 0.5 \
-        --algorithm two-round-lsh \
-        --sketch-bits 256 \
-        --k 6 \
-        --k2 6 \
-        --repetition-batch 10000 \
-        $DATASET
+      for K in 4 6 8
+      do
+        danny \
+          --seed $SEED \
+          --hosts $HOSTS_FILE \
+          --threads 8 \
+          --threshold 0.5 \
+          --algorithm one-round-lsh \
+          --sketch-bits 256 \
+          --k $K \
+          $DATASET
 
-      danny \
-        --seed $SEED \
-        --hosts $HOSTS_FILE \
-        --threads 8 \
-        --threshold 0.5 \
-        --algorithm hu-et-al \
-        --sketch-bits 256 \
-        --k 6 \
-        $DATASET
+        danny \
+          --seed $SEED \
+          --hosts $HOSTS_FILE \
+          --threads 8 \
+          --threshold 0.5 \
+          --algorithm two-round-lsh \
+          --sketch-bits 256 \
+          --k $K \
+          --k2 6 \
+          --repetition-batch 10000 \
+          $DATASET
+
+        danny \
+          --seed $SEED \
+          --hosts $HOSTS_FILE \
+          --threads 8 \
+          --threshold 0.5 \
+          --algorithm hu-et-al \
+          --sketch-bits 256 \
+          --k $K \
+          $DATASET
+        done
     done
   done
 done

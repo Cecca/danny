@@ -264,18 +264,32 @@ table_normalized_profile <- function() {
 
 table_scalability <- function() {
     db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
-    selector <- tbl(db, "result_recent") %>%
-        filter(hosts == "sss00:2001") %>%
-        select(path, algorithm, threshold, k, k2, sketch_bits)
     all <- tbl(db, "result_recent") %>%
+        filter(hosts %in% c(
+            "sss00:2001",
+            "sss00:2001__sss01:2001",
+            "sss00:2001__sss01:2001__sss02:2001",
+            "sss00:2001__sss01:2001__sss02:2001__sss03:2001",
+            "sss00:2001__sss01:2001__sss02:2001__sss03:2001__sss04:2001"
+        )) %>%
         filter(profile_frequency == 0) %>%
         filter(path %LIKE% "%sample-200000.bin") %>%
         filter(required_recall == 0.8) %>%
-        filter(threshold %in% c(0.5, 0.7)) %>%
+        filter(threshold %in% c(0.5)) %>%
         filter(!no_verify, !no_dedup) %>%
         filter(algorithm != "two-round-lsh" | (repetition_batch >= 1000)) %>%
-        semi_join(selector) %>%
-        collect() %>%
+        filter(algorithm != "all-2-all") %>%
+        collect()
+
+    fast_params <- all %>%
+        group_by(algorithm, path, threshold, hosts, threads, k, k2, sketch_bits) %>%
+        summarise(total_time_ms = mean(total_time_ms)) %>%
+        group_by(algorithm, path, threshold, hosts, threads) %>%
+        slice_min(total_time_ms) %>%
+        ungroup() %>%
+        select(algorithm, path, threshold, hosts, threads, k, k2, sketch_bits)
+
+    selected <- semi_join(all, fast_params) %>%
         mutate(
             dataset = basename(path),
             total_time = set_units(total_time_ms, "ms"),
@@ -291,5 +305,5 @@ table_scalability <- function() {
         order_datasets() %>%
         select(-total_time_ms)
     DBI::dbDisconnect(db)
-    all
+    selected
 }
