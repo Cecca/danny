@@ -142,7 +142,7 @@ where
                             }
                             self_joiner.join_map(|_h, l, r| {
                                 candidate_pairs += 1;
-                                if (l.1).0 == (r.1).0 {
+                                if (l.1).0 != (r.1).0 {
                                     if sketch_pred.eval(l.0, r.0) {
                                         if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
                                             if no_dedup
@@ -184,7 +184,7 @@ where
                             }
                             joiner.join_map(|_h, l, r| {
                                 candidate_pairs += 1;
-                                if (l.1).0 == (r.1).0 {
+                                if (l.1).0 != (r.1).0 {
                                     if sketch_pred.eval(l.0, r.0) {
                                         if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
                                             if no_dedup

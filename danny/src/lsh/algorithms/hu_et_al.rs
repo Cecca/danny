@@ -184,7 +184,7 @@ where
                         for (i, (_, (lk, l_pool, l_sketch, l))) in values.iter().enumerate() {
                             for (_, (rk, r_pool, r_sketch, r)) in values[i..].iter() {
                                 candidate_pairs += 1;
-                                if lk == rk {
+                                if lk != rk {
                                     if sketch_predicate.eval(l_sketch, r_sketch) {
                                         if no_verify || sim_pred(l, r) {
                                             if no_dedup
@@ -211,7 +211,7 @@ where
                                 for (r_marker, (rk, r_pool, r_sketch, r)) in values.iter() {
                                     if r_marker.keep_right() {
                                         candidate_pairs += 1;
-                                        if lk == rk {
+                                        if lk != rk {
                                             if sketch_predicate.eval(l_sketch, r_sketch) {
                                                 if no_verify || sim_pred(l, r) {
                                                     if no_dedup

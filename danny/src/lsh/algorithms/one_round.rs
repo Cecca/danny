@@ -137,7 +137,7 @@ where
                 for (i, (_, (lk, l_sketch, l_pool))) in bucket.iter().enumerate() {
                     for (_, (rk, r_sketch, r_pool)) in bucket[i..].iter() {
                         candidate_pairs += 1;
-                        if rk == lk {
+                        if rk != lk {
                             if sketch_predicate.eval(l_sketch, r_sketch) {
                                 if no_verify || sim_pred(&vectors[lk], &vectors[rk]) {
                                     if no_dedup || !hasher.already_seen(l_pool, r_pool, rep) {
@@ -168,7 +168,7 @@ where
 
             joiner.join_map(|_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
                 candidate_pairs += 1;
-                if rk == lk {
+                if rk != lk {
                     if sketch_predicate.eval(l_sketch, r_sketch) {
                         if no_verify || sim_pred(&vectors[lk], &vectors[rk]) {
                             if no_dedup || !hasher.already_seen(l_pool, r_pool, rep) {
