@@ -5,6 +5,20 @@ source("plots.R")
 plotdata <- table_scalability() %>%
     mutate(total_time = set_units(total_time, "s") %>% drop_units())
 
+ideal <- plotdata %>% 
+    filter(workers == 8) %>%
+    group_by(algorithm, dataset, workers) %>%
+    summarise(total_time = mean(total_time)) %>%
+    ungroup() %>%
+    rowwise() %>%
+    summarise(
+        algorithm = algorithm,
+        dataset = dataset,
+        machines = 1:5,
+        workers = machines * 8,
+        total_time = total_time / machines
+    )
+
 ggplot(
     plotdata,
     aes(
@@ -13,11 +27,9 @@ ggplot(
         color = algorithm
     )
 ) +
-    geom_segment(
-        aes(xend = 40, yend = stat(y) / 5),
-        data = ~filter(.x, workers == 8),
+    geom_line(
+        data = ideal,
         linetype = "dashed",
-        stat = "summary",
         size = 0.2
     ) +
     geom_line(stat="summary", fun.data = mean_se) +
