@@ -307,3 +307,4 @@ table_scalability <- function() {
     DBI::dbDisconnect(db)
     selected
 }
+

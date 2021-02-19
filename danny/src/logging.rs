@@ -326,10 +326,13 @@ where
         self.outer.to_step_id()
     }
 }
+
+
 #[derive(Debug, Clone, Abomonation, Eq, Ord, PartialEq, PartialOrd, Hash)]
 pub enum LogEvent {
     Load(usize),
     CandidatePairs(usize),
+    SelfPairsDiscarded(usize),
     SketchDiscarded(usize),
     DuplicatesDiscarded(usize),
     SimilarityDiscarded(usize),
@@ -342,6 +345,7 @@ impl LogEvent {
         match self {
             Load(_) => String::from("Load"),
             CandidatePairs(_) => String::from("CandidatePairs"),
+            SelfPairsDiscarded(_) => String::from("SelfPairsDiscarded"),
             SketchDiscarded(_) => String::from("SketchDiscarded"),
             SimilarityDiscarded(_) => String::from("SimilarityDiscarded"),
             DuplicatesDiscarded(_) => String::from("DuplicatesDiscarded"),
@@ -354,6 +358,7 @@ impl LogEvent {
         match self {
             Load(step) => *step as u32,
             CandidatePairs(step) => *step as u32,
+            SelfPairsDiscarded(step) => *step as u32,
             SketchDiscarded(step) => *step as u32,
             SimilarityDiscarded(step) => *step as u32,
             DuplicatesDiscarded(step) => *step as u32,

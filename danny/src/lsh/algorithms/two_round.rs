@@ -128,6 +128,7 @@ where
                     for rep in 0..repetitions {
                         let mut matching_cnt = 0;
                         let mut candidate_pairs = 0;
+                        let mut self_pairs_discarded = 0;
                         let mut similarity_discarded = 0;
                         let mut sketch_cnt = 0;
                         let mut duplicate_cnt = 0;
@@ -141,29 +142,32 @@ where
                             }
                             self_joiner.join_map(|_h, l, r| {
                                 candidate_pairs += 1;
-                                if sketch_pred.eval(l.0, r.0) {
-                                    if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
-                                        if no_dedup
-                                            || (!hasher_intern.already_seen(&l.3, &r.3, rep)
-                                                && !hasher.already_seen(
-                                                    &l.2,
-                                                    &r.2,
-                                                    outer_repetition,
-                                                ))
-                                        {
-                                            matching_cnt += 1;
+                                if (l.1).0 == (r.1).0 {
+                                    if sketch_pred.eval(l.0, r.0) {
+                                        if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
+                                            if no_dedup
+                                                || (!hasher_intern.already_seen(&l.3, &r.3, rep)
+                                                    && !hasher.already_seen(
+                                                        &l.2,
+                                                        &r.2,
+                                                        outer_repetition,
+                                                    ))
+                                            {
+                                                matching_cnt += 1;
+                                            } else {
+                                                duplicate_cnt += 1;
+                                            }
                                         } else {
-                                            duplicate_cnt += 1;
+                                            similarity_discarded += 1;
                                         }
                                     } else {
-                                        similarity_discarded += 1;
+                                        sketch_cnt += 1;
                                     }
                                 } else {
-                                    sketch_cnt += 1;
+                                    self_pairs_discarded += 1;
                                 }
                             })
                         } else {
-                            // let mut joiner = Joiner::default();
                             joiner.clear();
                             for (marker, (outer_pool, inner_pool, s, v)) in subproblem.iter() {
                                 match marker {
@@ -180,31 +184,51 @@ where
                             }
                             joiner.join_map(|_h, l, r| {
                                 candidate_pairs += 1;
-                                if sketch_pred.eval(l.0, r.0) {
-                                    if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
-                                        if no_dedup
-                                            || (!hasher_intern.already_seen(&l.3, &r.3, rep)
-                                                && !hasher.already_seen(
-                                                    &l.2,
-                                                    &r.2,
-                                                    outer_repetition,
-                                                ))
-                                        {
-                                            matching_cnt += 1;
+                                if (l.1).0 == (r.1).0 {
+                                    if sketch_pred.eval(l.0, r.0) {
+                                        if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
+                                            if no_dedup
+                                                || (!hasher_intern.already_seen(&l.3, &r.3, rep)
+                                                    && !hasher.already_seen(
+                                                        &l.2,
+                                                        &r.2,
+                                                        outer_repetition,
+                                                    ))
+                                            {
+                                                matching_cnt += 1;
+                                            } else {
+                                                duplicate_cnt += 1;
+                                            }
                                         } else {
-                                            duplicate_cnt += 1;
+                                            similarity_discarded += 1;
                                         }
                                     } else {
-                                        similarity_discarded += 1;
+                                        sketch_cnt += 1;
                                     }
                                 } else {
-                                    sketch_cnt += 1;
+                                    self_pairs_discarded += 1;
                                 }
                             })
                         }
-                        log_event!(logger, (LogEvent::CandidatePairs(outer_repetition), candidate_pairs));
-                        log_event!(logger, (LogEvent::OutputPairs(outer_repetition), matching_cnt));
-                        log_event!(logger, (LogEvent::SimilarityDiscarded(outer_repetition), similarity_discarded));
+                        log_event!(
+                            logger,
+                            (LogEvent::CandidatePairs(outer_repetition), candidate_pairs)
+                        );
+                        log_event!(
+                            logger,
+                            (LogEvent::SelfPairsDiscarded(outer_repetition), self_pairs_discarded)
+                        );
+                        log_event!(
+                            logger,
+                            (LogEvent::OutputPairs(outer_repetition), matching_cnt)
+                        );
+                        log_event!(
+                            logger,
+                            (
+                                LogEvent::SimilarityDiscarded(outer_repetition),
+                                similarity_discarded
+                            )
+                        );
                         log_event!(
                             logger,
                             (LogEvent::SketchDiscarded(outer_repetition), sketch_cnt)

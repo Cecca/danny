@@ -120,6 +120,7 @@ where
     for rep in 0..repetitions {
         let mut cnt = 0;
         let mut sketch_discarded = 0;
+        let mut self_pairs_discarded = 0;
         let mut duplicates_discarded = 0;
         let mut candidate_pairs = 0;
         let mut similarity_discarded = 0;
@@ -136,18 +137,22 @@ where
                 for (i, (_, (lk, l_sketch, l_pool))) in bucket.iter().enumerate() {
                     for (_, (rk, r_sketch, r_pool)) in bucket[i..].iter() {
                         candidate_pairs += 1;
-                        if sketch_predicate.eval(l_sketch, r_sketch) {
-                            if no_verify || sim_pred(&vectors[lk], &vectors[rk]) {
-                                if no_dedup || !hasher.already_seen(l_pool, r_pool, rep) {
-                                    cnt += 1;
+                        if rk == lk {
+                            if sketch_predicate.eval(l_sketch, r_sketch) {
+                                if no_verify || sim_pred(&vectors[lk], &vectors[rk]) {
+                                    if no_dedup || !hasher.already_seen(l_pool, r_pool, rep) {
+                                        cnt += 1;
+                                    } else {
+                                        duplicates_discarded += 1;
+                                    }
                                 } else {
-                                    duplicates_discarded += 1;
+                                    similarity_discarded += 1;
                                 }
                             } else {
-                                similarity_discarded += 1;
+                                sketch_discarded += 1;
                             }
                         } else {
-                            sketch_discarded += 1;
+                            self_pairs_discarded += 1;
                         }
                     }
                 }
@@ -163,18 +168,22 @@ where
 
             joiner.join_map(|_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
                 candidate_pairs += 1;
-                if sketch_predicate.eval(l_sketch, r_sketch) {
-                    if no_verify || sim_pred(&vectors[lk], &vectors[rk]) {
-                        if no_dedup || !hasher.already_seen(l_pool, r_pool, rep) {
-                            cnt += 1;
+                if rk == lk {
+                    if sketch_predicate.eval(l_sketch, r_sketch) {
+                        if no_verify || sim_pred(&vectors[lk], &vectors[rk]) {
+                            if no_dedup || !hasher.already_seen(l_pool, r_pool, rep) {
+                                cnt += 1;
+                            } else {
+                                duplicates_discarded += 1;
+                            }
                         } else {
-                            duplicates_discarded += 1;
+                            similarity_discarded += 1
                         }
                     } else {
-                        similarity_discarded += 1
+                        sketch_discarded += 1;
                     }
                 } else {
-                    sketch_discarded += 1;
+                    self_pairs_discarded += 1;
                 }
             });
         }
@@ -182,8 +191,12 @@ where
         pl.update(1u64);
         debug!("Repetition {} ended in {:?}", rep, end - start);
         log_event!(logger, (LogEvent::CandidatePairs(rep), candidate_pairs));
+        log_event!(logger, (LogEvent::SelfPairsDiscarded(rep), self_pairs_discarded));
         log_event!(logger, (LogEvent::OutputPairs(rep), cnt));
-        log_event!(logger, (LogEvent::SimilarityDiscarded(rep), similarity_discarded));
+        log_event!(
+            logger,
+            (LogEvent::SimilarityDiscarded(rep), similarity_discarded)
+        );
         log_event!(logger, (LogEvent::SketchDiscarded(rep), sketch_discarded));
         log_event!(
             logger,

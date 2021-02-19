@@ -174,53 +174,63 @@ where
                 move |((repetition, _hash), subproblem_key), values| {
                     let mut cnt = 0usize;
                     let mut candidate_pairs = 0usize;
+                    let mut self_pairs_discarded = 0;
                     let mut similarity_discarded = 0;
                     let mut sketch_discarded = 0;
                     let mut duplicate_cnt = 0usize;
                     let start = Instant::now();
 
                     if subproblem_key.on_diagonal() {
-                        for (i, (_, (_l, l_pool, l_sketch, l))) in values.iter().enumerate() {
-                            for (_, (_r, r_pool, r_sketch, r)) in values[i..].iter() {
+                        for (i, (_, (lk, l_pool, l_sketch, l))) in values.iter().enumerate() {
+                            for (_, (rk, r_pool, r_sketch, r)) in values[i..].iter() {
                                 candidate_pairs += 1;
-                                if sketch_predicate.eval(l_sketch, r_sketch) {
-                                    if no_verify || sim_pred(l, r) {
-                                        if no_dedup
-                                            || !hasher.already_seen(l_pool, r_pool, repetition)
-                                        {
-                                            cnt += 1;
+                                if lk == rk {
+                                    if sketch_predicate.eval(l_sketch, r_sketch) {
+                                        if no_verify || sim_pred(l, r) {
+                                            if no_dedup
+                                                || !hasher.already_seen(l_pool, r_pool, repetition)
+                                            {
+                                                cnt += 1;
+                                            } else {
+                                                duplicate_cnt += 1;
+                                            }
                                         } else {
-                                            duplicate_cnt += 1;
+                                            similarity_discarded += 1;
                                         }
                                     } else {
-                                        similarity_discarded += 1;
+                                        sketch_discarded += 1;
                                     }
                                 } else {
-                                    sketch_discarded += 1;
+                                    self_pairs_discarded += 1;
                                 }
                             }
                         }
                     } else {
-                        for (l_marker, (_l, l_pool, l_sketch, l)) in values.iter() {
+                        for (l_marker, (lk, l_pool, l_sketch, l)) in values.iter() {
                             if l_marker.keep_left() {
-                                for (r_marker, (_r, r_pool, r_sketch, r)) in values.iter() {
+                                for (r_marker, (rk, r_pool, r_sketch, r)) in values.iter() {
                                     if r_marker.keep_right() {
                                         candidate_pairs += 1;
-                                        if sketch_predicate.eval(l_sketch, r_sketch) {
-                                            if no_verify || sim_pred(l, r) {
-                                                if no_dedup
-                                                    || !hasher
-                                                        .already_seen(l_pool, r_pool, repetition)
-                                                {
-                                                    cnt += 1;
+                                        if lk == rk {
+                                            if sketch_predicate.eval(l_sketch, r_sketch) {
+                                                if no_verify || sim_pred(l, r) {
+                                                    if no_dedup
+                                                        || !hasher.already_seen(
+                                                            l_pool, r_pool, repetition,
+                                                        )
+                                                    {
+                                                        cnt += 1;
+                                                    } else {
+                                                        duplicate_cnt += 1;
+                                                    }
                                                 } else {
-                                                    duplicate_cnt += 1;
+                                                    similarity_discarded += 1;
                                                 }
                                             } else {
-                                                similarity_discarded += 1;
+                                                sketch_discarded += 1;
                                             }
                                         } else {
-                                            sketch_discarded += 1;
+                                            self_pairs_discarded += 1;
                                         }
                                     }
                                 }
@@ -240,9 +250,22 @@ where
                         logger,
                         (LogEvent::SketchDiscarded(repetition), sketch_discarded)
                     );
-                    log_event!(logger, (LogEvent::CandidatePairs(repetition), candidate_pairs));
+                    log_event!(
+                        logger,
+                        (LogEvent::CandidatePairs(repetition), candidate_pairs)
+                    );
+                    log_event!(
+                        logger,
+                        (LogEvent::SelfPairsDiscarded(repetition), self_pairs_discarded)
+                    );
                     log_event!(logger, (LogEvent::OutputPairs(repetition), cnt));
-                    log_event!(logger, (LogEvent::SimilarityDiscarded(repetition), similarity_discarded));
+                    log_event!(
+                        logger,
+                        (
+                            LogEvent::SimilarityDiscarded(repetition),
+                            similarity_discarded
+                        )
+                    );
                     log_event!(
                         logger,
                         (LogEvent::DuplicatesDiscarded(repetition), duplicate_cnt)

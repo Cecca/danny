@@ -130,12 +130,13 @@ where
                                 // As for the other subproblems, we filter items marked as to be considered
                                 // `Left` or `Right` in order to avoid duplicates
                                 if subproblem_key.on_diagonal() {
-                                    for (i, (_, (_lk, lv, l_sketch))) in
+                                    for (i, (_, (lk, lv, l_sketch))) in
                                         subproblem.iter().enumerate()
                                     {
                                         let mut pairs_looked = 0_u64;
-                                        for (_, (_rk, rv, r_sketch)) in subproblem[i..].iter() {
-                                            if sketch_predicate.eval(l_sketch, r_sketch)
+                                        for (_, (rk, rv, r_sketch)) in subproblem[i..].iter() {
+                                            if lk != rk
+                                                && sketch_predicate.eval(l_sketch, r_sketch)
                                                 && sim_pred(lv, rv)
                                             {
                                                 cnt += 1;
@@ -145,14 +146,15 @@ where
                                         pl.update_light(pairs_looked);
                                     }
                                 } else {
-                                    for (_, (_lk, lv, l_sketch)) in
+                                    for (_, (lk, lv, l_sketch)) in
                                         subproblem.iter().filter(|t| t.0.keep_left())
                                     {
                                         let mut pairs_looked = 0_u64;
-                                        for (_, (_rk, rv, r_sketch)) in
+                                        for (_, (rk, rv, r_sketch)) in
                                             subproblem.iter().filter(|t| t.0.keep_right())
                                         {
-                                            if sketch_predicate.eval(l_sketch, r_sketch)
+                                            if lk != rk
+                                                && sketch_predicate.eval(l_sketch, r_sketch)
                                                 && sim_pred(lv, rv)
                                             {
                                                 cnt += 1;
