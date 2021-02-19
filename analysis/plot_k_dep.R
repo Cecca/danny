@@ -111,4 +111,4 @@ plot_threshold <- function(data, t, ylabs = TRUE) {
         heights = c(5, 1)
     )
 
-ggsave("imgs/dep_k.png", width = 8, height = 4)
+ggsave("imgs/dep_k.png", width = 8, height = 3)

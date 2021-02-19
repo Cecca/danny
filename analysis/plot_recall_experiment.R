@@ -29,5 +29,5 @@ plotdata %>%
 
 ggsave("imgs/recall_experiment.png",
     width = 8,
-    height = 4
+    height = 3
 )

@@ -18,11 +18,41 @@ profile <- table_profile() %>%
             "mutex lock/unlock (self)",
             "communication (self)",
             # "worker step (self)",
-            # "timely progress (self)",
+            "timely progress (self)",
             "other"
         )),
         ordered = T
     ))
+
+scale_color_profile <- function() {
+    local_work <- rev(c(
+        "#A00017","#C93931","#E86853","#FB9A7E"
+    ))
+    infra <- rev(c(
+        "#093378",
+        "#2E50A8",
+        "#546FD3",
+        "#7D90FA",
+        "#bbc4f8"
+    ))
+    values <- c(
+        # Local work
+        "local join (self)" = local_work[1],
+        "sketch" = local_work[2],
+        "verify" = local_work[3],
+        "deduplicate" = local_work[4],
+        # State management
+        "hashmap" = infra[1],
+        "extend vector" = infra[2],
+        # Timely
+        "mutex lock/unlock (self)" = infra[3],
+        "communication (self)" = infra[4],
+        "timely progress (self)" = infra[5],
+        # "worker step (self)" = timely[3],
+        "other" = "gray90"
+    )
+    scale_color_manual(values = values, aesthetics = c("fill", "color"))
+}
 
 detail <- profile %>%
     filter(dataset == "Glove", threshold == 0.5) %>%
@@ -73,7 +103,7 @@ profile %>%
         panel.grid = element_blank()
     )
 
-ggsave("imgs/profile.png", width = 8, height = 4)
+ggsave("imgs/profile.png", width = 8, height = 3)
 
 # The following plot focuses instead on how many frames we spend per output
 # pair, which should be on the same order of magnitude for all three algorithms.
@@ -82,8 +112,9 @@ normalized_profile <- table_normalized_profile() %>%
     pivot_longer(ends_with("ppf"), names_to = "component", values_to = "ppf") %>%
     mutate(
         component = str_remove(component, "_ppf"),
+        component = if_else(component == "dedup", "deduplicate", component),
         component = factor(component,
-            levels = c("sketch", "verify", "dedup"),
+            levels = c("sketch", "verify", "deduplicate"),
             ordered = T
         )
     )
@@ -99,7 +130,9 @@ ggplot(
     geom_col(position = position_dodge()) +
     scale_y_log10(labels = scales::number_format()) +
     facet_wrap(vars(dataset), ncol = 4) +
+    scale_color_profile() +
+    labs(x = "algorithm", y = "Pairs per Frame") +
     theme_paper() +
     theme(axis.text.x = element_text(angle=90))
 
-ggsave("imgs/profile_normalized.png", width = 8, height = 4)
+ggsave("imgs/profile_normalized.png", width = 8, height = 3)

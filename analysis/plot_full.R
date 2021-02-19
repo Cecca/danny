@@ -36,4 +36,4 @@ plot_load <- function(data) {
 }
 
 plot_load(plotdata)
-ggsave("imgs/full.png", width = 8, height = 4)
+ggsave("imgs/full.png", width = 8, height = 3)

@@ -2,7 +2,8 @@ source("tables.R")
 source("plots.R")
 
 alldata <- table_search_best() %>%
-    filter(threshold == 0.5)
+    filter(threshold == 0.5) %>%
+    filter(k %in% c(0, 4,6,8))
 
 nosketch <- alldata %>%
     filter(sketch_bits == 0) %>%
@@ -136,7 +137,7 @@ p_two_round <- plotdata %>%
 (p_all2all | p_hu_et_al | p_one_round | p_two_round) +
     plot_layout(
         guides = "collect",
-        widths = c(1, 4, 4, 4)
+        widths = c(1, 3, 3, 3)
     ) &
     theme(
         text = element_text(size = 10),

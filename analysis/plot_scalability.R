@@ -32,4 +32,4 @@ ggplot(
     ) +
     theme_paper()
 
-ggsave("imgs/scalability.png", width = 8, height = 4)
+ggsave("imgs/scalability.png", width = 8, height = 3)
