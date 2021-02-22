@@ -1,6 +1,12 @@
 source("tables.R")
 
 latex_table_best <- function(data) {
+    best_runs <- data %>%
+        ungroup() %>%
+        group_by(dataset, threshold) %>%
+        slice_min(total_time) %>%
+        pull(id)
+
     data %>%
         ungroup() %>%
         group_by(dataset, threshold) %>%
@@ -19,7 +25,8 @@ latex_table_best <- function(data) {
             total_time = cell_spec(total_time,
                 # background = spec_color(total_time_num, direction = -1),
                 # color = "white",
-                underline = total_time == min(total_time),
+                # underline = total_time == min(total_time),
+                underline = id %in% best_runs,
                 format = "latex"
             )
         ) %>%

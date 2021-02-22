@@ -14,18 +14,18 @@ plotdata <- table_search_best() %>%
         ismin = total_time == min(total_time)
     )
 
-plot_threshold <- function(data, t, ylabs = TRUE) {
-    baseline <- filter(data, algorithm == "all-2-all") %>%
+plot_threshold <- function(data, t, ytitle = TRUE, yticks = TRUE, title = TRUE) {
+    baseline <- filter(data, algorithm == "Cartesian") %>%
         ungroup() %>%
         select(dataset, threshold, base_time = total_time)
-    data <- filter(data, algorithm != "all-2-all") %>%
+    data <- filter(data, algorithm != "Cartesian") %>%
         ungroup() %>%
         inner_join(baseline) %>%
         filter(total_time < 2 * base_time)
 
     # compute the limits before filtering, so that all plots share the same scale
-    limits_time <- pull(data, total_time) %>% range()
-    limits_load <- pull(data, Load) %>% range()
+    # limits_time <- pull(data, total_time) %>% range()
+    # limits_load <- pull(data, Load) %>% range()
 
     data <- filter(data, threshold == t) 
     baseline <- filter(baseline, threshold == t)
@@ -44,7 +44,8 @@ plot_threshold <- function(data, t, ylabs = TRUE) {
         # geom_point(aes(shape = ismin, size = ismin)) +
         geom_point(aes(size = ismin)) +
         geom_line() +
-        scale_y_continuous(labels = scales::number_format(), limits = limits_time) +
+        # scale_y_continuous(labels = scales::number_format(), limits = limits_time) +
+        scale_y_continuous(labels = scales::number_format()) +
         scale_shape_manual(values = c(3, 18)) +
         scale_size_manual(values = c(0.5, 1)) +
         scale_color_algorithm() +
@@ -52,7 +53,6 @@ plot_threshold <- function(data, t, ylabs = TRUE) {
         guides(shape = FALSE, linetype = FALSE, size = FALSE) +
         theme_paper() +
         labs(
-            title = str_c("Threshold ", t),
             y = "Total time (s)"
         ) +
         theme(
@@ -71,9 +71,10 @@ plot_threshold <- function(data, t, ylabs = TRUE) {
         geom_line() +
         scale_y_log10(
             labels = scales::number_format(
-                accuracy = 1
-            ),
-            limits = limits_load
+                accuracy = 1,
+                scale = 1/1000
+            )
+            # limits = limits_load
         ) +
         scale_shape_manual(values = c(3, 18)) +
         scale_size_manual(values = c(0.5, 1)) +
@@ -89,26 +90,41 @@ plot_threshold <- function(data, t, ylabs = TRUE) {
             strip.background = element_blank()
         )
 
-    if (!ylabs) {
+    if (title) {
+        p_time <- p_time + labs(title = str_c("Threshold ", t))
+    }
+
+    if (!ytitle) {
         p_time <- p_time + theme(
-            axis.text.y = element_blank(),
             axis.title.y = element_blank()
         )
         p_load <- p_load + theme(
-            axis.text.y = element_blank(),
             axis.title.y = element_blank()
+        )
+    }
+    if (!yticks) {
+        p_time <- p_time + theme(
+            axis.text.y = element_blank(),
+        )
+        p_load <- p_load + theme(
+            axis.text.y = element_blank(),
         )
     }
 
     (p_time / p_load)
 }
 
-(plot_threshold(plotdata, 0.5) |
-    plot_threshold(plotdata, 0.7, ylabs = FALSE)) /
+(
+    plot_threshold(filter(plotdata, dataset %in% c("Glove", "SIFT")), 0.5) |
+    plot_threshold(filter(plotdata, dataset %in% c("Livejournal", "Orkut")), 0.5, title=F, ytitle=F) |
+    plot_threshold(filter(plotdata, dataset %in% c("Glove", "SIFT")), 0.7, ytitle=F) |
+    plot_threshold(filter(plotdata, dataset %in% c("Livejournal", "Orkut")), 0.7, title=F, ytitle=F)
+    # plot_threshold(plotdata, 0.7, ytitle = FALSE)
+) /
     guide_area() +
     plot_layout(
         guides = "collect",
         heights = c(5, 1)
     )
 
-ggsave("imgs/dep_k.png", width = 8, height = 3)
+ggsave("imgs/dep_k.png", width = 8, height = 4)

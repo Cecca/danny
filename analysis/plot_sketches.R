@@ -113,25 +113,25 @@ plot_one_algo <- function(data, algorithm_name, groups, ylabs = FALSE, strip_tex
 }
 
 p_all2all <- plotdata %>%
-    plot_one_algo("all-2-all", "", ylabs = T)
+    plot_one_algo("Cartesian", "", ylabs = T)
 
 p_hu_et_al <- plotdata %>%
     mutate(
         groups = fct_reorder(str_c("k=", k), k)
     ) %>%
-    plot_one_algo("hu-et-al", groups)
+    plot_one_algo("OneLevelLSH", groups)
 
 p_one_round <- plotdata %>%
     mutate(
         groups = fct_reorder(str_c("k=", k), k)
     ) %>%
-    plot_one_algo("one-round-lsh", groups)
+    plot_one_algo("LocalLSH", groups)
 
 p_two_round <- plotdata %>%
     mutate(
         groups = fct_reorder(str_c("k=", k), k)
     ) %>%
-    plot_one_algo("two-round-lsh", groups, strip_text = T) +
+    plot_one_algo("TwoLevelLSH", groups, strip_text = T) +
     labs(subtitle = TeX("with $k_2 = 6$"))
 
 (p_all2all | p_hu_et_al | p_one_round | p_two_round) +
@@ -147,18 +147,18 @@ p_two_round <- plotdata %>%
 
 ggsave("imgs/sketches.png", width = 10, height = 3)
 
-print("Effect of sketching on the accuracy")
-table_search_best() %>%
-    filter(algorithm == "all-2-all") %>%
-    select(dataset, sketch_bits, output_size, threshold) %>%
-    arrange(sketch_bits) %>%
-    pivot_wider(names_from = sketch_bits, values_from = output_size) %>%
-    mutate(
-        loss64 = (`0` - `64`) / `0`,
-        loss128 = (`0` - `128`) / `0`,
-        loss256 = (`0` - `256`) / `0`,
-        loss512 = (`0` - `512`) / `0`
-    ) %>%
-    select(dataset, threshold, loss64, loss128, loss256, loss512) %>%
-    summarise(across(loss64:loss512, ~max(.x) %>% scales::percent(accuracy=0.001)))
+# print("Effect of sketching on the accuracy")
+# table_search_best() %>%
+#     filter(algorithm == "all-2-all") %>%
+#     select(dataset, sketch_bits, output_size, threshold) %>%
+#     arrange(sketch_bits) %>%
+#     pivot_wider(names_from = sketch_bits, values_from = output_size) %>%
+#     mutate(
+#         loss64 = (`0` - `64`) / `0`,
+#         loss128 = (`0` - `128`) / `0`,
+#         loss256 = (`0` - `256`) / `0`,
+#         loss512 = (`0` - `512`) / `0`
+#     ) %>%
+#     select(dataset, threshold, loss64, loss128, loss256, loss512) %>%
+#     summarise(across(loss64:loss512, ~max(.x) %>% scales::percent(accuracy=0.001)))
 

@@ -4,6 +4,17 @@ order_datasets <- function(data) {
     mutate(data, dataset = factor(dataset, levels = c("Glove", "SIFT", "Livejournal", "Orkut"), ordered = T))
 }
 
+recode_algorithms <- function(data) {
+    mutate(data,
+        algorithm = case_when(
+            algorithm == "all-2-all" ~ "Cartesian",
+            algorithm == "one-round-lsh" ~ "LocalLSH",
+            algorithm == "two-round-lsh" ~ "TwoLevelLSH",
+            algorithm == "hu-et-al" ~ "OneLevelLSH"
+        )
+    )
+}
+
 table_search_best <- function() {
     db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
     # The load is the maximum load among all the workers in a given experiment
@@ -38,6 +49,7 @@ table_search_best <- function() {
             )
         ) %>%
         order_datasets() %>%
+        recode_algorithms() %>%
         select(-total_time_ms)
     DBI::dbDisconnect(db)
     all
@@ -79,6 +91,7 @@ table_load <- function() {
             )
         ) %>%
         order_datasets() %>%
+        recode_algorithms() %>%
         select(-total_time_ms)
     DBI::dbDisconnect(db)
     all
@@ -120,6 +133,7 @@ table_full <- function() {
             )
         ) %>%
         order_datasets() %>%
+        recode_algorithms() %>%
         select(-total_time_ms)
     DBI::dbDisconnect(db)
     all
@@ -176,6 +190,7 @@ table_recall_experiment <- function() {
             )
         ) %>%
         order_datasets() %>%
+        recode_algorithms() %>%
         select(-total_time_ms)
     DBI::dbDisconnect(db)
     all
@@ -228,6 +243,7 @@ table_profile <- function() {
         ) %>%
         inner_join(profile) %>%
         order_datasets() %>%
+        recode_algorithms() %>%
         select(-total_time_ms)
     DBI::dbDisconnect(db)
     all
@@ -254,6 +270,7 @@ table_normalized_profile <- function() {
             dedup_input = verify_input - SimilarityDiscarded
         ) %>%
         inner_join(profile) %>%
+        recode_algorithms() %>%
         mutate(
             # compute the PairsPerFrame
             sketch_ppf = sketch_input / sketch,
@@ -281,15 +298,8 @@ table_scalability <- function() {
         filter(algorithm != "all-2-all") %>%
         collect()
 
-    fast_params <- all %>%
-        group_by(algorithm, path, threshold, hosts, threads, k, k2, sketch_bits) %>%
-        summarise(total_time_ms = mean(total_time_ms)) %>%
-        group_by(algorithm, path, threshold, hosts, threads) %>%
-        slice_min(total_time_ms) %>%
-        ungroup() %>%
-        select(algorithm, path, threshold, hosts, threads, k, k2, sketch_bits)
 
-    selected <- semi_join(all, fast_params) %>%
+    selected <- all %>% #semi_join(all, fast_params) %>%
         mutate(
             dataset = basename(path),
             total_time = set_units(total_time_ms, "ms"),
@@ -303,6 +313,7 @@ table_scalability <- function() {
             workers = nhosts * threads
         ) %>%
         order_datasets() %>%
+        recode_algorithms() %>%
         select(-total_time_ms)
     DBI::dbDisconnect(db)
     selected
