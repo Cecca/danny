@@ -3,39 +3,62 @@ source("tables.R")
 source("plots.R")
 
 plotdata <- table_scalability() %>%
-    mutate(total_time = set_units(total_time, "s") %>% drop_units())
-
-ideal <- plotdata %>% 
-    filter(workers == 8) %>%
-    group_by(algorithm, dataset, workers) %>%
+    filter(threshold == 0.5) %>%
+    filter(sketch_bits == 256, k2 %in% c(0, 6)) %>%
+    group_by(algorithm, dataset, workers, k, k2, sketch_bits) %>%
     summarise(total_time = mean(total_time)) %>%
+    mutate(total_time = set_units(total_time, "s") %>% drop_units()) %>%
     ungroup() %>%
-    rowwise() %>%
-    summarise(
-        algorithm = algorithm,
-        dataset = dataset,
-        machines = 1:5,
-        workers = machines * 8,
-        total_time = total_time / machines
-    )
+    select(algorithm, dataset, workers, k, k2, sketch_bits, total_time)
+
+fast_params <- plotdata %>%
+    group_by(algorithm, dataset, workers) %>%
+    slice_min(total_time) %>%
+    ungroup() %>%
+    select(algorithm, dataset, workers, k, k2, sketch_bits)
+
+best_40_params <- plotdata %>%
+    filter(workers == 40) %>%
+    group_by(algorithm, dataset, workers) %>%
+    slice_min(total_time) %>%
+    ungroup() %>%
+    select(algorithm, dataset, k, k2, sketch_bits)
+
+with_best_40 <- semi_join(plotdata, best_40_params) %>%
+    mutate(conf = "best40")
+
+fast_runs <- semi_join(plotdata, fast_params) %>%
+    mutate(conf = "bestWorker")
+
+plotdata <- bind_rows(
+    with_best_40,
+    fast_runs
+) %>%
+select(-k, -k2, -sketch_bits) %>%
+pivot_wider(names_from=conf, values_from=total_time)
 
 ggplot(
     plotdata,
     aes(
         x = workers,
-        y = total_time,
+        ymin = bestWorker,
+        ymax = best40,
         color = algorithm
     )
 ) +
-    geom_line(
-        data = ideal,
-        linetype = "dashed",
-        size = 0.2
+    geom_linerange(
+        position=position_dodge(2),
+        size = 1
     ) +
-    geom_line(stat="summary", fun.data = mean_se) +
-    geom_linerange(stat="summary", fun.data = mean_cl_boot, position = position_dodge(1)) +
-    geom_point(position=position_jitter(height=0, width=1), alpha=0.5, size=0.5) +
-    facet_wrap(vars(dataset), ncol = 4, scales = "free_y") +
+    geom_point(
+        mapping = aes(y = bestWorker),
+        data=~filter(.x, bestWorker == best40),
+        shape=18,
+        position = position_dodge(2),
+        size = 3
+    ) +
+    facet_wrap(vars(dataset), scales = "free", ncol = 4) +
+    scale_shape_manual(values = c(2, 6)) +
     scale_color_algorithm() +
     scale_x_continuous(breaks = c(1:5 * 8)) +
     labs(
