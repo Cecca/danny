@@ -3,7 +3,7 @@ source("plots.R")
 
 plotdata <- table_load() %>%
     filter(sketch_bits == 0) %>%
-    filter(algorithm %in% c("hu-et-al", "one-round-lsh")) %>%
+    filter(algorithm %in% c("OneLevelLSH", "LocalLSH")) %>%
     group_by(dataset, threshold, algorithm) %>%
     # Select the fastest configuration on each workload
     filter(total_time == min(total_time)) %>%
