@@ -197,7 +197,7 @@ done
 }
 
 function scalability() {
-for BASE_DATA in Livejournal Orkut Glove sift-100nn-0.5
+for BASE_DATA in Livejournal Orkut Glove #sift-100nn-0.5
 do
   for HOSTS in 1 2 3 4
   do
@@ -208,7 +208,7 @@ do
       echo "Running on $DATASET"
       test -d $DATASET
 
-      for K in 4 6 8
+      for K in 3 4 5 6 7 8
       do
         danny \
           --seed $SEED \
