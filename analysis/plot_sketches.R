@@ -70,7 +70,7 @@ plot_one_algo <- function(data, algorithm_name, groups, ylabs = FALSE, strip_tex
             labels = c("0", "", "128", "", "512"),
             breaks = c("0", "64", "128", "256", "512")
         ) +
-        scale_y_log10() +
+        # scale_y_log10() +
         scale_color_manual(values = c("black", "red")) +
         facet_grid(
             vars(dataset),
@@ -85,7 +85,7 @@ plot_one_algo <- function(data, algorithm_name, groups, ylabs = FALSE, strip_tex
         coord_cartesian(clip = "off") +
         labs(
             title = algorithm_name,
-            x = "params"
+            x = "sketch bits"
         ) +
         theme_paper() +
         theme(
@@ -131,8 +131,8 @@ p_two_round <- plotdata %>%
     mutate(
         groups = fct_reorder(str_c("k=", k), k)
     ) %>%
-    plot_one_algo("TwoLevelLSH", groups, strip_text = T) +
-    labs(subtitle = TeX("with $k_2 = 6$"))
+    plot_one_algo("TwoLevelLSH", groups, strip_text = T)
+    # labs(subtitle = TeX("with $k_2 = 6$"))
 
 (p_all2all | p_hu_et_al | p_one_round | p_two_round) +
     plot_layout(
