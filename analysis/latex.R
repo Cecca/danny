@@ -43,7 +43,7 @@ latex_table_best <- function(data) {
             align = "ll rrll rrll",
             escape = F,
             booktabs = T,
-            linesep = "",
+            linesep = c("", "", "", "\\addlinesep"),
             col.names = c(
                 "dataset", "algorithm",
                 "total time (s)", "recall", "k", "b",
@@ -61,7 +61,8 @@ table_best() %>%
 latex_table_info <- function(data) {
     tbl_data <- data %>%
         ungroup() %>%
-        select(dataset, threshold, n, dim, selectivity) %>%
+        filter(threshold %in% c(0.5, 0.7)) %>%
+        select(dataset, threshold, n, dim, output_size) %>%
         mutate(
             sample = as.integer(str_match(dataset, "sample-(\\d+)")[, 2]),
             sample = if_else(is.na(sample), "Full dataset", str_c("Sample of ", sample)),
@@ -71,25 +72,30 @@ latex_table_info <- function(data) {
                 str_detect(dataset, "[Gg]love") ~ "Glove",
                 str_detect(dataset, "Orkut") ~ "Orkut"
             ),
-            selectivity = scales::percent(selectivity, accuracy = 0.00001)
+            # selectivity = scales::percent(selectivity, accuracy = 0.00001),
+            avg_neighbors = scales::number(output_size / n, accuracy = 0.01, big.mark = "\\\\,")
         ) %>%
-        pivot_wider(names_from = threshold, values_from = selectivity) %>%
+        select(-output_size) %>%
+        pivot_wider(names_from = threshold, values_from = avg_neighbors) %>%
         arrange(sample)
 
-    # groups <- tbl_data %>%
-    #     count(sample) %>%
-    #     cumsum()
-    # print(groups)
+    print(tbl_data)
 
     tbl_data %>%
         select(-sample) %>%
+        mutate(
+            n = scales::number(n, big.mark = "\\\\,", accuracy = 1),
+            dim = scales::number(dim, big.mark = "\\\\,", accuracy = 1)
+        ) %>%
         kbl(
             format = "latex",
+            escape = F,
             booktabs = T,
+            # linesep = c("", "", "", "\\addlinespace")
             linesep = ""
         ) %>%
         kable_styling() %>%
-        add_header_above(c(" " = 1, "  " = 1, "   " = 1, "selectivity" = 3)) %>%
+        add_header_above(c(" " = 1, "  " = 1, "   " = 1, "average neighbors" = 2)) %>%
         pack_rows("Full dataset", 1, 4) %>%
         pack_rows("Sample of 200000 vectors", 5, 8)
 }
