@@ -82,7 +82,7 @@ plot_threshold <- function(data, t, ytitle = TRUE, yticks = TRUE, title = TRUE) 
         facet_wrap(vars(dataset), ncol = 4) +
         guides(shape = FALSE, size = FALSE) +
         labs(
-            y = TeX(str_c("Load (messages)"))
+            y = TeX(str_c("Load (msg $\\cdot 10^3$)"))
         ) +
         theme_paper() +
         theme(

@@ -157,11 +157,11 @@ table_data_info <- function() {
 
     info <- tbl(db, "result_recent") %>%
         filter(algorithm == "all-2-all", sketch_bits == 0) %>%
-        collect() %>%
+        collect() %>% 
         mutate(dataset = basename(path)) %>%
         select(dataset, threshold, output_size) %>%
         inner_join(baseinfo) %>%
-        order_datasets() %>%
+        # order_datasets() %>%
         mutate(selectivity = output_size / choose(n, 2))
     DBI::dbDisconnect(db)
     info
