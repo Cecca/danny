@@ -43,14 +43,13 @@ latex_table_best <- function(data) {
             align = "ll rrll rrll",
             escape = F,
             booktabs = T,
-            linesep = c("", "", "", "\\addlinesep"),
+            linesep = c("", "", "", "\\addlinespace"),
             col.names = c(
                 "dataset", "algorithm",
                 "total time (s)", "recall", "k", "b",
                 "total time (s)", "recall", "k", "b"
             )
         ) %>%
-        kable_styling() %>%
         add_header_above(c(" " = 2, "0.5" = 4, "0.7" = 4))
 }
 
@@ -94,7 +93,7 @@ latex_table_info <- function(data) {
             # linesep = c("", "", "", "\\addlinespace")
             linesep = ""
         ) %>%
-        kable_styling() %>%
+        # kable_styling() %>%
         add_header_above(c(" " = 1, "  " = 1, "   " = 1, "average neighbors" = 2)) %>%
         pack_rows("Full dataset", 1, 4) %>%
         pack_rows("Sample of 200000 vectors", 5, 8)
@@ -103,3 +102,45 @@ latex_table_info <- function(data) {
 table_data_info() %>%
     latex_table_info() %>%
     write_file("tex/info.tex")
+
+
+latex_normalized_profile <- function(data) {
+    data %>%
+        select(-ends_with("input"), -sketch, -verify, -deduplicate) %>%
+        pivot_longer(ends_with("ppf"), names_to = "component", values_to = "ppf") %>%
+        mutate(
+            component = str_remove(component, "_ppf"),
+            component = if_else(component == "dedup", "deduplicate", component),
+            component = factor(component,
+                levels = c("sketch", "verify", "deduplicate"),
+                ordered = T
+            ),
+            ppf = scales::number(ppf, big.mark = "\\\\,", scale=0.001, accuracy = 1),
+            algorithm = factor(algorithm, ordered = T, levels = c(
+                "LocalLSH",
+                "OneLevelLSH",
+                "TwoLevelLSH"
+            ))
+        ) %>%
+        ungroup() %>%
+        select(-id, -threshold) %>%
+        pivot_wider(names_from=c(algorithm, component), values_from=ppf) %>%
+        select(dataset, 
+            LocalLSH_sketch, LocalLSH_verify, LocalLSH_deduplicate,
+            OneLevelLSH_sketch, OneLevelLSH_verify, OneLevelLSH_deduplicate,
+            TwoLevelLSH_sketch, TwoLevelLSH_verify, TwoLevelLSH_deduplicate
+        ) %>%
+        kbl(format = "latex", booktabs = T, escape = F,
+            col.names = c(
+                "dataset",
+                "sketching", "verify", "dedup.",
+                "sketching", "verify", "dedup.",
+                "sketching", "verify", "dedup."
+            )
+        ) %>%
+        add_header_above(c(" " = 1, "\\\\local" = 3, "\\\\onelevel" = 3, "\\\\twolevel" = 3), escape = F)
+}
+
+table_normalized_profile() %>%
+    latex_normalized_profile() %>%
+    write_file("tex/profiling.tex")

@@ -270,7 +270,7 @@ table_normalized_profile <- function() {
             dedup_input = verify_input - SimilarityDiscarded
         ) %>%
         inner_join(profile) %>%
-        recode_algorithms() %>%
+        # recode_algorithms() %>%
         mutate(
             # compute the PairsPerFrame
             sketch_ppf = sketch_input / sketch,
