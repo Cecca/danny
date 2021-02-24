@@ -318,3 +318,14 @@ table_scalability <- function() {
     DBI::dbDisconnect(db)
     selected
 }
+
+table_bench <- function() {
+    read_csv("bench.csv.gz") %>%
+        mutate(
+            dataset = case_when(
+                str_detect(path, "Livejournal") ~ "Jaccard",
+                str_detect(path, "glove") ~ "Cosine"
+            )
+        )
+}
+

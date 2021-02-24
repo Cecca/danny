@@ -144,3 +144,37 @@ latex_normalized_profile <- function(data) {
 table_normalized_profile() %>%
     latex_normalized_profile() %>%
     write_file("tex/profiling.tex")
+
+latex_bench <- function() {
+    tbldata <- table_bench() %>%
+        group_by(dataset, classification) %>%
+        summarise(
+            mean_sketch = mean(sketch) %>% scales::number(accuracy = 0.1),
+            median_sketch = median(sketch) %>% scales::number(accuracy = 0.1),
+            max_sketch = max(sketch) %>% scales::number(accuracy = 0.1),
+            mean_dedup = mean(dedup) %>% scales::number(accuracy = 0.1),
+            median_dedup = median(dedup) %>% scales::number(accuracy = 0.1),
+            max_dedup = max(dedup) %>% scales::number(accuracy = 0.1),
+            mean_verify = mean(verify) %>% scales::number(accuracy = 0.1),
+            median_verify = median(verify) %>% scales::number(accuracy = 0.1),
+            max_verify = max(verify) %>% scales::number(accuracy = 0.1)
+        ) %>%
+        ungroup()
+    
+
+    tbldata %>%
+        select(dataset, classification, mean_sketch, median_sketch, max_sketch, mean_dedup, median_dedup, max_dedup, mean_verify, median_verify, max_verify) %>%
+        kbl(format = "latex", escape = F, booktabs = TRUE,
+            col.names = c(
+                "data type", "pair type", 
+                "mean", "median", "max",
+                "mean", "median", "max",
+                "mean", "median", "max"
+            )
+        ) %>%
+        add_header_above(c(" " = 1, "  " = 1, "sketch" = 3, "deduplication" = 3, "similarity" = 3))
+}
+
+latex_bench() %>% write_file("tex/bench.tex")
+
+
