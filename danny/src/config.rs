@@ -148,9 +148,9 @@ impl Config {
     pub fn algorithm_version(&self) -> u8 {
         use crate::lsh::algorithms;
         match self.algorithm.as_ref() {
-            "hu-et-al" => algorithms::HU_ET_AL_VERSION,
-            "one-round-lsh" => algorithms::ONE_ROUND_VERSION,
-            "two-round-lsh" => algorithms::TWO_ROUND_VERSION,
+            "hu-et-al" => algorithms::ONE_LEVEL_LSH_VERSION,
+            "one-round-lsh" => algorithms::LOCAL_LSH_VERSION,
+            "two-round-lsh" => algorithms::TWO_LEVEL_LSH_VERSION,
             "all-2-all" => crate::baseline::ALL_2_ALL_VERSION,
             algorithm => panic!("don't know the version of {}", algorithm),
         }
