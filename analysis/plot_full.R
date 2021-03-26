@@ -8,16 +8,26 @@ plotdata <- table_full() %>%
     select(dataset, algorithm, sketch_bits, k, k2, total_time, recall, Load)
 
 plot_load <- function(data) {
-    baseline <- data %>% filter(algorithm == "all-2-all")
+    baseline <- data %>% filter(algorithm == "Cartesian")
     data %>%
-    filter(algorithm != "all-2-all") %>%
+    filter(algorithm != "Cartesian") %>%
+    group_by(dataset, algorithm) %>%
+    mutate(label = if_else(algorithm != "LocalLSH",
+        k,
+        if_else(total_time %in% c(max(total_time), min(total_time)),
+            k,
+            as.integer(NA)
+        )
+    )) %>%
+    ungroup() %>%
     ggplot(aes(x = Load, y = total_time, color = algorithm)) +
         geom_hline(
             data = baseline,
             mapping = aes(yintercept = total_time)
         ) +
         geom_point() +
-        geom_label_repel(aes(label = k),
+        geom_label_repel(
+            aes(label = label),
             size = 3,
             label.padding = 0.1,
             show.legend = F

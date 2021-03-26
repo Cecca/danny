@@ -148,7 +148,7 @@ impl Config {
         sha.input(format!("{}", self.repetition_batch));
         sha.input(format!("{}", self.path));
 
-        if let Some(prof) = self.profile{
+        if let Some(prof) = self.profile {
             sha.input(format!("{}", prof));
         }
 

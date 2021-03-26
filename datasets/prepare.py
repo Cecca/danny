@@ -12,7 +12,6 @@ from pprint import pprint
 import json
 import bz2
 import yaml
-import jinja2
 import subprocess
 import glob
 import zipfile
@@ -599,15 +598,6 @@ for d in derived_datasets:
     DATASETS[d.name] = d
 
 
-def should_run(exp_tags, only_tags):
-    if only_tags is None:
-        return True
-    for t in only_tags:
-        if t in exp_tags:
-            return True
-    return False
-
-
 def is_clean():
     proc = subprocess.run(["git", "status", "--porcelain"], stdout=subprocess.PIPE)
     return len(proc.stdout) == 0
@@ -628,65 +618,8 @@ def create_experiment_directory():
     return dirname
 
 
-def run_experiment(executable, global_environment, experiment):
-    environment = experiment.get("environment", {})  # name: list of values
-    parameters = experiment.get("parameters", {})  #  parameter: list of values
-    arguments = experiment.get("arguments", [])  # list of lists
-    for name, values in environment.items():
-        if not isinstance(values, list):
-            environment[name] = [values]
-    for name, values in parameters.items():
-        if not isinstance(values, list):
-            parameters[name] = [values]
-    env_names, env_values = zip(*list(environment.items()))
-    params_names, params_values = zip(*list(parameters.items()))
-
-    for env_comb in product(*env_values):
-        env_comb = [str(e) for e in env_comb]
-        run_env = global_environment.copy()
-        run_env.update(zip(env_names, env_comb))
-        for k in run_env.keys():
-            run_env[k] = str(run_env[k])
-        for param_comb in product(*params_values):
-            run_params = dict(zip(params_names, param_comb))
-            for arg_list in arguments:
-                command_line = [executable]
-                for p, v in run_params.items():
-                    command_line.extend([p, v])
-                command_line.extend(arg_list)
-                command_line = [str(t) for t in command_line]
-                pprint(command_line)
-                pprint(run_env)
-                # run the command
-                process = subprocess.run(command_line, env=run_env)
-                process.check_returncode()
-
-
-def run_file(path, only_tags=None):
-    with open(path) as fp:
-        template = jinja2.Template(fp.read())
-    config = template.render(dataset=lambda name: DATASETS[name].get_path())
-    config = yaml.load(config)
-    if not is_clean():
-        print("Working directory is not in a clean state, cannot run experiment")
-        sys.exit(1)
-    directory = create_experiment_directory()
-    os.chdir(directory)
-    environment = config["environment"]
-    executable = config.get("executable", RUN_SCRIPT)
-    for experiment in config["experiments"]:
-        tags = experiment.get("tags", [])
-        if should_run(tags, only_tags):
-            print("=== Running {} {}".format(experiment["name"], tags))
-            run_experiment(executable, environment, experiment)
-    if "post" in config:
-        cmd = shlex.split(config["post"])
-        print("running post processing command", cmd)
-        subprocess.run(cmd)
-
-
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run Danny experiments")
+    parser = argparse.ArgumentParser(description="Prepare datasets for experiments")
     parser.add_argument(
         "--list-datasets", action="store_true", help="list the available datasets"
     )

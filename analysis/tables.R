@@ -328,4 +328,3 @@ table_bench <- function() {
             )
         )
 }
-

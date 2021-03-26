@@ -178,3 +178,34 @@ latex_bench <- function() {
 latex_bench() %>% write_file("tex/bench.tex")
 
 
+latex_motivation <- function(data) {
+    data %>%
+        filter(
+            algorithm == "OneLevelLSH",
+            sketch_bits == 0, 
+            required_recall == 0.8,
+            threshold == 0.5
+        ) %>%
+        select(dataset, k, total_time, Load) %>%
+        arrange(k) %>%
+        group_by(dataset) %>%
+        mutate(
+            kind = case_when(
+                total_time == min(total_time) ~ "practical",
+                Load == min(Load) ~ "theoretical"
+            ),
+            total_time = set_units(total_time, "s") %>% drop_units() %>% scales::number(accuracy=1)
+        ) %>%
+        drop_na() %>%
+        arrange(dataset, Load) %>%
+        select(dataset, kind, total_time, Load) %>%
+        kbl(format = "latex", booktabs = T, escape = F,
+            linesep = "",
+            col.names = c(
+                "", "", "time (s)", "load"
+            )
+        ) %>%
+        collapse_rows(columns = 1, latex_hline = "major")
+}
+
+table_search_best() %>% latex_motivation() %>% write_file("tex/motivation.tex")

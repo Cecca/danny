@@ -5,6 +5,7 @@ theme_paper <- function() {
     theme_bw() +
         theme(
             legend.position = "bottom",
+            text = element_text(size = 8),
             strip.background = element_blank()
         )
 }
