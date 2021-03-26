@@ -243,9 +243,6 @@ fn main() {
 
     let config = Config::get();
     init_logging(&config);
-    if config.no_dedup {
-        warn!("Running with NO DUPLICATE ELIMINATION");
-    }
 
     if let Some(sha) = Experiment::from_config(config.clone()).already_run() {
         warn!("Experiment already run (sha {}), exiting", sha);
@@ -388,7 +385,6 @@ fn main() {
                 .expect("missing logging input handle")
                 .close();
             worker.step_while(|| !events_probe.done());
-
 
             if worker.index() == 0 {
                 info!(

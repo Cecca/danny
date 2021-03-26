@@ -26,7 +26,7 @@ use timely::progress::Timestamp;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
-pub const HU_ET_AL_VERSION: u8 = 3;
+pub const HU_ET_AL_VERSION: u8 = 4;
 
 pub fn source_hashed_one_round<G, T, D, S, F>(
     scope: &G,
@@ -139,9 +139,6 @@ where
     let result = Rc::new(RefCell::new(0usize));
     let result_read = Rc::clone(&result);
 
-    let no_dedup = config.no_dedup;
-    let no_verify = config.no_verify;
-
     let vectors = Arc::new(load_for_worker::<D, _>(
         worker.index(),
         worker.peers(),
@@ -184,16 +181,14 @@ where
                             for (_, (_r, r_pool, r_sketch, r)) in values[i..].iter() {
                                 candidate_pairs += 1;
                                 if sketch_predicate.eval(l_sketch, r_sketch) {
-                                    if no_verify || sim_pred(l, r) {
-                                        if no_dedup
-                                            || !hasher.already_seen(l_pool, r_pool, repetition)
-                                        {
+                                    if !hasher.already_seen(l_pool, r_pool, repetition) {
+                                        if sim_pred(l, r) {
                                             cnt += 1;
                                         } else {
-                                            duplicate_cnt += 1;
+                                            similarity_discarded += 1;
                                         }
                                     } else {
-                                        similarity_discarded += 1;
+                                        duplicate_cnt += 1;
                                     }
                                 } else {
                                     sketch_discarded += 1;
@@ -207,17 +202,14 @@ where
                                     if r_marker.keep_right() {
                                         candidate_pairs += 1;
                                         if sketch_predicate.eval(l_sketch, r_sketch) {
-                                            if no_verify || sim_pred(l, r) {
-                                                if no_dedup
-                                                    || !hasher
-                                                        .already_seen(l_pool, r_pool, repetition)
-                                                {
+                                            if !hasher.already_seen(l_pool, r_pool, repetition) {
+                                                if sim_pred(l, r) {
                                                     cnt += 1;
                                                 } else {
-                                                    duplicate_cnt += 1;
+                                                    similarity_discarded += 1;
                                                 }
                                             } else {
-                                                similarity_discarded += 1;
+                                                duplicate_cnt += 1;
                                             }
                                         } else {
                                             sketch_discarded += 1;
@@ -240,9 +232,18 @@ where
                         logger,
                         (LogEvent::SketchDiscarded(repetition), sketch_discarded)
                     );
-                    log_event!(logger, (LogEvent::CandidatePairs(repetition), candidate_pairs));
+                    log_event!(
+                        logger,
+                        (LogEvent::CandidatePairs(repetition), candidate_pairs)
+                    );
                     log_event!(logger, (LogEvent::OutputPairs(repetition), cnt));
-                    log_event!(logger, (LogEvent::SimilarityDiscarded(repetition), similarity_discarded));
+                    log_event!(
+                        logger,
+                        (
+                            LogEvent::SimilarityDiscarded(repetition),
+                            similarity_discarded
+                        )
+                    );
                     log_event!(
                         logger,
                         (LogEvent::DuplicatesDiscarded(repetition), duplicate_cnt)

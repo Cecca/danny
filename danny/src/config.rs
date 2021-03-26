@@ -71,14 +71,6 @@ pub struct Config {
     #[argh(option)]
     pub profile: Option<i32>,
 
-    /// don't remove duplicates from the output
-    #[argh(switch)]
-    pub no_dedup: bool,
-
-    /// don't verify output pairs
-    #[argh(switch)]
-    pub no_verify: bool,
-
     /// number of repetitions to squash together
     #[argh(option, default = "1")]
     pub repetition_batch: usize,
@@ -142,8 +134,6 @@ impl Config {
         sha.input(format!("{}", self.hosts_string()));
         sha.input(format!("{}", self.seed));
         sha.input(format!("{}", self.recall));
-        sha.input(format!("{}", self.no_verify));
-        sha.input(format!("{}", self.no_dedup));
         sha.input(format!("{:?}", self.balance));
         sha.input(format!("{}", self.repetition_batch));
         sha.input(format!("{}", self.path));

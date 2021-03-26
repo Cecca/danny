@@ -201,8 +201,8 @@ impl Experiment {
                     self.config.hosts_string(),
                     self.config.sketch_epsilon,
                     self.config.recall,
-                    self.config.no_dedup,
-                    self.config.no_verify,
+                    false, // no verify
+                    false, // no dedup
                     self.config.repetition_batch as u32,
                     format!("{:?}", self.config.balance),
                     self.config.path.trim_end_matches("/"),
@@ -318,7 +318,6 @@ fn db_migrate(conn: &Connection) {
         conn.execute_batch(include_str!("migrations/v7.sql"))
             .expect("error applying version 7");
     }
-
 
     info!("Database migration completed!");
 }

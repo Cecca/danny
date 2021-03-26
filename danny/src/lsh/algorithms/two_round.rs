@@ -23,7 +23,7 @@ use timely::progress::Timestamp;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
-pub const TWO_ROUND_VERSION: u8 = 6;
+pub const TWO_ROUND_VERSION: u8 = 7;
 
 #[allow(clippy::too_many_arguments)]
 pub fn two_round_lsh<D, F, H, B, R, S, V>(
@@ -53,9 +53,6 @@ where
     use std::rc::Rc;
     let result = Rc::new(RefCell::new(0usize));
     let result_read = Rc::clone(&result);
-
-    let no_dedup = config.no_dedup;
-    let no_verify = config.no_verify;
 
     let vectors = Arc::new(load_for_worker::<D, _>(
         worker.index(),
@@ -142,21 +139,16 @@ where
                             self_joiner.join_map(|_h, l, r| {
                                 candidate_pairs += 1;
                                 if sketch_pred.eval(l.0, r.0) {
-                                    if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
-                                        if no_dedup
-                                            || (!hasher_intern.already_seen(&l.3, &r.3, rep)
-                                                && !hasher.already_seen(
-                                                    &l.2,
-                                                    &r.2,
-                                                    outer_repetition,
-                                                ))
-                                        {
+                                    if !hasher_intern.already_seen(&l.3, &r.3, rep)
+                                        && !hasher.already_seen(&l.2, &r.2, outer_repetition)
+                                    {
+                                        if sim_pred(&(l.1).1, &(r.1).1) {
                                             matching_cnt += 1;
                                         } else {
-                                            duplicate_cnt += 1;
+                                            similarity_discarded += 1;
                                         }
                                     } else {
-                                        similarity_discarded += 1;
+                                        duplicate_cnt += 1;
                                     }
                                 } else {
                                     sketch_cnt += 1;
@@ -181,30 +173,37 @@ where
                             joiner.join_map(|_h, l, r| {
                                 candidate_pairs += 1;
                                 if sketch_pred.eval(l.0, r.0) {
-                                    if no_verify || sim_pred(&(l.1).1, &(r.1).1) {
-                                        if no_dedup
-                                            || (!hasher_intern.already_seen(&l.3, &r.3, rep)
-                                                && !hasher.already_seen(
-                                                    &l.2,
-                                                    &r.2,
-                                                    outer_repetition,
-                                                ))
-                                        {
+                                    if !hasher_intern.already_seen(&l.3, &r.3, rep)
+                                        && !hasher.already_seen(&l.2, &r.2, outer_repetition)
+                                    {
+                                        if sim_pred(&(l.1).1, &(r.1).1) {
                                             matching_cnt += 1;
                                         } else {
-                                            duplicate_cnt += 1;
+                                            similarity_discarded += 1;
                                         }
                                     } else {
-                                        similarity_discarded += 1;
+                                        duplicate_cnt += 1;
                                     }
                                 } else {
                                     sketch_cnt += 1;
                                 }
                             })
                         }
-                        log_event!(logger, (LogEvent::CandidatePairs(outer_repetition), candidate_pairs));
-                        log_event!(logger, (LogEvent::OutputPairs(outer_repetition), matching_cnt));
-                        log_event!(logger, (LogEvent::SimilarityDiscarded(outer_repetition), similarity_discarded));
+                        log_event!(
+                            logger,
+                            (LogEvent::CandidatePairs(outer_repetition), candidate_pairs)
+                        );
+                        log_event!(
+                            logger,
+                            (LogEvent::OutputPairs(outer_repetition), matching_cnt)
+                        );
+                        log_event!(
+                            logger,
+                            (
+                                LogEvent::SimilarityDiscarded(outer_repetition),
+                                similarity_discarded
+                            )
+                        );
                         log_event!(
                             logger,
                             (LogEvent::SketchDiscarded(outer_repetition), sketch_cnt)

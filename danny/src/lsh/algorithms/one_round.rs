@@ -26,7 +26,7 @@ use timely::dataflow::*;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
-pub const ONE_ROUND_VERSION: u8 = 3;
+pub const ONE_ROUND_VERSION: u8 = 4;
 
 fn distribute<G, D>(
     stream: &Stream<G, (ElementId, D)>,
@@ -97,8 +97,6 @@ fn solve_subproblem<D, F, V, H>(
     hasher: &TensorCollection<H>,
     sketch_predicate: &SketchPredicate<V>,
     sim_pred: F,
-    no_verify: bool,
-    no_dedup: bool,
     logger: Option<Logger<(LogEvent, usize)>>,
 ) -> usize
 where
@@ -137,14 +135,14 @@ where
                     for (_, (rk, r_sketch, r_pool)) in bucket[i..].iter() {
                         candidate_pairs += 1;
                         if sketch_predicate.eval(l_sketch, r_sketch) {
-                            if no_verify || sim_pred(&vectors[lk], &vectors[rk]) {
-                                if no_dedup || !hasher.already_seen(l_pool, r_pool, rep) {
+                            if !hasher.already_seen(l_pool, r_pool, rep) {
+                                if sim_pred(&vectors[lk], &vectors[rk]) {
                                     cnt += 1;
                                 } else {
-                                    duplicates_discarded += 1;
+                                    similarity_discarded += 1;
                                 }
                             } else {
-                                similarity_discarded += 1;
+                                duplicates_discarded += 1;
                             }
                         } else {
                             sketch_discarded += 1;
@@ -164,14 +162,14 @@ where
             joiner.join_map(|_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
                 candidate_pairs += 1;
                 if sketch_predicate.eval(l_sketch, r_sketch) {
-                    if no_verify || sim_pred(&vectors[lk], &vectors[rk]) {
-                        if no_dedup || !hasher.already_seen(l_pool, r_pool, rep) {
+                    if !hasher.already_seen(l_pool, r_pool, rep) {
+                        if sim_pred(&vectors[lk], &vectors[rk]) {
                             cnt += 1;
                         } else {
-                            duplicates_discarded += 1;
+                            similarity_discarded += 1
                         }
                     } else {
-                        similarity_discarded += 1
+                        duplicates_discarded += 1;
                     }
                 } else {
                     sketch_discarded += 1;
@@ -183,7 +181,10 @@ where
         debug!("Repetition {} ended in {:?}", rep, end - start);
         log_event!(logger, (LogEvent::CandidatePairs(rep), candidate_pairs));
         log_event!(logger, (LogEvent::OutputPairs(rep), cnt));
-        log_event!(logger, (LogEvent::SimilarityDiscarded(rep), similarity_discarded));
+        log_event!(
+            logger,
+            (LogEvent::SimilarityDiscarded(rep), similarity_discarded)
+        );
         log_event!(logger, (LogEvent::SketchDiscarded(rep), sketch_discarded));
         log_event!(
             logger,
@@ -220,9 +221,6 @@ where
 {
     use std::cell::RefCell;
     use std::rc::Rc;
-
-    let no_dedup = config.no_dedup;
-    let no_verify = config.no_verify;
 
     let worker_index = worker.index();
 
@@ -300,8 +298,6 @@ where
                                     &hasher,
                                     &sketch_predicate,
                                     sim_pred,
-                                    no_verify,
-                                    no_dedup,
                                     logger.clone(),
                                 );
                                 output.session(&t).give(cnt);
