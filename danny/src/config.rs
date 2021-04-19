@@ -148,10 +148,10 @@ impl Config {
     pub fn algorithm_version(&self) -> u8 {
         use crate::lsh::algorithms;
         match self.algorithm.as_ref() {
-            "hu-et-al" => algorithms::ONE_LEVEL_LSH_VERSION,
-            "one-round-lsh" => algorithms::LOCAL_LSH_VERSION,
-            "two-round-lsh" => algorithms::TWO_LEVEL_LSH_VERSION,
-            "all-2-all" => crate::baseline::ALL_2_ALL_VERSION,
+            "local-lsh" => algorithms::ONE_LEVEL_LSH_VERSION,
+            "one-level-lsh" => algorithms::LOCAL_LSH_VERSION,
+            "two-level-lsh" => algorithms::TWO_LEVEL_LSH_VERSION,
+            "cartesian" => crate::baseline::ALL_2_ALL_VERSION,
             algorithm => panic!("don't know the version of {}", algorithm),
         }
     }
