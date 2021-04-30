@@ -326,6 +326,11 @@ fn db_migrate(conn: &Connection) {
         conn.execute_batch(include_str!("migrations/v7.sql"))
             .expect("error applying version 7");
     }
+    if version < 8 {
+        info!("Applying migration v8");
+        conn.execute_batch(include_str!("migrations/v8.sql"))
+            .expect("error applying version 8");
+    }
 
     info!("Database migration completed!");
 }
