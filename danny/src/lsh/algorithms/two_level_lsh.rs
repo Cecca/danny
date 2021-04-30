@@ -23,7 +23,7 @@ use timely::progress::Timestamp;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
-pub const TWO_LEVEL_LSH_VERSION: u8 = 7;
+pub const TWO_LEVEL_LSH_VERSION: u8 = 8;
 
 #[allow(clippy::too_many_arguments)]
 pub fn two_level_lsh<D, F, H, B, R, S, V>(
@@ -68,8 +68,8 @@ where
     //
     // The old definition was the following:
     //
-    //     let individual_recall = config.recall.sqrt();
-    let individual_recall = config.recall;
+    let individual_recall = config.recall.sqrt();
+    // let individual_recall = config.recall;
 
     let hasher = TensorCollection::new(
         k,
