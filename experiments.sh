@@ -59,7 +59,7 @@ function search_best() {
           --sketch-bits $SKETCH_BITS \
           $DATASET
 
-        for K in 4 8 6 12
+        for K in 3 4 8 6 12
         do
           for ALGORITHM in local-lsh one-level-lsh
           do
