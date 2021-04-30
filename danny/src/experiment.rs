@@ -235,8 +235,16 @@ impl Experiment {
                 .expect("failed to prepare statement");
             for (kind, worker, step, count) in self.step_counters.iter() {
                 println!("{} {}", kind, count);
-                stmt.execute(params![id, kind_id[kind], *worker as i64, step, count])
-                    .expect("failure in inserting network information");
+                stmt.execute(params![
+                    id,
+                    kind_id
+                        .get(kind)
+                        .unwrap_or_else(|| panic!("failed to retrieve value for key {}", kind)),
+                    *worker as i64,
+                    step,
+                    count
+                ])
+                .expect("failure in inserting counters information");
             }
 
             let mut stmt = tx
