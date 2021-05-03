@@ -7,10 +7,10 @@ order_datasets <- function(data) {
 recode_algorithms <- function(data) {
     mutate(data,
         algorithm = case_when(
-            algorithm == "all-2-all" ~ "Cartesian",
-            algorithm == "one-round-lsh" ~ "LocalLSH",
-            algorithm == "two-round-lsh" ~ "TwoLevelLSH",
-            algorithm == "hu-et-al" ~ "OneLevelLSH"
+            algorithm == "cartesian" ~ "Cartesian",
+            algorithm == "local-lsh" ~ "LocalLSH",
+            algorithm == "two-level-lsh" ~ "TwoLevelLSH",
+            algorithm == "one-level-lsh" ~ "OneLevelLSH"
         )
     )
 }
@@ -25,19 +25,19 @@ table_search_best <- function() {
         collect() %>%
         pivot_wider(names_from = kind, values_from = count)
     all <- tbl(db, "result_recent") %>%
-        filter(hosts == "sss00:2001__sss01:2001__sss02:2001__sss03:2001__sss04:2001") %>%
+        collect() %>%
+        (function(d) {
+            print(distinct(d, hosts))
+            d
+        }) %>%
+        filter(hosts == "10.1.1.1:2001__10.1.1.2:2001__10.1.1.3:2001__10.1.1.4:2001__10.1.1.5:2001") %>%
         filter(profile_frequency == 0) %>%
-        filter(path %LIKE% "%sample-200000.bin") %>%
+        filter(str_detect(path, "sample-200000.bin")) %>%
         filter(required_recall == 0.8) %>%
         filter(threshold %in% c(0.5, 0.7)) %>%
         filter(!no_verify, !no_dedup) %>%
-        filter(algorithm != "two-round-lsh" | (repetition_batch >= 1000)) %>%
-        collect() %>%
+        filter(algorithm != "two-level-lsh" | (repetition_batch >= 1000)) %>%
         inner_join(load) %>%
-        (function(d) {
-            print(distinct(d, path))
-            d
-        }) %>%
         mutate(
             dataset = basename(path),
             total_time = set_units(total_time_ms, "ms"),
@@ -50,6 +50,49 @@ table_search_best <- function() {
         ) %>%
         order_datasets() %>%
         recode_algorithms() %>%
+        select(-total_time_ms)
+    DBI::dbDisconnect(db)
+    all
+}
+
+table_candidates <- function() {
+    db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
+    counters <- tbl(db, "counters") %>%
+        filter(kind %in% c(
+            "SelfPairsDiscarded",
+            "SimilarityDiscarded",
+            "CandidatePairs",
+            "OutputPairs",
+            "SketchDiscarded",
+            "DuplicatesDiscarded"
+        )) %>%
+        group_by(id, worker, step, kind) %>%
+        summarise(count = sum(count, na.rm = TRUE)) %>%
+        ungroup() %>%
+        collect() %>%
+        pivot_wider(names_from = "kind", values_from = "count")
+    all <- tbl(db, "result_recent") %>%
+        filter(hosts == "10.1.1.1:2001__10.1.1.2:2001__10.1.1.3:2001__10.1.1.4:2001__10.1.1.5:2001") %>%
+        filter(profile_frequency == 0) %>%
+        filter(path %LIKE% "%sample-200000.bin") %>%
+        filter(required_recall == 0.8) %>%
+        filter(threshold %in% c(0.5, 0.7)) %>%
+        filter(!no_verify, !no_dedup) %>%
+        filter(algorithm != "two-round-lsh" | (repetition_batch >= 1000)) %>%
+        collect() %>%
+        mutate(
+            dataset = basename(path),
+            total_time = set_units(total_time_ms, "ms"),
+            dataset = case_when(
+                str_detect(dataset, "sift") ~ "SIFT",
+                str_detect(dataset, "Livejournal") ~ "Livejournal",
+                str_detect(dataset, "Glove") ~ "Glove",
+                str_detect(dataset, "Orkut") ~ "Orkut"
+            )
+        ) %>%
+        order_datasets() %>%
+        recode_algorithms() %>%
+        inner_join(counters) %>%
         select(-total_time_ms)
     DBI::dbDisconnect(db)
     all
@@ -157,7 +200,7 @@ table_data_info <- function() {
 
     info <- tbl(db, "result_recent") %>%
         filter(algorithm == "all-2-all", sketch_bits == 0) %>%
-        collect() %>% 
+        collect() %>%
         mutate(dataset = basename(path)) %>%
         select(dataset, threshold, output_size) %>%
         inner_join(baseinfo) %>%
@@ -299,7 +342,7 @@ table_scalability <- function() {
         collect()
 
 
-    selected <- all %>% #semi_join(all, fast_params) %>%
+    selected <- all %>% # semi_join(all, fast_params) %>%
         mutate(
             dataset = basename(path),
             total_time = set_units(total_time_ms, "ms"),

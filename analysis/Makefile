@@ -12,6 +12,9 @@ build-docker: Dockerfile
 imgs/dep_k.png: plot_k_dep.R tables.R danny-results.sqlite
 	${RSCRIPT} plot_k_dep.R
 
+imgs/plot_subproblem_size.png: plot_subproblem_size.R tables.R danny-results.sqlite
+	${RSCRIPT} plot_subproblem_size.R
+
 imgs/sketches.png: plot_sketches.R tables.R danny-results.sqlite
 	${RSCRIPT} plot_sketches.R
 

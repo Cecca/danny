@@ -5,7 +5,7 @@ plotdata <- table_search_best() %>%
     # we focus just on experiments with no sketches, to see the effect of k
     filter(sketch_bits == 0) %>%
     filter((k == 0) || between(k, 4, 16)) %>%
-    filter(k2 %in% c(0,6)) %>%
+    filter(k2 %in% c(0, 6)) %>%
     mutate(
         total_time = set_units(total_time, "s") %>% drop_units()
     ) %>%
@@ -21,13 +21,13 @@ plot_threshold <- function(data, t, ytitle = TRUE, yticks = TRUE, title = TRUE) 
     data <- filter(data, algorithm != "Cartesian") %>%
         ungroup() %>%
         inner_join(baseline) %>%
-        filter(total_time < 2 * base_time)
+        filter(total_time < 4 * base_time)
 
     # compute the limits before filtering, so that all plots share the same scale
     # limits_time <- pull(data, total_time) %>% range()
     # limits_load <- pull(data, Load) %>% range()
 
-    data <- filter(data, threshold == t) 
+    data <- filter(data, threshold == t)
     baseline <- filter(baseline, threshold == t)
 
     p_time <- ggplot(
@@ -72,7 +72,7 @@ plot_threshold <- function(data, t, ytitle = TRUE, yticks = TRUE, title = TRUE) 
         scale_y_log10(
             labels = scales::number_format(
                 accuracy = 1,
-                scale = 1/1000
+                scale = 1 / 1000
             )
             # limits = limits_load
         ) +
@@ -116,9 +116,9 @@ plot_threshold <- function(data, t, ytitle = TRUE, yticks = TRUE, title = TRUE) 
 
 (
     plot_threshold(filter(plotdata, dataset %in% c("Glove", "SIFT")), 0.5) |
-    plot_threshold(filter(plotdata, dataset %in% c("Livejournal", "Orkut")), 0.5, title=F, ytitle=F) |
-    plot_threshold(filter(plotdata, dataset %in% c("Glove", "SIFT")), 0.7, ytitle=F) |
-    plot_threshold(filter(plotdata, dataset %in% c("Livejournal", "Orkut")), 0.7, title=F, ytitle=F)
+        plot_threshold(filter(plotdata, dataset %in% c("Livejournal", "Orkut")), 0.5, title = F, ytitle = F) |
+        plot_threshold(filter(plotdata, dataset %in% c("Glove", "SIFT")), 0.7, ytitle = F) |
+        plot_threshold(filter(plotdata, dataset %in% c("Livejournal", "Orkut")), 0.7, title = F, ytitle = F)
     # plot_threshold(plotdata, 0.7, ytitle = FALSE)
 ) /
     guide_area() +
