@@ -11,10 +11,10 @@ use danny_base::sketch::*;
 use danny_base::types::ElementId;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Instant;
-use std::{collections::HashMap, ops::Range};
 use timely::communication::Allocator;
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::*;
@@ -117,10 +117,6 @@ where
         hasher.repetitions() * hasher_intern.repetitions()
     );
 
-    let repetition_batch = config.repetition_batch;
-
-    // info!("configured recall {}", config.recall);
-
     let hasher = Arc::clone(&hasher);
     let hasher_intern = Arc::clone(&hasher_intern);
     let sim_pred = sim_pred.clone();
@@ -139,8 +135,6 @@ where
             Arc::clone(&sketcher),
             Arc::clone(&hasher),
             Arc::clone(&hasher_intern),
-            probe.clone(),
-            repetition_batch,
         );
 
         info!(
@@ -307,8 +301,6 @@ fn source_hashed_two_round<G, T, D, F, S>(
     sketcher: Arc<S>,
     hash_fns: Arc<TensorCollection<F>>,
     hash_fns2: Arc<TensorCollection<F>>,
-    throttle: ProbeHandle<T>,
-    repetition_batch: usize,
 ) -> Stream<
     G,
     (
@@ -347,16 +339,15 @@ where
 
     source(scope, "hashed source two round", move |capability| {
         let mut cap = Some(capability);
-        let mut current_repetition = 0;
 
         move |output| {
             let mut done = false;
             if let Some(cap) = cap.as_mut() {
-                if !throttle.less_than(&cap) {
+                for current_repetition in 0..repetitions {
                     stopwatch.maybe_stop();
                     stopwatch.start();
                     if worker == 0 {
-                        debug!("Repetition {} (two round LSH)", current_repetition);
+                        debug!("Repetition {} (two level LSH)", current_repetition);
                     }
                     let mut session = output.session(&cap);
                     for (k, v) in vecs.iter() {
@@ -372,12 +363,8 @@ where
                             ),
                         ));
                     }
-                    if current_repetition % repetition_batch == 0 {
-                        cap.downgrade(&cap.time().succ());
-                    }
-                    current_repetition += 1;
-                    done = current_repetition >= repetitions;
                 }
+                done = true;
             }
 
             if done {
