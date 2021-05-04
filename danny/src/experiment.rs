@@ -234,7 +234,6 @@ impl Experiment {
                 )
                 .expect("failed to prepare statement");
             for (kind, worker, step, count) in self.step_counters.iter() {
-                println!("{} {}", kind, count);
                 stmt.execute(params![
                     id,
                     kind_id

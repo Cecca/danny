@@ -11,10 +11,10 @@ use danny_base::sketch::*;
 use danny_base::types::ElementId;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Instant;
+use std::{collections::HashMap, ops::Range};
 use timely::communication::Allocator;
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::*;
@@ -23,7 +23,7 @@ use timely::progress::Timestamp;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
-pub const TWO_LEVEL_LSH_VERSION: u8 = 8;
+pub const TWO_LEVEL_LSH_VERSION: u8 = 9;
 
 #[allow(clippy::too_many_arguments)]
 pub fn two_level_lsh<D, F, H, B, R, S, V>(
@@ -60,33 +60,66 @@ where
         path,
     ));
 
-    // Until commit `45b1d33` we used a transformed required recall, to
-    // ensure that the overall recall was the required one. However the price to
-    // pay was a very high number of repetitions. Therefore we are now using the
-    // input required recall, to be able to better compare this implementation with
-    // Hu et al.
-    //
-    // The old definition was the following:
-    //
-    let individual_recall = config.recall.sqrt();
-    // let individual_recall = config.recall;
+    let r = config.recall;
+    let mut eps = 0.01;
+    let epsilons = std::iter::from_fn(|| {
+        if eps > 0.99 - r {
+            None
+        } else {
+            let e = eps;
+            eps += 0.001;
+            Some(e)
+        }
+    });
+    let mut rngb = rng.clone();
+    let (hasher, hasher_intern) = epsilons
+        .map(|eps| {
+            (
+                Arc::new(TensorCollection::new(
+                    k,
+                    range,
+                    r + eps,
+                    hash_function_builder.clone(),
+                    &mut rngb,
+                )),
+                Arc::new(TensorCollection::new(
+                    k2,
+                    range,
+                    r / (r + eps),
+                    hash_function_builder.clone(),
+                    &mut rngb,
+                )),
+            )
+        })
+        .chain(Some((
+            Arc::new(TensorCollection::new(
+                k,
+                range,
+                r.sqrt(),
+                hash_function_builder.clone(),
+                rng,
+            )),
+            Arc::new(TensorCollection::new(
+                k2,
+                range,
+                r.sqrt(),
+                hash_function_builder.clone(),
+                rng,
+            )),
+        )))
+        .min_by_key(|(outer, inner)| outer.repetitions() * inner.repetitions())
+        .unwrap();
 
-    let hasher = TensorCollection::new(
-        k,
-        range,
-        individual_recall,
-        hash_function_builder.clone(),
-        rng,
+    info!(
+        "outer repetitions: {} inner repetitions: {}, total {}",
+        hasher.repetitions(),
+        hasher_intern.repetitions(),
+        hasher.repetitions() * hasher_intern.repetitions()
     );
-    let hasher = Arc::new(hasher);
-
-    let hasher_intern =
-        TensorCollection::new(k2, range, individual_recall, hash_function_builder, rng);
-    let hasher_intern = Arc::new(hasher_intern);
 
     let repetition_batch = config.repetition_batch;
 
-    info!("configured recall {}", config.recall);
+    // info!("configured recall {}", config.recall);
 
     let hasher = Arc::clone(&hasher);
     let hasher_intern = Arc::clone(&hasher_intern);
