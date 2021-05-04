@@ -26,7 +26,7 @@ use timely::progress::Timestamp;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
-pub const ONE_LEVEL_LSH_VERSION: u8 = 4;
+pub const ONE_LEVEL_LSH_VERSION: u8 = 5;
 
 pub fn source_hashed_one_round<G, T, D, S, F>(
     scope: &G,
@@ -167,7 +167,7 @@ where
 
         hashes
             .self_join_map(
-                Balance::Load,
+                Balance::SubproblemSize,
                 move |((repetition, _hash), subproblem_key), values| {
                     let mut cnt = 0usize;
                     let mut candidate_pairs = 0usize;
