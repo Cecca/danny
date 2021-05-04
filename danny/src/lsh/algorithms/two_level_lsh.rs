@@ -143,7 +143,7 @@ where
         );
         hashes
             .self_join_map(
-                Balance::Load,
+                Balance::SubproblemSize,
                 move |((outer_repetition, _h), subproblem_key), subproblem| {
                     let mut self_joiner = SelfJoiner::default();
                     let mut joiner = Joiner::default();
@@ -157,6 +157,10 @@ where
                         let mut sketch_cnt = 0;
                         let mut duplicate_cnt = 0;
                         if subproblem_key.on_diagonal() {
+                            info!(
+                                "Subproblem on diagonal, with {} pairs",
+                                subproblem.len() * (subproblem.len() - 1) / 2
+                            );
                             self_joiner.clear();
                             for (_marker, (outer_pool, inner_pool, s, v)) in subproblem.iter() {
                                 self_joiner.push(
@@ -187,7 +191,17 @@ where
                                 }
                             })
                         } else {
-                            // let mut joiner = Joiner::default();
+                            info!(
+                                "Subproblem, with {} pairs",
+                                subproblem
+                                    .iter()
+                                    .filter(|payload| payload.0.keep_left())
+                                    .count()
+                                    * subproblem
+                                        .iter()
+                                        .filter(|payload| payload.0.keep_right())
+                                        .count()
+                            );
                             joiner.clear();
                             for (marker, (outer_pool, inner_pool, s, v)) in subproblem.iter() {
                                 match marker {
