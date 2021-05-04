@@ -59,9 +59,9 @@ function search_best() {
           --sketch-bits $SKETCH_BITS \
           $DATASET
 
-        for K in 3 4 8 6 12
+        for K in 3 4 8 6 8 10 12 14 16
         do
-          for ALGORITHM in local-lsh one-level-lsh
+          for ALGORITHM in local-lsh #one-level-lsh
           do
             danny \
               --hosts ~/hosts.txt \
@@ -74,20 +74,20 @@ function search_best() {
               $DATASET
           done
 
-          for K2 in 2 4 6 8
-          do
-            danny \
-              --hosts ~/hosts.txt \
-              --threads 8 \
-              --threshold $THRESHOLD \
-              --algorithm two-level-lsh \
-              --recall $RECALL \
-              --sketch-bits $SKETCH_BITS \
-              --k $K \
-              --k2 $K2 \
-              --repetition-batch 10000 \
-              $DATASET
-          done
+          # for K2 in 4 5 6 7 8
+          # do
+          #   danny \
+          #     --hosts ~/hosts.txt \
+          #     --threads 8 \
+          #     --threshold $THRESHOLD \
+          #     --algorithm two-level-lsh \
+          #     --recall $RECALL \
+          #     --sketch-bits $SKETCH_BITS \
+          #     --k $K \
+          #     --k2 $K2 \
+          #     --repetition-batch 10000 \
+          #     $DATASET
+          # done
         done
       done
     done
