@@ -37,13 +37,13 @@ function baselines() {
 }
 
 # This set of experiments searches for the best configuration of parameters for all the different datasets.
-# We don't look at the 
 function search_best() {
   RECALL=0.8 # <-- required recall
 
-  for BASE_DATA in sift-100nn-0.5 Livejournal Orkut Glove
+  for BASE_DATA in sift-100-0.5 Livejournal Orkut glove.twitter.27B.200d
   do
-    DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-sample-200000.bin
+    DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA.bin
+    # DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-sample-200000.bin
     echo "Running on $DATASET"
     test -d $DATASET
 
@@ -61,7 +61,7 @@ function search_best() {
 
         for K in 3 4 6 8 #10 12 14 16
         do
-          for ALGORITHM in one-level-lsh #local-lsh #one-level-lsh
+          for ALGORITHM in local-lsh one-level-lsh
           do
             danny \
               --hosts ~/hosts.txt \
@@ -74,7 +74,7 @@ function search_best() {
               $DATASET
           done
 
-          for K2 in 4 5 6 7 8
+          for K2 in 6
           do
             danny \
               --hosts ~/hosts.txt \
