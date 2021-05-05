@@ -1,8 +1,8 @@
 use crate::{config::*, logging::ProfileFunction};
 use chrono::prelude::*;
 use rusqlite::*;
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::{collections::HashMap, time::Duration};
 
 pub struct Experiment {
     db_path: PathBuf,
@@ -273,6 +273,79 @@ impl Experiment {
                 ])
                 .expect("failure to run the prepared statement");
             }
+        }
+
+        tx.commit().expect("error committing insertions");
+        conn.close().expect("error inserting into the database");
+    }
+
+    pub fn save_timed_out(self, timeout: Duration) {
+        let mut conn = self.get_conn();
+
+        let tx = conn.transaction().expect("problem starting transaction");
+        {
+            // Insert into main table
+            tx.execute(
+                "INSERT INTO result (
+                    code_version,
+                    date,
+                    params_sha,
+                    seed,
+                    threshold,
+                    algorithm,
+                    algorithm_version,
+                    k,
+                    k2,
+                    sketch_bits,
+                    threads,
+                    hosts,
+                    sketch_epsilon,
+                    required_recall,
+                    no_dedup,
+                    no_verify,
+                    repetition_batch,
+                    balance,
+                    path,
+
+                    total_time_ms,
+                    output_size,
+                    recall,
+                    speedup,
+
+                    profile_frequency
+                )
+                 VALUES (
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24
+                 )",
+                params![
+                    env!("VERGEN_SHA_SHORT"),
+                    self.date.to_rfc3339(),
+                    self.config.sha(),
+                    self.config.seed as u32,
+                    self.config.threshold,
+                    self.config.algorithm,
+                    self.config.algorithm_version(),
+                    // We insert 0 instad of null because the handling of NULL in SQL is complicated
+                    self.config.k.unwrap_or(0) as u32,
+                    self.config.k2.unwrap_or(0) as u32,
+                    self.config.sketch_bits as u32,
+                    self.config.threads as u32,
+                    self.config.hosts_string(),
+                    self.config.sketch_epsilon,
+                    self.config.recall,
+                    false, // no verify
+                    false, // no dedup
+                    self.config.repetition_batch as u32,
+                    format!("{:?}", self.config.balance),
+                    self.config.path.trim_end_matches("/"),
+                    timeout.as_millis() as i64,
+                    None::<i64>,
+                    None::<f64>,
+                    None::<f64>,
+                    self.config.profile.unwrap_or(0)
+                ],
+            )
+            .expect("error inserting into main table");
         }
 
         tx.commit().expect("error committing insertions");

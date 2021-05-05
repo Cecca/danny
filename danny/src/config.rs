@@ -3,15 +3,15 @@ use rand::rngs::StdRng;
 use rand::RngCore;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
-use std::convert::TryFrom;
-use std::fmt::Debug;
+use std::{convert::TryFrom, thread::Thread, time::Duration};
+use std::{fmt::Debug, time::Instant};
 
 use std::process::Command;
 
 use timely::communication::{Allocator, Configuration as TimelyConfig, WorkerGuards};
 use timely::worker::Worker;
 
-use crate::join::Balance;
+use crate::{experiment::Experiment, join::Balance};
 
 pub fn get_hostname() -> String {
     let output = Command::new("hostname")
@@ -84,6 +84,10 @@ pub struct Config {
     #[argh(switch)]
     pub rerun: bool,
 
+    /// kill the run if it takes more than the specified time, in seconds
+    #[argh(option)]
+    pub timeout: Option<u64>,
+
     /// the dataset to be self-joined
     #[argh(positional)]
     pub path: String,
@@ -140,6 +144,10 @@ impl Config {
 
         if let Some(prof) = self.profile {
             sha.input(format!("{}", prof));
+        }
+
+        if let Some(timeout) = self.timeout {
+            sha.input(format!("{}", timeout));
         }
 
         format!("{:x}", sha.result())
@@ -212,7 +220,7 @@ impl Config {
             let exec = std::env::args().nth(0).unwrap();
             info!("spawning executable {:?}", exec);
             // This is the top level invocation, which should spawn the processes with ssh
-            let handles: Vec<std::process::Child> = self
+            let mut handles: Vec<std::process::Child> = self
                 .hosts
                 .as_ref()
                 .unwrap()
@@ -231,12 +239,37 @@ impl Config {
                 })
                 .collect();
 
-            for mut h in handles {
-                info!("Waiting for ssh process to finish");
-                h.wait().expect("problem waiting for the ssh process");
+            // now wait for the workers, with a timeout if configured
+            if let Some(timeout) = self.timeout {
+                let timeout = Duration::from_secs(timeout);
+                let timer = Instant::now();
+                loop {
+                    if timer.elapsed() > timeout {
+                        // kill all the workers
+                        for mut h in handles {
+                            h.kill().expect("problems killing the ssh process");
+                        }
+                        // report the experiment as timed out
+                        Experiment::from_config(self.clone()).save_timed_out(timeout);
+                        break;
+                    }
+                    if handles.iter_mut().all(|h| {
+                        h.try_wait()
+                            .expect("problem polling the ssh process")
+                            .is_some()
+                    }) {
+                        info!("all workers done");
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_secs(1));
+                }
+            } else {
+                for mut h in handles {
+                    info!("Waiting for ssh process to finish");
+                    h.wait().expect("problem waiting for the ssh process");
+                }
+                info!("All workers done");
             }
-            info!("All workers done");
-
             None
         } else {
             info!("Worker invocation");
