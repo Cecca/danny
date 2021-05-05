@@ -245,10 +245,32 @@ impl Config {
                 let timer = Instant::now();
                 loop {
                     if timer.elapsed() > timeout {
-                        // kill all the workers
+                        // kill all the ssh process
                         for mut h in handles {
                             h.kill().expect("problems killing the ssh process");
                         }
+                        // most of the times the above killing is not sufficient, so we should
+                        // go to each worker and manually kill each `danny` process
+                        info!("spawning pkill calls");
+                        let killers: Vec<std::process::Child> = self
+                            .hosts
+                            .as_ref()
+                            .unwrap()
+                            .hosts
+                            .iter()
+                            .enumerate()
+                            .map(|(_, host)| {
+                                Command::new("ssh")
+                                    .arg(&host.name)
+                                    .arg("pkill danny")
+                                    .spawn()
+                                    .expect("problem spawning the ssh process")
+                            })
+                            .collect();
+                        for mut h in killers {
+                            h.wait().expect("problem killing danny processes");
+                        }
+
                         // report the experiment as timed out
                         Experiment::from_config(self.clone()).save_timed_out(timeout);
                         break;
