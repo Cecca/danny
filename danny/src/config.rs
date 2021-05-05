@@ -245,6 +245,9 @@ impl Config {
                 let timer = Instant::now();
                 loop {
                     if timer.elapsed() > timeout {
+                        // report the experiment as timed out
+                        Experiment::from_config(self.clone()).save_timed_out(timeout);
+
                         // kill all the ssh process
                         for mut h in handles {
                             h.kill().expect("problems killing the ssh process");
@@ -271,8 +274,6 @@ impl Config {
                             h.wait().expect("problem killing danny processes");
                         }
 
-                        // report the experiment as timed out
-                        Experiment::from_config(self.clone()).save_timed_out(timeout);
                         break;
                     }
                     if handles.iter_mut().all(|h| {
