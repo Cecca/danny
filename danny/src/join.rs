@@ -231,7 +231,7 @@ where
                             }
                         }
                         info!("Done sending");
-                        drop(payloads_stash1.take());
+                        drop(payloads_stash1.replace(HashMap::new()));
                         drop(pairs);
                     }
                 });
