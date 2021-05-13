@@ -184,7 +184,9 @@ where
                                 .push((p as u64, subproblem_key, marker));
                         }
                     }
+                    info!("Subproblem allocations hashmap has {} entries", subproblem_allocations.len());
 
+                    info!("Redistributing items to workers");
                     // Get the keys and output them to the appropriate processor
                     if let Some(pairs) = stash1.borrow_mut().remove(&t.time()) {
                         let mut session = output.session(&t);
