@@ -230,9 +230,10 @@ where
                                 ));
                             }
                         }
-                        info!("Done sending");
+                        info!("Done sending", stash1.borrow().len());
                         drop(pairs);
                     }
+                    info!("{} times still in the stash", stash1.borrow().len());
                 });
 
                 input.for_each(|t, data| {

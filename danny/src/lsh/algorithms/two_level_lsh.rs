@@ -264,7 +264,7 @@ where
                         total_matching_cnt += matching_cnt;
                     }
 
-                    info!("Partial count {}", total_matching_cnt);
+                    info!("Partial count {} for repetition {}", total_matching_cnt, outer_repetition);
                     Some(total_matching_cnt)
                 },
             )
@@ -379,6 +379,9 @@ where
                 current_repetition += 1;
                 cap.downgrade(&cap.time().succ());
                 done = current_repetition == repetitions;
+                if done {
+                    info!("Completed generation of hashes and sketches");
+                }
             }
 
             if done {
