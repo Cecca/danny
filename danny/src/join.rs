@@ -231,6 +231,8 @@ where
                             }
                         }
                         info!("Done sending");
+                        drop(payloads_stash1.take());
+                        drop(pairs);
                     }
                 });
 
@@ -254,9 +256,10 @@ where
                 notificator.for_each(|t, _, _| {
                     if let Some(subproblems) = bucket_stash.remove(&t) {
                         info!(
-                            "Worker {} has {} subproblems",
+                            "Worker {} has {} subproblems, with {} payloads",
                             worker_index,
-                            subproblems.len()
+                            subproblems.len(),
+                            payloads.borrow().len()
                         );
                         let mut session = output.session(&t);
                         for (key, subproblem) in subproblems {
@@ -272,7 +275,6 @@ where
                     let stash = bucket_stash
                         .entry(t.time().clone())
                         .or_insert_with(HashMap::new);
-                    let initial_payloads = payloads.borrow().len();
                     for ((_processor, k, subproblem), (marker, payload_k, payload_v)) in data {
                         stash
                             .entry((k, subproblem))
@@ -280,10 +282,6 @@ where
                             .push((marker, payload_k.clone()));
                         payloads.borrow_mut().entry(payload_k).or_insert(payload_v);
                     }
-                    info!(
-                        "Received new data, new payloads are {}",
-                        payloads.borrow().len() - initial_payloads
-                    );
                     notificator.notify_at(t.retain());
                 });
             },
