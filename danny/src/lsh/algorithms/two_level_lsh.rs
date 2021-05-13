@@ -362,7 +362,7 @@ where
                         ),
                     ));
                 }
-                current_repetitions += 1;
+                current_repetition += 1;
                 done = current_repetition == repetitions;
             }
 
