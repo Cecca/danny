@@ -230,7 +230,7 @@ where
                                 ));
                             }
                         }
-                        info!("Done sending", stash1.borrow().len());
+                        info!("Done sending");
                         drop(pairs);
                     }
                     info!("{} times still in the stash", stash1.borrow().len());
