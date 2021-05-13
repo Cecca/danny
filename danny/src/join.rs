@@ -187,10 +187,10 @@ where
                     info!("Subproblem allocations hashmap has {} entries", subproblem_allocations.len());
 
                     // Get the keys and output them to the appropriate processor
-                    if let Some(pairs) = stash1.borrow_mut().remove(&t.time()) {
+                    if let Some(mut pairs) = stash1.borrow_mut().remove(&t.time()) {
                         info!("Redistributing items to workers, the stash has {} items", pairs.len());
                         let mut session = output.session(&t);
-                        for (key, payload) in pairs {
+                        for (key, payload) in pairs.drain(..) {
                             for &(p, subproblem_key, marker) in subproblem_allocations
                                 .get(&key)
                                 .expect("missing key!")
