@@ -233,7 +233,7 @@ where
                         info!("Done sending");
                         drop(pairs);
                     }
-                    info!("{} times still in the stash", stash1.borrow().len());
+                    info!("{} times still in the stash (memory {})", stash1.borrow().len(), proc_mem!());
                 }
 
                 input.for_each(|t, data| {
@@ -256,10 +256,11 @@ where
                 if let Some((t, _)) = notificator.next() {
                     if let Some(subproblems) = bucket_stash.remove(&t) {
                         info!(
-                            "Worker {} has {} subproblems, with {} payloads",
+                            "Worker {} has {} subproblems, with {} payloads (memory {})",
                             worker_index,
                             subproblems.len(),
-                            payloads.borrow().len()
+                            payloads.borrow().len(),
+                            proc_mem!()
                         );
                         let mut session = output.session(&t);
                         for (key, subproblem) in subproblems {
