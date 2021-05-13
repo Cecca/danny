@@ -143,7 +143,7 @@ where
             "split subproblems",
             None,
             move |input, output, notificator| {
-                notificator.for_each(|t, _, _| {
+                if let Some((t, _)) = notificator.next() {
                     let mut sizes = subproblem_sizes.remove(&t).expect("missing histograms!");
 
                     // Sort by decreasing count
@@ -234,7 +234,7 @@ where
                         drop(pairs);
                     }
                     info!("{} times still in the stash", stash1.borrow().len());
-                });
+                }
 
                 input.for_each(|t, data| {
                     let data = data.replace(Vec::new());
@@ -253,7 +253,7 @@ where
             "bucket",
             None,
             move |input, output, notificator| {
-                notificator.for_each(|t, _, _| {
+                if let Some((t, _)) = notificator.next() {
                     if let Some(subproblems) = bucket_stash.remove(&t) {
                         info!(
                             "Worker {} has {} subproblems, with {} payloads",
@@ -267,7 +267,7 @@ where
                             session.give_iterator(res.into_iter());
                         }
                     }
-                });
+                }
 
                 input.for_each(|t, data| {
                     log_event!(logger, (LogEvent::Load(t.time().to_step_id()), data.len()));
