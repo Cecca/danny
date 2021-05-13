@@ -28,6 +28,14 @@ use timely::ExchangeData;
 
 pub const ONE_LEVEL_LSH_VERSION: u8 = 5;
 
+impl<S: SketchData, D: ExchangeData> KeyPayload for (ElementId, TensorPool, S, D) {
+    type Key = ElementId;
+    type Value = (D, S, TensorPool);
+    fn split_payload(self) -> (Self::Key, Self::Value) {
+        (self.0, (self.3, self.2, self.1))
+    }
+}
+
 pub fn source_hashed_one_round<G, T, D, S, F>(
     scope: &G,
     global_vecs: Arc<Vec<(ElementId, D)>>,
@@ -168,7 +176,7 @@ where
         hashes
             .self_join_map(
                 Balance::SubproblemSize,
-                move |((repetition, _hash), subproblem_key), values| {
+                move |((repetition, _hash), subproblem_key), values, payloads| {
                     let mut cnt = 0usize;
                     let mut candidate_pairs = 0usize;
                     let mut self_pairs_discarded = 0;
@@ -178,8 +186,11 @@ where
                     let start = Instant::now();
 
                     if subproblem_key.on_diagonal() {
-                        for (i, (_, (lk, l_pool, l_sketch, l))) in values.iter().enumerate() {
-                            for (_, (rk, r_pool, r_sketch, r)) in values[i..].iter() {
+                        for (i, (_, lk)) in values.iter().enumerate() {
+                            let (l, l_sketch, l_pool) = payloads.get(lk).expect("missing payload");
+                            for (_, rk) in values[i..].iter() {
+                                let (r, r_sketch, r_pool) =
+                                    payloads.get(rk).expect("missing payload");
                                 candidate_pairs += 1;
                                 if lk != rk {
                                     if sketch_predicate.eval(l_sketch, r_sketch) {
@@ -201,9 +212,12 @@ where
                             }
                         }
                     } else {
-                        for (l_marker, (lk, l_pool, l_sketch, l)) in values.iter() {
+                        for (l_marker, lk) in values.iter() {
+                            let (l, l_sketch, l_pool) = payloads.get(lk).expect("missing payload");
                             if l_marker.keep_left() {
-                                for (r_marker, (rk, r_pool, r_sketch, r)) in values.iter() {
+                                for (r_marker, rk) in values.iter() {
+                                    let (r, r_sketch, r_pool) =
+                                        payloads.get(rk).expect("missing payload");
                                     if r_marker.keep_right() {
                                         candidate_pairs += 1;
                                         if lk != rk {

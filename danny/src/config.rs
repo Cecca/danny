@@ -3,7 +3,7 @@ use rand::rngs::StdRng;
 use rand::RngCore;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
-use std::{convert::TryFrom, thread::Thread, time::Duration};
+use std::{convert::TryFrom, time::Duration};
 use std::{fmt::Debug, time::Instant};
 
 use std::process::Command;

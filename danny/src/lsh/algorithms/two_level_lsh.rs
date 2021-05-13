@@ -144,7 +144,7 @@ where
         hashes
             .self_join_map(
                 Balance::SubproblemSize,
-                move |((outer_repetition, _h), subproblem_key), subproblem| {
+                move |((outer_repetition, _h), subproblem_key), subproblem, payloads| {
                     let mut self_joiner = SelfJoiner::default();
                     let mut joiner = Joiner::default();
                     let repetitions = hasher_intern.repetitions();
@@ -158,10 +158,12 @@ where
                         let mut duplicate_cnt = 0;
                         if subproblem_key.on_diagonal() {
                             self_joiner.clear();
-                            for (_marker, (outer_pool, inner_pool, s, v)) in subproblem.iter() {
+                            for (_marker, element_id) in subproblem.iter() {
+                                let (v, s, outer_pool, inner_pool) =
+                                    payloads.get(element_id).expect("missing payload");
                                 self_joiner.push(
                                     hasher_intern.hash(inner_pool, rep),
-                                    (s, v, outer_pool, inner_pool),
+                                    (s, (element_id, v), outer_pool, inner_pool),
                                 );
                             }
                             self_joiner.join_map(|_h, l, r| {
@@ -188,15 +190,17 @@ where
                             })
                         } else {
                             joiner.clear();
-                            for (marker, (outer_pool, inner_pool, s, v)) in subproblem.iter() {
+                            for (marker, element_id) in subproblem.iter() {
+                                let (v, s, outer_pool, inner_pool) =
+                                    payloads.get(element_id).expect("missing payload");
                                 match marker {
                                     Marker::Left => joiner.push_left(
                                         hasher_intern.hash(inner_pool, rep),
-                                        (s, v, outer_pool, inner_pool),
+                                        (s, (element_id, v), outer_pool, inner_pool),
                                     ),
                                     Marker::Right => joiner.push_right(
                                         hasher_intern.hash(inner_pool, rep),
-                                        (s, v, outer_pool, inner_pool),
+                                        (s, (element_id, v), outer_pool, inner_pool),
                                     ),
                                     Marker::Both => panic!("cannot get a both here"),
                                 }
@@ -294,6 +298,15 @@ where
     }
 }
 
+impl<S: SketchData, D: ExchangeData> KeyPayload for (TensorPool, TensorPool, S, (ElementId, D)) {
+    type Key = ElementId;
+    type Value = (D, S, TensorPool, TensorPool);
+
+    fn split_payload(self) -> (Self::Key, Self::Value) {
+        ((self.3).0, ((self.3 .1), self.2, self.0, self.1))
+    }
+}
+
 fn source_hashed_two_round<G, T, D, F, S>(
     scope: &G,
     vecs: Arc<Vec<(ElementId, D)>>,
@@ -311,10 +324,10 @@ fn source_hashed_two_round<G, T, D, F, S>(
 where
     G: Scope<Timestamp = T>,
     T: Timestamp + Succ,
-    D: ExchangeData + Debug,
+    D: ExchangeData,
     F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
     S: Sketcher<Input = D> + Clone + 'static,
-    S::Output: SketchData + Debug,
+    S::Output: SketchData,
 {
     let worker: u64 = scope.index() as u64;
     let logger = scope.danny_logger();
