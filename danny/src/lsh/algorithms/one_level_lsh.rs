@@ -85,30 +85,31 @@ where
 
     source(scope, "hashed source one round", move |capability| {
         let mut cap = Some(capability);
+        let mut current_repetition = 0;
         move |output| {
             let mut done = false;
             if let Some(cap) = cap.as_mut() {
-                for current_repetition in 0..repetitions {
-                    stopwatch.maybe_stop();
-                    stopwatch.start();
-                    if worker == 0 {
-                        debug!("Repetition {} (Hu et al. baseline)", current_repetition,);
-                    }
-                    let mut session = output.session(&cap);
-                    for (k, v) in vecs.iter() {
-                        let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
-                        session.give((
-                            (current_repetition, h),
-                            (
-                                k.clone(),
-                                bit_pools[k].clone(),
-                                sketches[k].clone(),
-                                v.clone(),
-                            ),
-                        ));
-                    }
+                stopwatch.maybe_stop();
+                stopwatch.start();
+                if worker == 0 {
+                    debug!("Repetition {} (Hu et al. baseline)", current_repetition,);
                 }
-                done = true;
+                let mut session = output.session(&cap);
+                for (k, v) in vecs.iter() {
+                    let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
+                    session.give((
+                        (current_repetition, h),
+                        (
+                            k.clone(),
+                            bit_pools[k].clone(),
+                            sketches[k].clone(),
+                            v.clone(),
+                        ),
+                    ));
+                }
+                current_repetition += 1;
+                cap.downgrade(&cap.time().succ());
+                done = current_repetition == repetitions;
             }
 
             if done {
