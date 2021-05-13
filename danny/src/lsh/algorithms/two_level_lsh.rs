@@ -143,7 +143,7 @@ where
         );
         hashes
             .self_join_map(
-                Balance::SubproblemSize,
+                Balance::Load,
                 move |((outer_repetition, _h), subproblem_key), subproblem| {
                     let mut self_joiner = SelfJoiner::default();
                     let mut joiner = Joiner::default();

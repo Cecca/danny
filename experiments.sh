@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e 
+# set -e 
 
 function baselines() {
   for BASE_DATA in sift-100nn-0.5 Livejournal Orkut Glove
@@ -47,9 +47,9 @@ function search_best() {
     echo "Running on $DATASET"
     test -d $DATASET
 
-    for THRESHOLD in 0.7 0.5
+    for THRESHOLD in 0.5 # 0.7
     do
-      for SKETCH_BITS in 0 #64 128 256 512
+      for SKETCH_BITS in 256 512 #0 64 128 256 512
       do
         danny \
           --hosts ~/hosts.txt \
@@ -59,24 +59,35 @@ function search_best() {
           --sketch-bits $SKETCH_BITS \
           $DATASET
 
-        for K in 3 4 6 8 #10 12 14 16
-        do
-          for ALGORITHM in local-lsh one-level-lsh
-          do
-            danny \
-              --hosts ~/hosts.txt \
-              --threads 8 \
-              --threshold $THRESHOLD \
-              --algorithm $ALGORITHM \
-              --recall $RECALL \
-              --sketch-bits $SKETCH_BITS \
-              --k $K \
-              $DATASET
-          done
+        if [[ $DATASET =~ "glove" ]]; then
+          TIMEOUT=8000
+        elif [[ $DATASET =~ "sift" ]]; then
+          TIMEOUT=3500
+        else 
+          TIMEOUT=12000
+        fi
+        echo "Timeout is $TIMEOUT"
 
-          for K2 in 6
+        for K in 4 6 8 #3 4 6 8 #10 12 14 16
+        do
+          # for ALGORITHM in local-lsh one-level-lsh
+          # do
+          #   danny \
+          #     --timeout $TIMEOUT \
+          #     --hosts ~/hosts.txt \
+          #     --threads 8 \
+          #     --threshold $THRESHOLD \
+          #     --algorithm $ALGORITHM \
+          #     --recall $RECALL \
+          #     --sketch-bits $SKETCH_BITS \
+          #     --k $K \
+          #     $DATASET
+          # done
+
+          for K2 in 4
           do
             danny \
+              --timeout $TIMEOUT \
               --hosts ~/hosts.txt \
               --threads 8 \
               --threshold $THRESHOLD \
