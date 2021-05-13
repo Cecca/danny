@@ -264,7 +264,7 @@ where
                         total_matching_cnt += matching_cnt;
                     }
 
-                    info!(
+                    debug!(
                         "Partial count {} for repetition {}",
                         total_matching_cnt, outer_repetition
                     );

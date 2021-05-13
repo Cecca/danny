@@ -172,7 +172,7 @@ where
 
                     // Allocate subproblems to processors
                     let mut processor_allocations = vec![Vec::new(); peers];
-                    info!("threshold {}", threshold);
+                    debug!("threshold {}", threshold);
                     let mut i = 0;
                     let mut cur = 0u64;
                     for (sub_idx, (key, subproblem_key, marker, subproblem_size)) in
@@ -202,7 +202,7 @@ where
                                 .push((p as u64, subproblem_key, marker));
                         }
                     }
-                    info!(
+                    debug!(
                         "Subproblem allocations hashmap has {} entries",
                         subproblem_allocations.len()
                     );
@@ -210,7 +210,7 @@ where
                     // Get the keys and output them to the appropriate processor
                     if let Some(mut pairs) = stash1.borrow_mut().remove(&t.time()) {
                         let payloads = payloads_stash1.borrow();
-                        info!(
+                        debug!(
                             "Redistributing items to workers, the stash has {} items, payloads are {}",
                             pairs.len(),
                             payloads.len()
@@ -230,10 +230,10 @@ where
                                 ));
                             }
                         }
-                        info!("Done sending");
+                        debug!("Done sending");
                         drop(pairs);
                     }
-                    info!("{} times still in the stash (memory {})", stash1.borrow().len(), proc_mem!());
+                    debug!("{} times still in the stash (memory {})", stash1.borrow().len(), proc_mem!());
                 }
 
                 input.for_each(|t, data| {
@@ -263,12 +263,12 @@ where
                             proc_mem!()
                         );
                         let mut session = output.session(&t);
-                        for (key, subproblem) in subproblems {
                             let start = std::time::Instant::now();
+                        for (key, subproblem) in subproblems {
                             let res = f(key, &subproblem, &payloads.borrow());
-                            info!("Subproblem solved in {:?}", start.elapsed());
                             session.give_iterator(res.into_iter());
                         }
+                        info!("Worker {} solved subproblems in {:?}", worker_index, start.elapsed());
                     }
                 }
 
