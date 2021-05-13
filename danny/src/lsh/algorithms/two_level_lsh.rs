@@ -143,7 +143,7 @@ where
         );
         hashes
             .self_join_map(
-                Balance::Load,
+                Balance::SubproblemSize,
                 move |((outer_repetition, _h), subproblem_key), subproblem| {
                     let mut self_joiner = SelfJoiner::default();
                     let mut joiner = Joiner::default();
@@ -338,32 +338,32 @@ where
 
     source(scope, "hashed source two round", move |capability| {
         let mut cap = Some(capability);
+        let mut done = false;
+        let mut current_repetition = 0;
 
         move |output| {
-            let mut done = false;
             if let Some(cap) = cap.as_mut() {
-                for current_repetition in 0..repetitions {
-                    stopwatch.maybe_stop();
-                    stopwatch.start();
-                    if worker == 0 {
-                        debug!("Repetition {} (two level LSH)", current_repetition);
-                    }
-                    let mut session = output.session(&cap);
-                    for (k, v) in vecs.iter() {
-                        let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
-                        let s = sketcher.sketch(v);
-                        session.give((
-                            (current_repetition, h),
-                            (
-                                bit_pools[k].clone(),
-                                hash_fns2.pool(v),
-                                s.clone(),
-                                (k.clone(), v.clone()),
-                            ),
-                        ));
-                    }
+                stopwatch.maybe_stop();
+                stopwatch.start();
+                if worker == 0 {
+                    debug!("Repetition {} (two level LSH)", current_repetition);
                 }
-                done = true;
+                let mut session = output.session(&cap);
+                for (k, v) in vecs.iter() {
+                    let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
+                    let s = sketcher.sketch(v);
+                    session.give((
+                        (current_repetition, h),
+                        (
+                            bit_pools[k].clone(),
+                            hash_fns2.pool(v),
+                            s.clone(),
+                            (k.clone(), v.clone()),
+                        ),
+                    ));
+                }
+                current_repetitions += 1;
+                done = current_repetition == repetitions;
             }
 
             if done {
