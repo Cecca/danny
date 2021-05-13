@@ -186,9 +186,9 @@ where
                     }
                     info!("Subproblem allocations hashmap has {} entries", subproblem_allocations.len());
 
-                    info!("Redistributing items to workers");
                     // Get the keys and output them to the appropriate processor
                     if let Some(pairs) = stash1.borrow_mut().remove(&t.time()) {
+                        info!("Redistributing items to workers, the stash has {} items", pairs.len());
                         let mut session = output.session(&t);
                         for (key, payload) in pairs {
                             for &(p, subproblem_key, marker) in subproblem_allocations
@@ -199,6 +199,7 @@ where
                                 session.give(((p, key, subproblem_key), (marker, payload.clone())));
                             }
                         }
+                        info!("Done sending");
                     }
                 });
 
