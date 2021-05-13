@@ -264,6 +264,7 @@ where
                         total_matching_cnt += matching_cnt;
                     }
 
+                    info!("Partial count {}", total_matching_cnt);
                     Some(total_matching_cnt)
                 },
             )
