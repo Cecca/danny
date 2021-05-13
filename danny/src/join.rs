@@ -209,7 +209,6 @@ where
 
                     // Get the keys and output them to the appropriate processor
                     if let Some(mut pairs) = stash1.borrow_mut().remove(&t.time()) {
-                        {
                         let payloads = payloads_stash1.borrow();
                         info!(
                             "Redistributing items to workers, the stash has {} items, payloads are {}",
@@ -232,8 +231,6 @@ where
                             }
                         }
                         info!("Done sending");
-                    }
-                        drop(payloads_stash1.replace(HashMap::new()));
                         drop(pairs);
                     }
                 });
