@@ -116,8 +116,6 @@ where
                             .push((k, payload_k.clone()));
                         payloads_stash
                             .borrow_mut()
-                            .entry(t.time().clone())
-                            .or_insert_with(HashMap::new)
                             .entry(payload_k)
                             .or_insert(payload_v);
                         *histograms
@@ -215,10 +213,7 @@ where
                             "Redistributing items to workers, the stash has {} items",
                             pairs.len()
                         );
-                        let payloads = payloads_stash1
-                            .borrow_mut()
-                            .remove(&t.time())
-                            .expect("missing payloads");
+                        let payloads = payloads_stash1.borrow();
                         let mut session = output.session(&t);
                         for (key, payload_key) in pairs.drain(..) {
                             let payload =
