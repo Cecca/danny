@@ -98,12 +98,12 @@ where
             "count subproblem size",
             None,
             move |input, output, notificator| {
-                notificator.for_each(|t, _, _| {
+                if let Some((t, _)) = notificator.next() {
                     if let Some(histogram) = histograms.remove(&t) {
                         let mut session = output.session(&t);
                         session.give_iterator(histogram.into_iter());
                     }
-                });
+                }
 
                 input.for_each(|t, data| {
                     let data = data.replace(Vec::new());
