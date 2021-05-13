@@ -209,11 +209,12 @@ where
 
                     // Get the keys and output them to the appropriate processor
                     if let Some(mut pairs) = stash1.borrow_mut().remove(&t.time()) {
-                        info!(
-                            "Redistributing items to workers, the stash has {} items",
-                            pairs.len()
-                        );
                         let payloads = payloads_stash1.borrow();
+                        info!(
+                            "Redistributing items to workers, the stash has {} items, payloads are {}",
+                            pairs.len(),
+                            payloads.len()
+                        );
                         let mut session = output.session(&t);
                         for (key, payload_key) in pairs.drain(..) {
                             let payload =
