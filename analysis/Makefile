@@ -3,7 +3,7 @@ CWD=`pwd`
 RSCRIPT=docker run -it --rm -v ${CWD}:/work -t ${DOCKER_CONTAINER} Rscript
 
 .PHONY: all
-all: imgs/dep_k.png imgs/sketches.png imgs/load.png imgs/full.png imgs/profile.png imgs/profile_glove_detail.png tex/best.tex
+all: imgs/dep_k.png imgs/sketches.png tex/best.tex tex/info.tex
 
 .PHONY: build-docker
 build-docker: Dockerfile

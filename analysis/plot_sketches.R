@@ -56,19 +56,22 @@ plot_one_algo <- function(data, algorithm_name, groups, ylabs = FALSE, strip_tex
         filter(algorithm == algorithm_name) %>%
         ggplot(aes(
             x = factor(sketch_bits),
-            y = set_units(total_time, "s") %>% drop_units(),
+            y = set_units(total_time, "min") %>% drop_units(),
             group = {{ groups }},
         )) +
         geom_line() +
         geom_point(aes(color = is_algo_best)) +
+        geom_text_repel(aes(label=total_time %>% set_units("min") %>% drop_units() %>% scales::number(accuracy=1)), size=2) +
         # Add transparent points from all the algorithms to align axes
         geom_point(
             data = data %>% filter({{ groups }} %in% active_groups),
             alpha = 0
         ) +
         scale_x_discrete(
-            labels = c("0", "", "128", "", "512"),
-            breaks = c("0", "64", "128", "256", "512")
+            labels = c("0", "256", "512"),
+            breaks = c("0", "256", "512")
+            # labels = c("0", "", "128", "", "512"),
+            # breaks = c("0", "64", "128", "256", "512")
         ) +
         # scale_y_log10() +
         scale_color_manual(values = c("black", "red")) +
@@ -94,7 +97,7 @@ plot_one_algo <- function(data, algorithm_name, groups, ylabs = FALSE, strip_tex
         )
     if (ylabs) {
         p <- p +
-            labs(y = "time (s)")
+            labs(y = "time (min)")
     } else {
         p <- p +
             theme(

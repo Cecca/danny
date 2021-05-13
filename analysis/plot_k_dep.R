@@ -7,7 +7,7 @@ plotdata <- table_search_best() %>%
     filter((k == 0) || between(k, 4, 16)) %>%
     filter(k2 %in% c(0, 6)) %>%
     mutate(
-        total_time = set_units(total_time, "s") %>% drop_units()
+        total_time = set_units(total_time, "min") %>% drop_units()
     ) %>%
     group_by(dataset, algorithm, threshold) %>%
     mutate(
@@ -53,7 +53,7 @@ plot_threshold <- function(data, t, ytitle = TRUE, yticks = TRUE, title = TRUE) 
         guides(shape = FALSE, linetype = FALSE, size = FALSE) +
         theme_paper() +
         labs(
-            y = "Total time (s)"
+            y = "Total time (min)"
         ) +
         theme(
             axis.text.x = element_blank(),

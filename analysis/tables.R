@@ -26,31 +26,42 @@ table_search_best <- function() {
         pivot_wider(names_from = kind, values_from = count)
     all <- tbl(db, "result_recent") %>%
         collect() %>%
-        (function(d) {
-            print(distinct(d, hosts))
-            d
-        }) %>%
+        mutate(
+            timed_out = is.na(output_size) # && !is.na(total_time_ms)
+        ) %>%
         filter(hosts == "10.1.1.1:2001__10.1.1.2:2001__10.1.1.3:2001__10.1.1.4:2001__10.1.1.5:2001") %>%
         filter(profile_frequency == 0) %>%
-        filter(str_detect(path, "sample-200000.bin")) %>%
+        filter(!str_detect(path, "sample-200000.bin")) %>%
         filter(required_recall == 0.8) %>%
         filter(threshold %in% c(0.5, 0.7)) %>%
         filter(!no_verify, !no_dedup) %>%
-        filter(algorithm != "two-level-lsh" | (repetition_batch >= 1000)) %>%
-        inner_join(load) %>%
+        # filter(algorithm != "two-level-lsh" | (repetition_batch >= 1000)) %>%
+        left_join(load) %>%
         mutate(
             dataset = basename(path),
             total_time = set_units(total_time_ms, "ms"),
             dataset = case_when(
                 str_detect(dataset, "sift") ~ "SIFT",
                 str_detect(dataset, "Livejournal") ~ "Livejournal",
-                str_detect(dataset, "Glove") ~ "Glove",
+                str_detect(dataset, "[Gg]love") ~ "Glove",
                 str_detect(dataset, "Orkut") ~ "Orkut"
-            )
+            ),
         ) %>%
         order_datasets() %>%
         recode_algorithms() %>%
         select(-total_time_ms)
+
+    baselines <- all %>%
+        filter(algorithm == "Cartesian", sketch_bits == 0) %>%
+        select(dataset, threshold, baseline_output_size = output_size)
+
+    all <- inner_join(all, baselines) %>%
+        mutate(recall = output_size / baseline_output_size)
+
+    all %>%
+        filter(is.null(output_size)) %>%
+        print()
+
     DBI::dbDisconnect(db)
     all
 }
@@ -101,6 +112,7 @@ table_candidates <- function() {
 table_best <- function() {
     table_search_best() %>%
         # filter(algorithm != "all-2-all") %>%
+        filter(!timed_out) %>%
         group_by(dataset, threshold, algorithm) %>%
         slice_min(total_time)
 }
@@ -186,11 +198,11 @@ table_data_info <- function() {
     db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
     baseinfo <- tribble(
         ~dataset, ~n, ~dim,
-        # Sampled datasets
-        "Glove-sample-200000.bin", 199778, 200,
-        "Livejournal-sample-200000.bin", 200035, 7489073,
-        "Orkut-sample-200000.bin", 199588, 8730857,
-        "sift-100nn-0.5-sample-200000.bin", 199786, 128,
+        # # Sampled datasets
+        # "Glove-sample-200000.bin", 199778, 200,
+        # "Livejournal-sample-200000.bin", 200035, 7489073,
+        # "Orkut-sample-200000.bin", 199588, 8730857,
+        # "sift-100nn-0.5-sample-200000.bin", 199786, 128,
         # Original datasets
         "glove.twitter.27B.200d.bin", 1193514, 200,
         "Orkut.bin", 2783196, 8730857,
@@ -199,7 +211,7 @@ table_data_info <- function() {
     )
 
     info <- tbl(db, "result_recent") %>%
-        filter(algorithm == "all-2-all", sketch_bits == 0) %>%
+        filter(algorithm == "cartesian", sketch_bits == 0) %>%
         collect() %>%
         mutate(dataset = basename(path)) %>%
         select(dataset, threshold, output_size) %>%
