@@ -264,7 +264,9 @@ where
                         );
                         let mut session = output.session(&t);
                         for (key, subproblem) in subproblems {
+                            let start = std::time::Instant::now();
                             let res = f(key, &subproblem, &payloads.borrow());
+                            info!("Subproblem solved in {:?}", start.elapsed());
                             session.give_iterator(res.into_iter());
                         }
                     }
