@@ -197,7 +197,7 @@ where
                         .iter()
                         .map(|p| p.len())
                         .collect();
-                    info!("Processor allocation: {:?}", processor_allocations_size);
+                    info!("Processor allocation: {:?}", processor_allocs_size);
                     let mut subproblem_allocations = HashMap::new();
                     for (p, allocs) in processor_allocations.into_iter().enumerate() {
                         for (key, subproblem_key, marker) in allocs {
