@@ -47,9 +47,9 @@ function search_best() {
     echo "Running on $DATASET"
     test -d $DATASET
 
-    for THRESHOLD in 0.5 0.7
+    for THRESHOLD in 0.5 # 0.7
     do
-      for SKETCH_BITS in 0 #64 128 256 512
+      for SKETCH_BITS in 256 512 #0 64 128 256 512
       do
         danny \
           --hosts ~/hosts.txt \
@@ -70,21 +70,21 @@ function search_best() {
 
         for K in 4 6 8 #3 4 6 8 #10 12 14 16
         do
-          for ALGORITHM in one-level-lsh #local-lsh one-level-lsh
-          do
-            danny \
-              --timeout $TIMEOUT \
-              --hosts ~/hosts.txt \
-              --threads 8 \
-              --threshold $THRESHOLD \
-              --algorithm $ALGORITHM \
-              --recall $RECALL \
-              --sketch-bits $SKETCH_BITS \
-              --k $K \
-              $DATASET
-          done
+          # for ALGORITHM in local-lsh one-level-lsh
+          # do
+          #   danny \
+          #     --timeout $TIMEOUT \
+          #     --hosts ~/hosts.txt \
+          #     --threads 8 \
+          #     --threshold $THRESHOLD \
+          #     --algorithm $ALGORITHM \
+          #     --recall $RECALL \
+          #     --sketch-bits $SKETCH_BITS \
+          #     --k $K \
+          #     $DATASET
+          # done
 
-          for K2 in 6 8
+          for K2 in 4
           do
             danny \
               --timeout $TIMEOUT \
