@@ -26,7 +26,7 @@ use timely::progress::Timestamp;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
-pub const ONE_LEVEL_LSH_VERSION: u8 = 6;
+pub const ONE_LEVEL_LSH_VERSION: u8 = 7;
 
 impl<S: SketchData, D: ExchangeData> KeyPayload for (ElementId, TensorPool, S, D) {
     type Key = ElementId;
@@ -176,7 +176,7 @@ where
 
         hashes
             .self_join_map(
-                Balance::SubproblemSize,
+                Balance::Load,
                 move |((repetition, _hash), subproblem_key), values, payloads| {
                     let mut cnt = 0usize;
                     let mut candidate_pairs = 0usize;
