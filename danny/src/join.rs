@@ -180,23 +180,11 @@ where
                     let mut processor_allocations = vec![Vec::new(); peers];
                     debug!("threshold {}", threshold);
                     let mut i = 0;
-                    let mut cur = 0u64;
-                    for (sub_idx, (key, subproblem_key, marker, subproblem_size)) in
-                        subproblems.into_iter().enumerate()
+                    for (key, subproblem_key, marker, _subproblem_size) in
+                        subproblems.into_iter()
                     {
-                        if cur > threshold {
-                            cur = 0;
-                            i += 1;
-                        }
-                        if i >= processor_allocations.len() {
-                            panic!(
-                                "number or processors ({}) exceeded: still {} to go",
-                                peers,
-                                n_subproblems - sub_idx
-                            );
-                        }
                         processor_allocations[i].push((key, subproblem_key, marker));
-                        cur += subproblem_size;
+                        i = (i + 1) % processor_allocations.len();
                     }
 
                     let processor_allocs_size: Vec<usize> = processor_allocations
