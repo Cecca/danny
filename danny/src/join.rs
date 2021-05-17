@@ -169,6 +169,7 @@ where
                         .collect();
                     subproblems.sort_unstable_by_key(|x| std::cmp::Reverse(x.3));
                     let n_subproblems = subproblems.len();
+                    info!("There are {} subproblems at time {:?}", n_subproblems, t);
 
                     // Allocate subproblems to processors
                     let mut processor_allocations = vec![Vec::new(); peers];
@@ -197,7 +198,9 @@ where
                         .iter()
                         .map(|p| p.len())
                         .collect();
+
                     info!("Processor allocation: {:?}", processor_allocs_size);
+                    assert!(processor_allocs_size.iter().all(|size| size > &0));
                     let mut subproblem_allocations = HashMap::new();
                     for (p, allocs) in processor_allocations.into_iter().enumerate() {
                         for (key, subproblem_key, marker) in allocs {
