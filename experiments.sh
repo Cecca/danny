@@ -49,7 +49,7 @@ function search_best() {
 
     for THRESHOLD in 0.5 # 0.7
     do
-      for SKETCH_BITS in 0 #256 512 #0 64 128 256 512
+      for SKETCH_BITS in 256 512 #0 64 128 256 512
       do
         danny \
           --hosts ~/hosts.txt \
@@ -68,7 +68,7 @@ function search_best() {
         fi
         echo "Timeout is $TIMEOUT"
 
-        for K in 12 #3 4 6 8 #10 12 14 16
+        for K in 8 4 #3 4 6 8 #10 12 14 16
         do
           for ALGORITHM in one-level-lsh #local-lsh one-level-lsh
           do

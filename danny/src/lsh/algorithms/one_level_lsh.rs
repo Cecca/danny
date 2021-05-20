@@ -108,7 +108,7 @@ where
                     ));
                 }
                 current_repetition += 1;
-                cap.downgrade(&cap.time().succ());
+                // cap.downgrade(&cap.time().succ());
                 done = current_repetition == repetitions;
             }
 
