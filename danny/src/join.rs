@@ -102,8 +102,7 @@ where
             None,
             move |input, output, notificator| {
                 if let Some((t, _)) = notificator.next() {
-                    if !probe.less_equal(t.time()) {
-                        info!("Still outstanding work at time {:?}, worker {} waiting", t.time(), worker_index);
+                    if probe.less_equal(t.time()) {
                         notificator.notify_at(t);
                     } else {
                         if let Some(histogram) = histograms.remove(&t) {

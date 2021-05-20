@@ -40,7 +40,7 @@ function baselines() {
 function search_best() {
   RECALL=0.8 # <-- required recall
 
-  for BASE_DATA in sift-100-0.5 Livejournal Orkut glove.twitter.27B.200d
+  for BASE_DATA in sift-100-0.5 #Livejournal Orkut glove.twitter.27B.200d
   do
     DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA.bin
     # DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-sample-200000.bin
@@ -49,7 +49,7 @@ function search_best() {
 
     for THRESHOLD in 0.5 # 0.7
     do
-      for SKETCH_BITS in 256 512 #0 64 128 256 512
+      for SKETCH_BITS in 0 #256 512 #0 64 128 256 512
       do
         danny \
           --hosts ~/hosts.txt \
@@ -68,37 +68,37 @@ function search_best() {
         fi
         echo "Timeout is $TIMEOUT"
 
-        for K in 4 6 8 #3 4 6 8 #10 12 14 16
+        for K in 12 #3 4 6 8 #10 12 14 16
         do
-          # for ALGORITHM in local-lsh one-level-lsh
-          # do
-          #   danny \
-          #     --timeout $TIMEOUT \
-          #     --hosts ~/hosts.txt \
-          #     --threads 8 \
-          #     --threshold $THRESHOLD \
-          #     --algorithm $ALGORITHM \
-          #     --recall $RECALL \
-          #     --sketch-bits $SKETCH_BITS \
-          #     --k $K \
-          #     $DATASET
-          # done
-
-          for K2 in 4
+          for ALGORITHM in one-level-lsh #local-lsh one-level-lsh
           do
             danny \
               --timeout $TIMEOUT \
               --hosts ~/hosts.txt \
               --threads 8 \
               --threshold $THRESHOLD \
-              --algorithm two-level-lsh \
+              --algorithm $ALGORITHM \
               --recall $RECALL \
               --sketch-bits $SKETCH_BITS \
               --k $K \
-              --k2 $K2 \
-              --repetition-batch 10000 \
               $DATASET
           done
+
+          # for K2 in 4
+          # do
+          #   danny \
+          #     --timeout $TIMEOUT \
+          #     --hosts ~/hosts.txt \
+          #     --threads 8 \
+          #     --threshold $THRESHOLD \
+          #     --algorithm two-level-lsh \
+          #     --recall $RECALL \
+          #     --sketch-bits $SKETCH_BITS \
+          #     --k $K \
+          #     --k2 $K2 \
+          #     --repetition-batch 10000 \
+          #     $DATASET
+          # done
         done
       done
     done
