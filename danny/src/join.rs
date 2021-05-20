@@ -84,14 +84,15 @@ where
         let stash1 = Rc::clone(&stash);
         let payloads_stash = Rc::new(RefCell::new(HashMap::new()));
         let payloads_stash1 = Rc::clone(&payloads_stash);
+        let payloads_stash2 = Rc::clone(&payloads_stash);
         let mut bucket_stash: HashMap<
             G::Timestamp,
             HashMap<(K, CartesianKey), Vec<(Marker, V::Key)>>,
         > = HashMap::new();
         let mut histograms: HashMap<G::Timestamp, HashMap<K, u32>> = HashMap::new();
         let mut subproblem_sizes: HashMap<G::Timestamp, Vec<(K, u32)>> = HashMap::new();
-        let payloads: Rc<RefCell<HashMap<V::Key, V::Value>>> =
-            Rc::new(RefCell::new(HashMap::new()));
+        // let payloads: Rc<RefCell<HashMap<V::Key, V::Value>>> =
+        //     Rc::new(RefCell::new(HashMap::new()));
 
         let probe = ProbeHandle::new();
         let mut probe_inspector = probe.clone();
@@ -267,13 +268,13 @@ where
                             "Worker {} has {} subproblems, with {} payloads (memory {})",
                             worker_index,
                             subproblems.len(),
-                            payloads.borrow().len(),
+                            payloads_stash2.borrow().len(),
                             proc_mem!()
                         );
                         let mut session = output.session(&t);
                             let start = std::time::Instant::now();
                         for (key, subproblem) in subproblems {
-                            let res = f(key, &subproblem, &payloads.borrow());
+                            let res = f(key, &subproblem, &payloads_stash2.borrow());
                             session.give_iterator(res.into_iter());
                         }
                         info!("[{:?}] Worker {} solved subproblems in {:?}", t.time(), worker_index, start.elapsed());
@@ -291,7 +292,7 @@ where
                             .entry((k, subproblem))
                             .or_insert_with(Vec::new)
                             .push((marker, payload_k.clone()));
-                        payloads.borrow_mut().entry(payload_k).or_insert(payload_v);
+                        payloads_stash2.borrow_mut().entry(payload_k).or_insert(payload_v);
                     }
                     notificator.notify_at(t.retain());
                 });
