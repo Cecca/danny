@@ -20,6 +20,10 @@ table_search_best <- function() {
     # The load is the maximum load among all the workers in a given experiment
     load <- tbl(db, "counters") %>%
         filter(kind == "Load") %>%
+        group_by(id, kind, worker) %>%
+        # The computation of the rounds is overlapped, so we consider the total number of messages received by each worker
+        summarise(count = sum(count)) %>%
+        ungroup() %>%
         group_by(id, kind) %>%
         summarise(count = max(count, na.rm = T)) %>%
         collect() %>%

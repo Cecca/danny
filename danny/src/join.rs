@@ -93,15 +93,23 @@ where
         let payloads: Rc<RefCell<HashMap<V::Key, V::Value>>> =
             Rc::new(RefCell::new(HashMap::new()));
 
+        let probe = ProbeHandle::new();
+        let mut probe_inspector = probe.clone();
+
         self.unary_notify(
             Pipeline,
             "count subproblem size",
             None,
             move |input, output, notificator| {
                 if let Some((t, _)) = notificator.next() {
-                    if let Some(histogram) = histograms.remove(&t) {
-                        let mut session = output.session(&t);
-                        session.give_iterator(histogram.into_iter());
+                    if !probe.less_equal(t.time()) {
+                        info!("Still outstanding work at time {:?}, worker {} waiting", t.time(), worker_index);
+                        notificator.notify_at(t);
+                    } else {
+                        if let Some(histogram) = histograms.remove(&t) {
+                            let mut session = output.session(&t);
+                            session.give_iterator(histogram.into_iter());
+                        }
                     }
                 }
 
@@ -289,7 +297,7 @@ where
                     notificator.notify_at(t.retain());
                 });
             },
-        )
+        ).probe_with(&mut probe_inspector)
     }
 
     fn self_join_map_slice<F, I, O>(&self, mut f: F) -> Stream<G, O>
