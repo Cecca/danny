@@ -277,7 +277,7 @@ where
                             let res = f(key, &subproblem, &payloads.borrow());
                             session.give_iterator(res.into_iter());
                         }
-                        info!("Worker {} solved subproblems in {:?}", worker_index, start.elapsed());
+                        info!("[{:?}] Worker {} solved subproblems in {:?}", t.time(), worker_index, start.elapsed());
                     }
                 }
 
