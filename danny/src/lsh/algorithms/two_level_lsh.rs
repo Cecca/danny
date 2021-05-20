@@ -23,7 +23,7 @@ use timely::progress::Timestamp;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
-pub const TWO_LEVEL_LSH_VERSION: u8 = 11;
+pub const TWO_LEVEL_LSH_VERSION: u8 = 12;
 
 #[allow(clippy::too_many_arguments)]
 pub fn two_level_lsh<D, F, H, B, R, S, V>(

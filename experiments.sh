@@ -40,7 +40,7 @@ function baselines() {
 function search_best() {
   RECALL=0.8 # <-- required recall
 
-  for BASE_DATA in sift-100-0.5 #Livejournal Orkut glove.twitter.27B.200d
+  for BASE_DATA in glove.twitter.27B.200d #sift-100-0.5 #Livejournal Orkut glove.twitter.27B.200d
   do
     DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA.bin
     # DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-sample-200000.bin
