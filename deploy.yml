@@ -20,13 +20,13 @@
         version: "{{ danny_branch }}"
 
     - name: compile the code and install
-      shell: RUSTFLAGS="-C target-cpu=native" PATH=$PATH:~/.cargo/bin cargo install --path . --force --locked
+      shell: RUSTFLAGS="-C target-cpu=native" PATH=$PATH:~/.cargo/bin cargo +nightly install --path . --force --locked
       args:
         chdir: "{{ local_repository }}/danny"
         executable: /bin/bash
 
     - name: compile the utilities and install
-      shell: RUSTFLAGS="-C target-cpu=native" PATH=$PATH:~/.cargo/bin cargo install --path . --force --locked
+      shell: RUSTFLAGS="-C target-cpu=native" PATH=$PATH:~/.cargo/bin cargo +nightly install --path . --force --locked
       args:
         chdir: "{{ local_repository }}/danny-utilities"
         executable: /bin/bash
