@@ -102,14 +102,14 @@ where
             None,
             move |input, output, notificator| {
                 if let Some((t, _)) = notificator.next() {
-                    if !probe.less_than(t.time()) {
-                        if let Some(histogram) = histograms.remove(&t) {
-                            let mut session = output.session(&t);
-                            session.give_iterator(histogram.into_iter());
-                        }
-                    } else {
-                        notificator.notify_at(t);
+                    // if !probe.less_than(t.time()) {
+                    if let Some(histogram) = histograms.remove(&t) {
+                        let mut session = output.session(&t);
+                        session.give_iterator(histogram.into_iter());
                     }
+                    // } else {
+                    //     notificator.notify_at(t);
+                    // }
                 }
 
                 input.for_each(|t, data| {
