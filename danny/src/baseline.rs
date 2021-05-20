@@ -218,7 +218,7 @@ where
     S: Sketcher<Input = D> + Clone + 'static,
     S::Output: SketchData,
 {
-    source(scope, "hashed source", move |capability, _| {
+    source(scope, "hashed source", move |capability| {
         let mut cap = Some(capability);
         move |output| {
             if let Some(cap) = cap.take() {

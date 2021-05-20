@@ -14,18 +14,7 @@ checksum = "e0bb1889db0b87cd8ef839c56b5283e28c8db68cac904b400a6170c9af1e673c"
 dependencies = [
  "quote 0.3.15",
  "syn 0.11.11",
- "synstructure 0.6.1",
-]
-
-[[package]]
-name = "abomonation_derive"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e50e2a046af56a864c62d97b7153fda72c596e646be1b0c7963736821f6e1efa"
-dependencies = [
- "proc-macro2",
- "quote 1.0.8",
- "synstructure 0.12.4",
+ "synstructure",
 ]
 
 [[package]]
@@ -463,7 +452,7 @@ name = "danny"
 version = "0.1.0"
 dependencies = [
  "abomonation",
- "abomonation_derive 0.3.0",
+ "abomonation_derive",
  "argh",
  "base64",
  "bincode",
@@ -492,7 +481,7 @@ name = "danny-base"
 version = "0.1.0"
 dependencies = [
  "abomonation",
- "abomonation_derive 0.3.0",
+ "abomonation_derive",
  "bincode",
  "chrono",
  "jemallocator",
@@ -617,48 +606,6 @@ name = "fuchsia-cprng"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a06f77d526c1a601b7c4cdd98f54b5eaabffc14d5f2f0296febdc7f357c6d3ba"
-
-[[package]]
-name = "futures-core"
-version = "0.3.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0402f765d8a89a26043b889b26ce3c4679d268fa6bb22cd7c6aad98340e179d1"
-
-[[package]]
-name = "futures-macro"
-version = "0.3.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4c40298486cdf52cc00cd6d6987892ba502c7656a16a4192a9992b1ccedd121"
-dependencies = [
- "autocfg 1.0.1",
- "proc-macro-hack",
- "proc-macro2",
- "quote 1.0.8",
- "syn 1.0.60",
-]
-
-[[package]]
-name = "futures-task"
-version = "0.3.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a16bef9fc1a4dddb5bee51c989e3fbba26569cbb0e31f5b303c184e3dd33dae"
-
-[[package]]
-name = "futures-util"
-version = "0.3.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "feb5c238d27e2bf94ffdfd27b2c29e3df4a68c4193bb6427384259e2bf191967"
-dependencies = [
- "autocfg 1.0.1",
- "futures-core",
- "futures-macro",
- "futures-task",
- "pin-project-lite",
- "pin-utils",
- "proc-macro-hack",
- "proc-macro-nested",
- "slab",
-]
 
 [[package]]
 name = "generic-array"
@@ -1049,18 +996,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pin-project-lite"
-version = "0.2.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc0e1f259c92177c30a4c9d177246edd0a3568b25756a977d0632cf8fa37e905"
-
-[[package]]
-name = "pin-utils"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
-
-[[package]]
 name = "pkg-config"
 version = "0.3.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1106,18 +1041,6 @@ dependencies = [
  "serde_derive",
  "siphasher 0.2.3",
 ]
-
-[[package]]
-name = "proc-macro-hack"
-version = "0.5.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dbf0c48bc1d91375ae5c3cd81e3722dff1abcf81a30960240640d223f59fe0e5"
-
-[[package]]
-name = "proc-macro-nested"
-version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc881b2c22681370c6a780e47af9840ef841837bc98118431d4e1868bd0c1086"
 
 [[package]]
 name = "proc-macro2"
@@ -1595,12 +1518,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fa8f3741c7372e75519bd9346068370c9cdaabcc1f9599cbcf2a2719352286b7"
 
 [[package]]
-name = "slab"
-version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f173ac3d1a7e3b28003f40de0b5ce7fe2710f9b9dc3fc38664cebee46b3b6527"
-
-[[package]]
 name = "smallbitvec"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1704,18 +1621,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "synstructure"
-version = "0.12.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b834f2d66f734cb897113e34aaff2f1ab4719ca946f9a7358dba8f8064148701"
-dependencies = [
- "proc-macro2",
- "quote 1.0.8",
- "syn 1.0.60",
- "unicode-xid 0.2.1",
-]
-
-[[package]]
 name = "tempfile"
 version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1788,15 +1693,12 @@ dependencies = [
 
 [[package]]
 name = "timely"
-version = "0.12.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "211e9686a84038d2b052c1f70d7423f8716330fb7108fe21a8a9b0c2929b80a7"
+checksum = "e9683b5bddc0b2f22e184998372706db5180a497fdfbeeb9adfe0683cc1c6d7d"
 dependencies = [
  "abomonation",
- "abomonation_derive 0.5.0",
- "crossbeam-channel 0.5.0",
- "futures-util",
- "getopts",
+ "abomonation_derive",
  "serde",
  "serde_derive",
  "timely_bytes",
@@ -1806,19 +1708,18 @@ dependencies = [
 
 [[package]]
 name = "timely_bytes"
-version = "0.12.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f8a545b35b019b8b63afb913214695f542cbbf39032c7b7349e1a15b7f2a2cf"
+checksum = "23e52a6661d7acf0385c83b596612710552ba40e34f548a5489096bcc93ceb89"
 
 [[package]]
 name = "timely_communication"
-version = "0.12.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3435bab8a9b9909b5bc907cc562b3659c62a05c1abbc1268e914b024b66dff60"
+checksum = "6cd88e43a18c62b8ea964be7a80b429ecd5d4abe19307eb473ea854bba8b479d"
 dependencies = [
  "abomonation",
- "abomonation_derive 0.5.0",
- "crossbeam-channel 0.5.0",
+ "abomonation_derive",
  "getopts",
  "serde",
  "serde_derive",
@@ -1828,9 +1729,9 @@ dependencies = [
 
 [[package]]
 name = "timely_logging"
-version = "0.12.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9046af28827ac831479d245eb8afd9522599a3cbb22d6c42a82cb9e4ccdf858"
+checksum = "6e54d94f50874be7fa7bcc06cfd9dca203276d1cc83cdb7c8fd6ac477ed018b8"
 
 [[package]]
 name = "tinytemplate"

@@ -71,7 +71,7 @@ where
     F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
 {
     let _logger = scope.danny_logger();
-    source(scope, "hashed source", move |capability, _| {
+    source(scope, "hashed source", move |capability| {
         let mut cap = Some(capability);
         move |output| {
             if let Some(cap) = cap.take() {

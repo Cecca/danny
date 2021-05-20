@@ -8,8 +8,8 @@ use std::{fmt::Debug, time::Instant};
 
 use std::process::Command;
 
-use timely::communication::{Allocator, Config as TimelyConfig, WorkerGuards};
-use timely::worker::{Worker, Config as WorkerConfig};
+use timely::communication::{Allocator, Configuration as TimelyConfig, WorkerGuards};
+use timely::worker::Worker;
 
 use crate::{experiment::Experiment, join::Balance};
 
@@ -312,12 +312,7 @@ impl Config {
                     log_fn: Box::new(|_| None),
                 },
             };
-            let w = WorkerConfig::default();
-            let config = timely::execute::Config{
-                communication: c,
-                worker: w
-            };
-            Some(timely::execute(config, func))
+            Some(timely::execute(c, func))
         }
     }
 }
