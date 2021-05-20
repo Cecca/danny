@@ -102,9 +102,7 @@ where
             None,
             move |input, output, notificator| {
                 if let Some((t, _)) = notificator.next() {
-                    if !probe.less_than(t.time()) {
-                        notificator.notify_at(t);
-                    } else {
+                    if !probe.less_equal(t.time()) {
                         if let Some(histogram) = histograms.remove(&t) {
                             let mut session = output.session(&t);
                             session.give_iterator(histogram.into_iter());
