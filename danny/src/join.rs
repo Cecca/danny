@@ -107,6 +107,8 @@ where
                             let mut session = output.session(&t);
                             session.give_iterator(histogram.into_iter());
                         }
+                    } else {
+                        notificator.notify_at(t);
                     }
                 }
 
