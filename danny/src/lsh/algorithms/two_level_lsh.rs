@@ -353,7 +353,7 @@ where
         proc_mem!()
     );
 
-    source(scope, "hashed source two round", move |capability| {
+    source(scope, "hashed source two round", move |capability, _| {
         let mut cap = Some(capability);
         let mut done = false;
         let mut current_repetition = 0;

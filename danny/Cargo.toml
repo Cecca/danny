@@ -24,7 +24,7 @@ seq-all-2-all = []
 
 [dependencies]
 danny-base = { path = "../danny-base" }
-timely = "0.8"
+timely = "0.12"
 abomonation = "0.7"
 abomonation_derive = "0.3"
 rusqlite = { version = "0.23", features = ["bundled"] }
