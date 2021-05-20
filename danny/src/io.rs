@@ -1,8 +1,5 @@
 extern crate bincode;
 
-
-
-
 use danny_base::types::*;
 use serde::de::Deserialize;
 use serde::ser::Serialize;
@@ -13,10 +10,6 @@ use std::io::BufRead;
 use std::io::BufReader;
 use std::path::Path;
 use std::path::PathBuf;
-
-
-
-
 
 pub enum ContentType {
     Vector,
