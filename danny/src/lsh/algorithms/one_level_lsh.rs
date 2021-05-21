@@ -26,7 +26,7 @@ use timely::progress::Timestamp;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
-pub const ONE_LEVEL_LSH_VERSION: u8 = 8;
+pub const ONE_LEVEL_LSH_VERSION: u8 = 9;
 
 impl<S: SketchData, D: ExchangeData> KeyPayload for (ElementId, TensorPool, S, D) {
     type Key = ElementId;
