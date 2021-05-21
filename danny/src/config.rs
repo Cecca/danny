@@ -72,7 +72,7 @@ pub struct Config {
     pub profile: Option<i32>,
 
     /// number of repetitions to squash together
-    #[argh(option, default = "1")]
+    #[argh(option, default = "10000")]
     pub repetition_batch: usize,
 
     /// what to load balance
