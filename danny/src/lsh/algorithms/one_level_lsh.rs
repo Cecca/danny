@@ -41,6 +41,7 @@ pub fn source_hashed_one_round<G, T, D, S, F>(
     global_vecs: Arc<Vec<(ElementId, D)>>,
     hash_fns: Arc<TensorCollection<F>>,
     sketcher: Arc<S>,
+    batch: usize,
 ) -> Stream<G, ((usize, u32), (ElementId, TensorPool, S::Output, D))>
 where
     G: Scope<Timestamp = T>,
@@ -108,7 +109,7 @@ where
                     ));
                 }
                 current_repetition += 1;
-                if current_repetition % 64 == 0 {
+                if current_repetition % batch == 0 {
                     cap.downgrade(&cap.time().succ());
                 }
                 done = current_repetition == repetitions;
@@ -174,6 +175,7 @@ where
             Arc::clone(&vectors),
             Arc::clone(&hasher),
             Arc::clone(&sketcher),
+            config.repetition_batch,
         );
 
         hashes

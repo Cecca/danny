@@ -135,6 +135,7 @@ where
             Arc::clone(&sketcher),
             Arc::clone(&hasher),
             Arc::clone(&hasher_intern),
+            config.repetition_batch,
         );
 
         info!(
@@ -317,6 +318,7 @@ fn source_hashed_two_round<G, T, D, F, S>(
     sketcher: Arc<S>,
     hash_fns: Arc<TensorCollection<F>>,
     hash_fns2: Arc<TensorCollection<F>>,
+    batch: usize,
 ) -> Stream<
     G,
     (
@@ -380,7 +382,7 @@ where
                     ));
                 }
                 current_repetition += 1;
-                if current_repetition % 64 == 0 {
+                if current_repetition % batch == 0 {
                     cap.downgrade(&cap.time().succ());
                 }
                 done = current_repetition == repetitions;
