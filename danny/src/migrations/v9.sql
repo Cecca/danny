@@ -1,0 +1,10 @@
+BEGIN TRANSACTION;
+
+ALTER TABLE
+    result
+ADD
+    COLUMN dry_run BOOLEAN DEFAULT false;
+
+PRAGMA user_version = 9;
+
+END TRANSACTION;
