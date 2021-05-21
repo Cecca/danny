@@ -249,7 +249,7 @@ where
                             }
                         }
                     }
-                    debug!(
+                    info!(
                     "Candidates {}: Emitted {} / Sketch discarded {} / Duplicates {} in {:?} ({})",
                     candidate_pairs,
                     cnt,
