@@ -61,7 +61,7 @@ where
     where
         I: IntoIterator<Item = O>,
         O: ExchangeData,
-        F: FnMut((K, CartesianKey), &[(Marker, V::Key)], &HashMap<V::Key, V::Value>) -> I + 'static;
+        F: FnMut((K, CartesianKey), &[(Marker, V)]) -> I + 'static;
 }
 
 impl<G, K, V> Join<G, K, V> for Stream<G, (K, V)>
@@ -75,24 +75,17 @@ where
     where
         I: IntoIterator<Item = O>,
         O: ExchangeData,
-        F: FnMut((K, CartesianKey), &[(Marker, V::Key)], &HashMap<V::Key, V::Value>) -> I + 'static,
+        F: FnMut((K, CartesianKey), &[(Marker, V)]) -> I + 'static,
     {
         let peers = self.scope().peers();
         let worker_index = self.scope().index();
         let logger = self.scope().danny_logger();
         let stash = Rc::new(RefCell::new(HashMap::new()));
         let stash1 = Rc::clone(&stash);
-        let payloads_stash = Rc::new(RefCell::new(HashMap::new()));
-        let payloads_stash1 = Rc::clone(&payloads_stash);
-        let payloads_stash2 = Rc::clone(&payloads_stash);
-        let mut bucket_stash: HashMap<
-            G::Timestamp,
-            HashMap<(K, CartesianKey), Vec<(Marker, V::Key)>>,
-        > = HashMap::new();
+        let mut bucket_stash: HashMap<G::Timestamp, HashMap<(K, CartesianKey), Vec<(Marker, V)>>> =
+            HashMap::new();
         let mut histograms: HashMap<G::Timestamp, HashMap<K, u32>> = HashMap::new();
         let mut subproblem_sizes: HashMap<G::Timestamp, Vec<(K, u32)>> = HashMap::new();
-        // let payloads: Rc<RefCell<HashMap<V::Key, V::Value>>> =
-        //     Rc::new(RefCell::new(HashMap::new()));
 
         let probe = ProbeHandle::new();
         let mut probe_inspector = probe.clone();
@@ -116,16 +109,11 @@ where
                 input.for_each(|t, data| {
                     let data = data.replace(Vec::new());
                     for (k, v) in data {
-                        let (payload_k, payload_v) = v.split_payload();
                         stash
                             .borrow_mut()
                             .entry(t.time().clone())
                             .or_insert_with(Vec::new)
-                            .push((k, payload_k.clone()));
-                        payloads_stash
-                            .borrow_mut()
-                            .entry(payload_k)
-                            .or_insert(payload_v);
+                            .push((k, v));
                         *histograms
                             .entry(t.time().clone())
                             .or_insert_with(HashMap::new)
@@ -188,17 +176,13 @@ where
                     let mut processor_allocations = vec![Vec::new(); peers];
                     debug!("threshold {}", threshold);
                     let mut i = 0;
-                    for (key, subproblem_key, marker, _subproblem_size) in
-                        subproblems.into_iter()
-                    {
+                    for (key, subproblem_key, marker, _subproblem_size) in subproblems.into_iter() {
                         processor_allocations[i].push((key, subproblem_key, marker));
                         i = (i + 1) % processor_allocations.len();
                     }
 
-                    let processor_allocs_size: Vec<usize> = processor_allocations
-                        .iter()
-                        .map(|p| p.len())
-                        .collect();
+                    let processor_allocs_size: Vec<usize> =
+                        processor_allocations.iter().map(|p| p.len()).collect();
 
                     info!("Processor allocation: {:?}", processor_allocs_size);
                     assert!(processor_allocs_size.iter().all(|size| size > &0));
@@ -218,31 +202,24 @@ where
 
                     // Get the keys and output them to the appropriate processor
                     if let Some(mut pairs) = stash1.borrow_mut().remove(&t.time()) {
-                        let payloads = payloads_stash1.borrow();
-                        debug!(
-                            "Redistributing items to workers, the stash has {} items, payloads are {}",
-                            pairs.len(),
-                            payloads.len()
-                        );
                         let mut session = output.session(&t);
-                        for (key, payload_key) in pairs.drain(..) {
-                            let payload =
-                                payloads.get(&payload_key).expect("missing payload for key");
+                        for (key, payload) in pairs.drain(..) {
                             for &(p, subproblem_key, marker) in subproblem_allocations
                                 .get(&key)
                                 .expect("missing key!")
                                 .iter()
                             {
-                                session.give((
-                                    (p, key, subproblem_key),
-                                    (marker, payload_key.clone(), payload.clone()),
-                                ));
+                                session.give(((p, key, subproblem_key), (marker, payload.clone())));
                             }
                         }
                         debug!("Done sending");
                         drop(pairs);
                     }
-                    debug!("{} times still in the stash (memory {})", stash1.borrow().len(), proc_mem!());
+                    debug!(
+                        "{} times still in the stash (memory {})",
+                        stash1.borrow().len(),
+                        proc_mem!()
+                    );
                 }
 
                 input.for_each(|t, data| {
@@ -256,28 +233,30 @@ where
             },
         )
         .unary_notify(
-            ExchangePact::new(
-                |(key, _payload): &((u64, K, CartesianKey), (Marker, V::Key, V::Value))| key.0,
-            ),
+            ExchangePact::new(|(key, _payload): &((u64, K, CartesianKey), (Marker, V))| key.0),
             "bucket",
             None,
             move |input, output, notificator| {
                 if let Some((t, _)) = notificator.next() {
                     if let Some(subproblems) = bucket_stash.remove(&t) {
                         info!(
-                            "Worker {} has {} subproblems, with {} payloads (memory {})",
+                            "Worker {} has {} subproblems (memory {})",
                             worker_index,
                             subproblems.len(),
-                            payloads_stash2.borrow().len(),
                             proc_mem!()
                         );
                         let mut session = output.session(&t);
-                            let start = std::time::Instant::now();
+                        let start = std::time::Instant::now();
                         for (key, subproblem) in subproblems {
-                            let res = f(key, &subproblem, &payloads_stash2.borrow());
+                            let res = f(key, &subproblem);
                             session.give_iterator(res.into_iter());
                         }
-                        info!("[{:?}] Worker {} solved subproblems in {:?}", t.time(), worker_index, start.elapsed());
+                        info!(
+                            "[{:?}] Worker {} solved subproblems in {:?}",
+                            t.time(),
+                            worker_index,
+                            start.elapsed()
+                        );
                     }
                 }
 
@@ -287,17 +266,17 @@ where
                     let stash = bucket_stash
                         .entry(t.time().clone())
                         .or_insert_with(HashMap::new);
-                    for ((_processor, k, subproblem), (marker, payload_k, payload_v)) in data {
+                    for ((_processor, k, subproblem), (marker, payload)) in data {
                         stash
                             .entry((k, subproblem))
                             .or_insert_with(Vec::new)
-                            .push((marker, payload_k.clone()));
-                        payloads_stash2.borrow_mut().entry(payload_k).or_insert(payload_v);
+                            .push((marker, payload));
                     }
                     notificator.notify_at(t.retain());
                 });
             },
-        ).probe_with(&mut probe_inspector)
+        )
+        .probe_with(&mut probe_inspector)
     }
 
     fn self_join_map_slice<F, I, O>(&self, mut f: F) -> Stream<G, O>

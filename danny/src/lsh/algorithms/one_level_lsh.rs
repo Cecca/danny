@@ -183,7 +183,7 @@ where
         hashes
             .self_join_map(
                 Balance::Load,
-                move |((repetition, _hash), subproblem_key), values, payloads| {
+                move |((repetition, _hash), subproblem_key), values| {
                     let mut cnt = 0usize;
                     let mut candidate_pairs = 0usize;
                     let mut self_pairs_discarded = 0;
@@ -193,11 +193,8 @@ where
                     let start = Instant::now();
 
                     if subproblem_key.on_diagonal() {
-                        for (i, (_, lk)) in values.iter().enumerate() {
-                            let (l, l_sketch, l_pool) = payloads.get(lk).expect("missing payload");
-                            for (_, rk) in values[i..].iter() {
-                                let (r, r_sketch, r_pool) =
-                                    payloads.get(rk).expect("missing payload");
+                        for (i, (_, (lk, l_pool, l_sketch, l))) in values.iter().enumerate() {
+                            for (_, (rk, r_pool, r_sketch, r)) in values[i..].iter() {
                                 candidate_pairs += 1;
                                 if lk != rk {
                                     if !dry_run {
@@ -221,12 +218,9 @@ where
                             }
                         }
                     } else {
-                        for (l_marker, lk) in values.iter() {
-                            let (l, l_sketch, l_pool) = payloads.get(lk).expect("missing payload");
+                        for (l_marker, (lk, l_pool, l_sketch, l)) in values.iter() {
                             if l_marker.keep_left() {
-                                for (r_marker, rk) in values.iter() {
-                                    let (r, r_sketch, r_pool) =
-                                        payloads.get(rk).expect("missing payload");
+                                for (r_marker, (rk, r_pool, r_sketch, r)) in values.iter() {
                                     if r_marker.keep_right() {
                                         candidate_pairs += 1;
                                         if lk != rk {

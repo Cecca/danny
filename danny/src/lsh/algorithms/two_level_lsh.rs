@@ -147,7 +147,7 @@ where
         hashes
             .self_join_map(
                 Balance::Load,
-                move |((outer_repetition, _h), subproblem_key), subproblem, payloads| {
+                move |((outer_repetition, _h), subproblem_key), subproblem| {
                     let mut self_joiner = SelfJoiner::default();
                     let mut joiner = Joiner::default();
                     let repetitions = hasher_intern.repetitions();
@@ -161,9 +161,9 @@ where
                         let mut duplicate_cnt = 0;
                         if subproblem_key.on_diagonal() {
                             self_joiner.clear();
-                            for (_marker, element_id) in subproblem.iter() {
-                                let (v, s, outer_pool, inner_pool) =
-                                    payloads.get(element_id).expect("missing payload");
+                            for (_marker, (outer_pool, inner_pool, s, (element_id, v))) in
+                                subproblem.iter()
+                            {
                                 self_joiner.push(
                                     hasher_intern.hash(inner_pool, rep),
                                     (s, (element_id, v), outer_pool, inner_pool),
@@ -199,9 +199,9 @@ where
                             })
                         } else {
                             joiner.clear();
-                            for (marker, element_id) in subproblem.iter() {
-                                let (v, s, outer_pool, inner_pool) =
-                                    payloads.get(element_id).expect("missing payload");
+                            for (marker, (outer_pool, inner_pool, s, (element_id, v))) in
+                                subproblem.iter()
+                            {
                                 match marker {
                                     Marker::Left => joiner.push_left(
                                         hasher_intern.hash(inner_pool, rep),
