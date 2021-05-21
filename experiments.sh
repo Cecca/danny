@@ -46,6 +46,8 @@ function dry_runs() {
     echo "Running on $DATASET"
     test -d $DATASET
 
+    SKETCH_BITS=0
+
     for THRESHOLD in 0.5 # 0.7
     do
       if [[ $DATASET =~ "glove" ]]; then
