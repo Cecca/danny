@@ -37,6 +37,67 @@ function baselines() {
 }
 
 # This set of experiments searches for the best configuration of parameters for all the different datasets.
+function dry_runs() {
+  RECALL=0.8 # <-- required recall
+
+  for BASE_DATA in glove.twitter.27B.200d #sift-100-0.5 #Livejournal Orkut glove.twitter.27B.200d
+  do
+    DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA.bin
+    echo "Running on $DATASET"
+    test -d $DATASET
+
+    for THRESHOLD in 0.5 # 0.7
+    do
+      if [[ $DATASET =~ "glove" ]]; then
+        TIMEOUT=8000
+      elif [[ $DATASET =~ "sift" ]]; then
+        TIMEOUT=3500
+      else 
+        TIMEOUT=12000
+      fi
+      echo "Timeout is $TIMEOUT"
+
+      for K in 4 6 8 10 12
+      do
+        for ALGORITHM in local-lsh one-level-lsh
+        do
+          danny \
+            --dry-run \
+            --timeout $TIMEOUT \
+            --hosts ~/hosts.txt \
+            --threads 8 \
+            --threshold $THRESHOLD \
+            --algorithm $ALGORITHM \
+            --recall $RECALL \
+            --sketch-bits $SKETCH_BITS \
+            --k $K \
+            $DATASET
+        done
+
+        # for K2 in 4
+        # do
+        #   danny \
+        #     --dry-run \
+        #     --timeout $TIMEOUT \
+        #     --hosts ~/hosts.txt \
+        #     --threads 8 \
+        #     --threshold $THRESHOLD \
+        #     --algorithm two-level-lsh \
+        #     --recall $RECALL \
+        #     --sketch-bits $SKETCH_BITS \
+        #     --k $K \
+        #     --k2 $K2 \
+        #     --repetition-batch 10000 \
+        #     $DATASET
+        # done
+      done
+    done
+  done
+
+}
+
+
+# This set of experiments searches for the best configuration of parameters for all the different datasets.
 function search_best() {
   RECALL=0.8 # <-- required recall
 
@@ -472,6 +533,10 @@ function profiling() {
 case $1 in
   baselines)
     baselines
+    ;;
+
+  dry)
+    dry_runs
     ;;
 
   best)
