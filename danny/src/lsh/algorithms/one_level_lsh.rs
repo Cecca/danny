@@ -151,6 +151,8 @@ where
     let result = Rc::new(RefCell::new(0usize));
     let result_read = Rc::clone(&result);
 
+    let dry_run = config.dry_run;
+
     let vectors = Arc::new(load_for_worker::<D, _>(
         worker.index(),
         worker.peers(),
@@ -198,18 +200,20 @@ where
                                     payloads.get(rk).expect("missing payload");
                                 candidate_pairs += 1;
                                 if lk != rk {
-                                    if sketch_predicate.eval(l_sketch, r_sketch) {
-                                        if !hasher.already_seen(l_pool, r_pool, repetition) {
-                                            if sim_pred(l, r) {
-                                                cnt += 1;
+                                    if !dry_run {
+                                        if sketch_predicate.eval(l_sketch, r_sketch) {
+                                            if !hasher.already_seen(l_pool, r_pool, repetition) {
+                                                if sim_pred(l, r) {
+                                                    cnt += 1;
+                                                } else {
+                                                    similarity_discarded += 1;
+                                                }
                                             } else {
-                                                similarity_discarded += 1;
+                                                duplicate_cnt += 1;
                                             }
                                         } else {
-                                            duplicate_cnt += 1;
+                                            sketch_discarded += 1;
                                         }
-                                    } else {
-                                        sketch_discarded += 1;
                                     }
                                 } else {
                                     self_pairs_discarded += 1;
@@ -226,19 +230,22 @@ where
                                     if r_marker.keep_right() {
                                         candidate_pairs += 1;
                                         if lk != rk {
-                                            if sketch_predicate.eval(l_sketch, r_sketch) {
-                                                if !hasher.already_seen(l_pool, r_pool, repetition)
-                                                {
-                                                    if sim_pred(l, r) {
-                                                        cnt += 1;
+                                            if !dry_run {
+                                                if sketch_predicate.eval(l_sketch, r_sketch) {
+                                                    if !hasher
+                                                        .already_seen(l_pool, r_pool, repetition)
+                                                    {
+                                                        if sim_pred(l, r) {
+                                                            cnt += 1;
+                                                        } else {
+                                                            similarity_discarded += 1;
+                                                        }
                                                     } else {
-                                                        similarity_discarded += 1;
+                                                        duplicate_cnt += 1;
                                                     }
                                                 } else {
-                                                    duplicate_cnt += 1;
+                                                    sketch_discarded += 1;
                                                 }
-                                            } else {
-                                                sketch_discarded += 1;
                                             }
                                         } else {
                                             self_pairs_discarded += 1;

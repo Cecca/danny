@@ -88,6 +88,10 @@ pub struct Config {
     #[argh(option)]
     pub timeout: Option<u64>,
 
+    /// skip all the verifications, and just count the candidate pairs
+    #[argh(switch)]
+    pub dry_run: bool,
+
     /// the dataset to be self-joined
     #[argh(positional)]
     pub path: String,
@@ -148,6 +152,10 @@ impl Config {
 
         if let Some(timeout) = self.timeout {
             sha.input(format!("{}", timeout));
+        }
+
+        if self.dry_run {
+            sha.input(format!("dry run"));
         }
 
         format!("{:x}", sha.result())

@@ -98,6 +98,7 @@ fn solve_subproblem<D, F, V, H>(
     sketch_predicate: &SketchPredicate<V>,
     sim_pred: F,
     logger: Option<Logger<(LogEvent, usize)>>,
+    dry_run: bool,
 ) -> usize
 where
     H: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
@@ -136,18 +137,20 @@ where
                     for (_, (rk, r_sketch, r_pool)) in bucket[i..].iter() {
                         candidate_pairs += 1;
                         if lk != rk {
-                            if sketch_predicate.eval(l_sketch, r_sketch) {
-                                if !hasher.already_seen(l_pool, r_pool, rep) {
-                                    if sim_pred(&vectors[lk], &vectors[rk]) {
-                                        cnt += 1;
+                            if !dry_run {
+                                if sketch_predicate.eval(l_sketch, r_sketch) {
+                                    if !hasher.already_seen(l_pool, r_pool, rep) {
+                                        if sim_pred(&vectors[lk], &vectors[rk]) {
+                                            cnt += 1;
+                                        } else {
+                                            similarity_discarded += 1;
+                                        }
                                     } else {
-                                        similarity_discarded += 1;
+                                        duplicates_discarded += 1;
                                     }
                                 } else {
-                                    duplicates_discarded += 1;
+                                    sketch_discarded += 1;
                                 }
-                            } else {
-                                sketch_discarded += 1;
                             }
                         } else {
                             self_pairs_discarded += 1;
@@ -167,18 +170,20 @@ where
             joiner.join_map(|_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
                 candidate_pairs += 1;
                 if lk != rk {
-                    if sketch_predicate.eval(l_sketch, r_sketch) {
-                        if !hasher.already_seen(l_pool, r_pool, rep) {
-                            if sim_pred(&vectors[lk], &vectors[rk]) {
-                                cnt += 1;
+                    if !dry_run {
+                        if sketch_predicate.eval(l_sketch, r_sketch) {
+                            if !hasher.already_seen(l_pool, r_pool, rep) {
+                                if sim_pred(&vectors[lk], &vectors[rk]) {
+                                    cnt += 1;
+                                } else {
+                                    similarity_discarded += 1
+                                }
                             } else {
-                                similarity_discarded += 1
+                                duplicates_discarded += 1;
                             }
                         } else {
-                            duplicates_discarded += 1;
+                            sketch_discarded += 1;
                         }
-                    } else {
-                        sketch_discarded += 1;
                     }
                 } else {
                     self_pairs_discarded += 1;
@@ -236,6 +241,7 @@ where
     use std::rc::Rc;
 
     let worker_index = worker.index();
+    let dry_run = config.dry_run;
 
     let result = Rc::new(RefCell::new(0usize));
     let result_read = Rc::clone(&result);
@@ -312,6 +318,7 @@ where
                                     &sketch_predicate,
                                     sim_pred,
                                     logger.clone(),
+                                    dry_run,
                                 );
                                 output.session(&t).give(cnt);
                             }

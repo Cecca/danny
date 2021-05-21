@@ -1,5 +1,21 @@
 source("packages.R")
 
+baseinfo <- tribble(
+    ~dataset, ~n, ~dim,
+    # # Sampled datasets
+    # "Glove-sample-200000.bin", 199778, 200,
+    # "Livejournal-sample-200000.bin", 200035, 7489073,
+    # "Orkut-sample-200000.bin", 199588, 8730857,
+    # "sift-100nn-0.5-sample-200000.bin", 199786, 128,
+    # Original datasets
+    "glove.twitter.27B.200d.bin", 1193514, 200,
+    "Orkut.bin", 2783196, 8730857,
+    "Livejournal.bin", 3201203, 7489073,
+    "sift-100-0.5.bin", 1000000, 128
+) %>%
+    mutate(n_pairs = choose(n, 2))
+
+
 order_datasets <- function(data) {
     mutate(data, dataset = factor(dataset, levels = c("Glove", "SIFT", "Livejournal", "Orkut"), ordered = T))
 }
@@ -19,13 +35,19 @@ table_search_best <- function() {
     db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
     # The load is the maximum load among all the workers in a given experiment
     load <- tbl(db, "counters") %>%
-        filter(kind == "Load") %>%
+        filter(kind %in% c("Load")) %>%
         group_by(id, kind, worker) %>%
         # The computation of the rounds is overlapped, so we consider the total number of messages received by each worker
         summarise(count = sum(count)) %>%
         ungroup() %>%
         group_by(id, kind) %>%
         summarise(count = max(count, na.rm = T)) %>%
+        collect() %>%
+        pivot_wider(names_from = kind, values_from = count)
+    candidates <- tbl(db, "counters") %>%
+        filter(kind == "CandidatePairs") %>%
+        group_by(id, kind) %>%
+        summarise(count = sum(count)) %>%
         collect() %>%
         pivot_wider(names_from = kind, values_from = count)
     all <- tbl(db, "result_recent") %>%
@@ -41,8 +63,10 @@ table_search_best <- function() {
         filter(!no_verify, !no_dedup) %>%
         # filter(algorithm != "two-level-lsh" | (repetition_batch >= 1000)) %>%
         left_join(load) %>%
+        left_join(candidates) %>%
+        mutate(dataset = basename(path)) %>%
+        inner_join(baseinfo) %>%
         mutate(
-            dataset = basename(path),
             total_time = set_units(total_time_ms, "ms"),
             dataset = case_when(
                 str_detect(dataset, "sift") ~ "SIFT",
@@ -50,6 +74,7 @@ table_search_best <- function() {
                 str_detect(dataset, "[Gg]love") ~ "Glove",
                 str_detect(dataset, "Orkut") ~ "Orkut"
             ),
+            fraction_candidates = CandidatePairs / n_pairs
         ) %>%
         order_datasets() %>%
         recode_algorithms() %>%
@@ -200,20 +225,6 @@ table_full <- function() {
 
 table_data_info <- function() {
     db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
-    baseinfo <- tribble(
-        ~dataset, ~n, ~dim,
-        # # Sampled datasets
-        # "Glove-sample-200000.bin", 199778, 200,
-        # "Livejournal-sample-200000.bin", 200035, 7489073,
-        # "Orkut-sample-200000.bin", 199588, 8730857,
-        # "sift-100nn-0.5-sample-200000.bin", 199786, 128,
-        # Original datasets
-        "glove.twitter.27B.200d.bin", 1193514, 200,
-        "Orkut.bin", 2783196, 8730857,
-        "Livejournal.bin", 3201203, 7489073,
-        "sift-100-0.5.bin", 1000000, 128
-    )
-
     info <- tbl(db, "result_recent") %>%
         filter(algorithm == "cartesian", sketch_bits == 0) %>%
         collect() %>%
@@ -221,7 +232,10 @@ table_data_info <- function() {
         select(dataset, threshold, output_size) %>%
         inner_join(baseinfo) %>%
         # order_datasets() %>%
-        mutate(selectivity = output_size / choose(n, 2))
+        mutate(
+            n_pairs = choose(n, 2),
+            selectivity = output_size / choose(n, 2)
+        )
     DBI::dbDisconnect(db)
     info
 }

@@ -54,6 +54,8 @@ where
     let result = Rc::new(RefCell::new(0usize));
     let result_read = Rc::clone(&result);
 
+    let dry_run = config.dry_run;
+
     let vectors = Arc::new(load_for_worker::<D, _>(
         worker.index(),
         worker.peers(),
@@ -170,20 +172,26 @@ where
                             self_joiner.join_map(|_h, l, r| {
                                 candidate_pairs += 1;
                                 if (l.1).0 != (r.1).0 {
-                                    if sketch_pred.eval(l.0, r.0) {
-                                        if !hasher_intern.already_seen(&l.3, &r.3, rep)
-                                            && !hasher.already_seen(&l.2, &r.2, outer_repetition)
-                                        {
-                                            if sim_pred(&(l.1).1, &(r.1).1) {
-                                                matching_cnt += 1;
+                                    if !dry_run {
+                                        if sketch_pred.eval(l.0, r.0) {
+                                            if !hasher_intern.already_seen(&l.3, &r.3, rep)
+                                                && !hasher.already_seen(
+                                                    &l.2,
+                                                    &r.2,
+                                                    outer_repetition,
+                                                )
+                                            {
+                                                if sim_pred(&(l.1).1, &(r.1).1) {
+                                                    matching_cnt += 1;
+                                                } else {
+                                                    similarity_discarded += 1;
+                                                }
                                             } else {
-                                                similarity_discarded += 1;
+                                                duplicate_cnt += 1;
                                             }
                                         } else {
-                                            duplicate_cnt += 1;
+                                            sketch_cnt += 1;
                                         }
-                                    } else {
-                                        sketch_cnt += 1;
                                     }
                                 } else {
                                     self_pairs_discarded += 1;
@@ -209,20 +217,26 @@ where
                             joiner.join_map(|_h, l, r| {
                                 candidate_pairs += 1;
                                 if (l.1).0 != (r.1).0 {
-                                    if sketch_pred.eval(l.0, r.0) {
-                                        if !hasher_intern.already_seen(&l.3, &r.3, rep)
-                                            && !hasher.already_seen(&l.2, &r.2, outer_repetition)
-                                        {
-                                            if sim_pred(&(l.1).1, &(r.1).1) {
-                                                matching_cnt += 1;
+                                    if !dry_run {
+                                        if sketch_pred.eval(l.0, r.0) {
+                                            if !hasher_intern.already_seen(&l.3, &r.3, rep)
+                                                && !hasher.already_seen(
+                                                    &l.2,
+                                                    &r.2,
+                                                    outer_repetition,
+                                                )
+                                            {
+                                                if sim_pred(&(l.1).1, &(r.1).1) {
+                                                    matching_cnt += 1;
+                                                } else {
+                                                    similarity_discarded += 1;
+                                                }
                                             } else {
-                                                similarity_discarded += 1;
+                                                duplicate_cnt += 1;
                                             }
                                         } else {
-                                            duplicate_cnt += 1;
+                                            sketch_cnt += 1;
                                         }
-                                    } else {
-                                        sketch_cnt += 1;
                                     }
                                 } else {
                                     self_pairs_discarded += 1;

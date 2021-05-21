@@ -130,20 +130,31 @@ impl Experiment {
         .expect("error running query")
     }
 
-    pub fn save(self) {
+    pub fn save(mut self) {
         let mut conn = self.get_conn();
 
-        let output_size = self.output_size.expect("missing output size");
-        let total_time_ms = self.total_time_ms.expect("missing total time");
+        if self.config.dry_run {
+            // In a dry run, don't report these numbers because they are meaningless
+            self.total_time_ms.take();
+            self.output_size.take();
+        }
 
         let (recall, speedup) = if let (Some(recall), Some(speedup)) = (self.recall, self.speedup) {
             trace!("Speedup and recall set manually (valid during CSV import)");
             (Some(recall), Some(speedup))
         } else if let Some((base_time, base_count)) = self.get_baseline() {
-            let recall = output_size as f64 / base_count as f64;
-            let speedup = base_time as f64 / total_time_ms as f64;
-            info!("Recall {} and speedup {}", recall, speedup);
-            (Some(recall), Some(speedup))
+            if let Some(output_size) = self.output_size {
+                if let Some(total_time_ms) = self.total_time_ms {
+                    let recall = output_size as f64 / base_count as f64;
+                    let speedup = base_time as f64 / total_time_ms as f64;
+                    info!("Recall {} and speedup {}", recall, speedup);
+                    (Some(recall), Some(speedup))
+                } else {
+                    (None, None)
+                }
+            } else {
+                (None, None)
+            }
         } else {
             warn!("Missing baseline from the database");
             (None, None)
@@ -180,10 +191,11 @@ impl Experiment {
                     recall,
                     speedup,
 
-                    profile_frequency
+                    profile_frequency,
+                    dry_run
                 )
                  VALUES (
-                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25
                  )",
                 params![
                     env!("VERGEN_SHA_SHORT"),
@@ -210,7 +222,8 @@ impl Experiment {
                     self.output_size,
                     recall,
                     speedup,
-                    self.config.profile.unwrap_or(0)
+                    self.config.profile.unwrap_or(0),
+                    self.config.dry_run
                 ],
             )
             .expect("error inserting into main table");
@@ -312,10 +325,11 @@ impl Experiment {
                     recall,
                     speedup,
 
-                    profile_frequency
+                    profile_frequency,
+                    dry_run
                 )
                  VALUES (
-                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25
                  )",
                 params![
                     env!("VERGEN_SHA_SHORT"),
@@ -342,7 +356,8 @@ impl Experiment {
                     None::<i64>,
                     None::<f64>,
                     None::<f64>,
-                    self.config.profile.unwrap_or(0)
+                    self.config.profile.unwrap_or(0),
+                    self.config.dry_run
                 ],
             )
             .expect("error inserting into main table");
@@ -402,6 +417,11 @@ fn db_migrate(conn: &Connection) {
         info!("Applying migration v8");
         conn.execute_batch(include_str!("migrations/v8.sql"))
             .expect("error applying version 8");
+    }
+    if version < 9 {
+        info!("Applying migration v9");
+        conn.execute_batch(include_str!("migrations/v9.sql"))
+            .expect("error applying version 9");
     }
 
     info!("Database migration completed!");
