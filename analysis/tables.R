@@ -45,7 +45,7 @@ table_search_best <- function() {
         collect() %>%
         pivot_wider(names_from = kind, values_from = count)
     candidates <- tbl(db, "counters") %>%
-        filter(kind == "CandidatePairs") %>%
+        filter(kind %in% c("CandidatePairs", "SelfPairsDiscarded")) %>%
         group_by(id, kind) %>%
         summarise(count = sum(count)) %>%
         collect() %>%
@@ -67,6 +67,7 @@ table_search_best <- function() {
         mutate(dataset = basename(path)) %>%
         inner_join(baseinfo) %>%
         mutate(
+            dry_run = as.logical(dry_run),
             total_time = set_units(total_time_ms, "ms"),
             dataset = case_when(
                 str_detect(dataset, "sift") ~ "SIFT",
@@ -74,7 +75,7 @@ table_search_best <- function() {
                 str_detect(dataset, "[Gg]love") ~ "Glove",
                 str_detect(dataset, "Orkut") ~ "Orkut"
             ),
-            fraction_candidates = CandidatePairs / n_pairs
+            fraction_candidates = (CandidatePairs - SelfPairsDiscarded) / n_pairs
         ) %>%
         order_datasets() %>%
         recode_algorithms() %>%
