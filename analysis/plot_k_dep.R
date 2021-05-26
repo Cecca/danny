@@ -4,8 +4,6 @@ source("plots.R")
 plotdata <- table_search_best() %>%
     # we focus just on experiments with no sketches, to see the effect of k
     filter(sketch_bits == 0) %>%
-    # filter((k == 0) || between(k, 4, 16)) %>%
-    # filter(k2 %in% c(0, 6)) %>%
     mutate(
         total_time = set_units(total_time, "min") %>% drop_units()
     ) %>%
@@ -36,7 +34,7 @@ plot_counters <- function(data, t, ylabels = FALSE) {
         y = fraction_candidates,
         color = algorithm
     )) +
-        geom_point(position = position_dodge(width = 0.5)) +
+        geom_point(size = 0.5, position = position_dodge(width = 0.5)) +
         geom_hline(
             yintercept = 1,
             linetype = "dashed",
@@ -77,7 +75,7 @@ plot_counters <- function(data, t, ylabels = FALSE) {
         y = Load,
         color = algorithm
     )) +
-        geom_point(position = position_dodge(width = 0.5)) +
+        geom_point(size=0.5, position = position_dodge(width = 0.5)) +
         facet_wrap(vars(dataset), ncol = 4) +
         labs(
             y = "load"
