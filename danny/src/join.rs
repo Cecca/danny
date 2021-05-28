@@ -174,7 +174,7 @@ where
 
                     // Allocate subproblems to processors
                     let mut processor_allocations = vec![Vec::new(); peers];
-                    debug!("threshold {}", threshold);
+                    info!("threshold {}, total subprovlem size {}", threshold, total_pairs);
                     let mut i = 0;
                     let mut cur = 0u64;
                     for (sub_idx, (key, subproblem_key, marker, subproblem_size)) in
