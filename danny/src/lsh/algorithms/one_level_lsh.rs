@@ -250,11 +250,13 @@ where
                         }
                     }
                     info!(
-                    "Candidates {}: Emitted {} / Sketch discarded {} / Duplicates {} in {:?} ({})",
+                    "Candidates {}: Emitted {} / Sketch discarded {} / Duplicates {} / Similarity discarded {} / Self pairs {} in {:?} ({})",
                     candidate_pairs,
                     cnt,
                     sketch_discarded,
                     duplicate_cnt,
+                    similarity_discarded,
+                    self_pairs_discarded,
                     Instant::now() - start,
                     proc_mem!(),
                 );
