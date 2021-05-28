@@ -57,77 +57,87 @@ plotdata <- alldata %>%
     # filter(dataset == "Livejournal", algorithm == "TwoLevelLSH") %>% select(k, k2, sketch_bits) %>%print()
     semi_join(selectors)
 
+ranges <- plotdata %>%
+    group_by(dataset, threshold) %>%
+    summarise(
+        range = list(range(drop_units(set_units(total_time, "min"))))
+    )
+
 ## What is interesting in the visualization below, when considering
 ## algorithms that partition data according to LSH, is that using larger
 ## sketches results in higher running times, most likely because of the
 ## larger number of bits to be transmitted in a large number of iterations
 
-plot_one_algo <- function(data, algorithm_name, groups, ylabs = FALSE, strip_text = FALSE) {
-    active_groups <- data %>%
-        filter(algorithm == algorithm_name) %>%
-        distinct({{ groups }}) %>%
-        pull()
-    p <- data %>%
-        filter(algorithm == algorithm_name) %>%
-        ggplot(aes(
-            x = factor(sketch_bits),
-            y = set_units(total_time, "min") %>% drop_units(),
-            group = {{ groups }},
-        )) +
-        geom_line() +
-        geom_point(aes(color = is_algo_best)) +
-        geom_text_repel(aes(label = total_time %>% set_units("min") %>% drop_units() %>% scales::number(accuracy = 1)), size = 2) +
-        # Add transparent points from all the algorithms to align axes
-        geom_point(
-            data = data %>% filter({{ groups }} %in% active_groups),
-            alpha = 0
-        ) +
-        scale_x_discrete(
-            labels = c("0", "256", "512"),
-            breaks = c("0", "256", "512")
-            # labels = c("0", "", "128", "", "512"),
-            # breaks = c("0", "64", "128", "256", "512")
-        ) +
-        # scale_y_log10() +
-        scale_color_manual(values = c("black", "red")) +
-        facet_grid(
-            vars(dataset),
-            vars({{ groups }}),
-            scales = "free",
-            switch = "x"
-        ) +
-        guides(
-            color = FALSE,
-            shape = FALSE
-        ) +
-        coord_cartesian(clip = "off") +
-        labs(
-            title = algorithm_name,
-            x = "sketch bits"
-        ) +
-        theme_paper() +
-        theme(
-            strip.placement = "outside",
-            panel.spacing.x = unit(0, "line")
-        )
-    if (ylabs) {
-        p <- p +
-            labs(y = "time (min)")
-    } else {
-        p <- p +
+plot_one_algo <- function(data, algorithm_name, groups, ylabs = FALSE, strip_text = FALSE, strip_text_x = FALSE) {
+    doplot <- function(dname) {
+        r <- ranges %>%
+            filter(dataset == dname) %>%
+            pull(range) %>%
+            first()
+        pdata <- data %>%
+            filter(algorithm == algorithm_name) %>%
+            filter(dataset == dname)
+        p <- pdata %>%
+            ggplot(aes(
+                x = factor(sketch_bits),
+                y = set_units(total_time, "min") %>% drop_units(),
+                group = {{ groups }},
+            )) +
+            geom_line() +
+            geom_point(aes(color = is_algo_best)) +
+            geom_text_repel(aes(label = total_time %>% set_units("min") %>% drop_units() %>% scales::number(accuracy = 1)), size = 2) +
+            scale_x_discrete(
+                labels = c("0", "256", "512"),
+                breaks = c("0", "256", "512")
+            ) +
+            scale_y_continuous(
+                limits = r
+            ) +
+            scale_color_manual(values = c("black", "red")) +
+            facet_grid(
+                vars(dataset),
+                vars({{ groups }}),
+                scales = "free",
+                switch = "x"
+            ) +
+            guides(
+                color = FALSE,
+                shape = FALSE
+            ) +
+            coord_cartesian(clip = "off") +
+            labs(
+                x = "sketch bits"
+            ) +
+            theme_paper() +
             theme(
-                axis.text.y = element_blank(),
-                axis.ticks.y = element_blank(),
-                axis.title.y = element_blank()
+                panel.grid = element_blank(),
+                strip.placement = "outside",
+                panel.spacing.x = unit(0, "line"),
+                axis.title.x = element_blank()
             )
+        if (ylabs) {
+            p <- p +
+                labs(y = "time (min)")
+        } else {
+            p <- p +
+                theme(
+                    axis.text.y = element_blank(),
+                    axis.ticks.y = element_blank(),
+                    axis.title.y = element_blank()
+                )
+        }
+        if (!strip_text) {
+            p <- p +
+                theme(
+                    strip.text.y = element_blank()
+                )
+        }
+        p
     }
-    if (!strip_text) {
-        p <- p +
-            theme(
-                strip.text.y = element_blank()
-            )
-    }
-    p
+    (doplot("Glove") + labs(title = algorithm_name)) /
+        doplot("SIFT") /
+        doplot("Livejournal") /
+        doplot("Orkut")
 }
 
 p_all2all <- plotdata %>%
@@ -151,6 +161,7 @@ p_two_round <- plotdata %>%
     ) %>%
     plot_one_algo("TwoLevelLSH", groups, strip_text = T)
 
+
 (p_all2all | p_hu_et_al | p_one_round | p_two_round) +
     plot_layout(
         guides = "collect",
@@ -162,7 +173,7 @@ p_two_round <- plotdata %>%
         axis.line = element_line(color = "black", size = 0.1),
     )
 
-ggsave("imgs/sketches.png", width = 10, height = 3)
+ggsave("imgs/sketches.png", width = 10, height = 5)
 
 # print("Effect of sketching on the accuracy")
 # table_search_best() %>%
