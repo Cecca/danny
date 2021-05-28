@@ -96,6 +96,53 @@ table_search_best <- function() {
     all
 }
 
+table_sketches <- function() {
+    db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
+    all <- tbl(db, "result_recent") %>%
+        filter(!dry_run) %>%
+        collect() %>%
+        mutate(
+            timed_out = is.na(output_size) # && !is.na(total_time_ms)
+        ) %>%
+        filter(hosts == "10.1.1.1:2001__10.1.1.2:2001__10.1.1.3:2001__10.1.1.4:2001__10.1.1.5:2001") %>%
+        filter(profile_frequency == 0) %>%
+        filter(!str_detect(path, "sample-200000.bin")) %>%
+        filter(required_recall == 0.8) %>%
+        filter(threshold %in% c(0.5, 0.7)) %>%
+        filter(!no_verify, !no_dedup) %>%
+        mutate(dataset = basename(path)) %>%
+        inner_join(baseinfo) %>%
+        mutate(
+            dry_run = as.logical(dry_run),
+            total_time = set_units(total_time_ms, "ms"),
+            dataset = case_when(
+                str_detect(dataset, "sift") ~ "SIFT",
+                str_detect(dataset, "Livejournal") ~ "Livejournal",
+                str_detect(dataset, "[Gg]love") ~ "Glove",
+                str_detect(dataset, "Orkut") ~ "Orkut"
+            )
+        ) %>%
+        order_datasets() %>%
+        recode_algorithms() %>%
+        filter(case_when(
+            # algorithm == "LocalLSH" ~ k %in% c(19, 20),
+            TRUE ~ TRUE
+        )) %>%
+        select(-total_time_ms)
+
+    baselines <- all %>%
+        filter(algorithm == "Cartesian", sketch_bits == 0) %>%
+        select(dataset, threshold, baseline_output_size = output_size)
+
+    all <- inner_join(all, baselines) %>%
+        mutate(recall = output_size / baseline_output_size)
+
+    DBI::dbDisconnect(db)
+    all
+}
+
+
+
 table_candidates <- function() {
     db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
     counters <- tbl(db, "counters") %>%

@@ -1,51 +1,66 @@
 source("tables.R")
 source("plots.R")
 
-alldata <- table_search_best() %>%
-    filter(threshold == 0.5) %>%
-    filter(k %in% c(0, 4,6,8))
+selectors <- tribble(
+    ~dataset, ~threshold, ~algorithm, ~k, ~k2,
+    "Glove", 0.5, "Cartesian", 0, 0,
+    "Glove", 0.5, "OneLevelLSH", 4, 0,
+    "Glove", 0.5, "OneLevelLSH", 6, 0,
+    "Glove", 0.5, "LocalLSH", 8, 0,
+    "Glove", 0.5, "LocalLSH", 20, 0,
+    "Glove", 0.5, "TwoLevelLSH", 2, 12,
+    "Glove", 0.5, "TwoLevelLSH", 3, 12,
+    # ------------------------------------
+    "SIFT", 0.5, "Cartesian", 0, 0,
+    "SIFT", 0.5, "OneLevelLSH", 6, 0,
+    "SIFT", 0.5, "OneLevelLSH", 8, 0,
+    "SIFT", 0.5, "LocalLSH", 8, 0,
+    "SIFT", 0.5, "LocalLSH", 20, 0,
+    "SIFT", 0.5, "TwoLevelLSH", 2, 12,
+    "SIFT", 0.5, "TwoLevelLSH", 3, 12,
+    # ------------------------------------
+    "Livejournal", 0.5, "Cartesian", 0, 0,
+    "Livejournal", 0.5, "OneLevelLSH", 8, 0,
+    "Livejournal", 0.5, "OneLevelLSH", 10, 0,
+    "Livejournal", 0.5, "LocalLSH", 8, 0,
+    "Livejournal", 0.5, "LocalLSH", 17, 0,
+    "Livejournal", 0.5, "TwoLevelLSH", 6, 10,
+    "Livejournal", 0.5, "TwoLevelLSH", 8, 10,
+    # ------------------------------------
+    "Orkut", 0.5, "Cartesian", 0, 0,
+    "Orkut", 0.5, "OneLevelLSH", 8, 0,
+    "Orkut", 0.5, "OneLevelLSH", 6, 0,
+    "Orkut", 0.5, "LocalLSH", 8, 0,
+    "Orkut", 0.5, "LocalLSH", 20, 0,
+    "Orkut", 0.5, "TwoLevelLSH", 4, 12,
+    "Orkut", 0.5, "TwoLevelLSH", 6, 12,
+)
+
+alldata <- table_sketches() %>%
+    filter(threshold == 0.5)
 
 nosketch <- alldata %>%
     filter(sketch_bits == 0) %>%
     select(dataset, threshold, algorithm, k, k2, nosketch_time = total_time)
 
 plotdata <- alldata %>%
-    filter(k2 %in% c(0, 6)) %>%
+    # filter(k2 %in% c(0, 6)) %>%
+    group_by(dataset, algorithm, threshold, k, k2, sketch_bits) %>%
+    slice_min(total_time) %>%
+    ungroup() %>%
     group_by(dataset, threshold, algorithm, k, k2) %>%
     mutate(is_best = total_time == min(total_time)) %>%
     ungroup() %>%
     group_by(dataset, threshold, algorithm) %>%
     mutate(is_algo_best = total_time == min(total_time)) %>%
     ungroup() %>%
-    inner_join(nosketch) %>%
-    mutate(sketch_speedup = nosketch_time / total_time)
+    # filter(dataset == "Livejournal", algorithm == "TwoLevelLSH") %>% select(k, k2, sketch_bits) %>%print()
+    semi_join(selectors)
 
 ## What is interesting in the visualization below, when considering
 ## algorithms that partition data according to LSH, is that using larger
 ## sketches results in higher running times, most likely because of the
 ## larger number of bits to be transmitted in a large number of iterations
-
-# plotdata %>%
-#     # filter(sketch_bits > 0) %>%
-#     ggplot(aes(
-#         x = interaction(sketch_bits, k2, k),
-#         y = set_units(total_time, "s") %>% drop_units(),
-#         group = interaction(k, k2),
-#     )) +
-#     geom_line() +
-#     geom_point(aes(color = is_algo_best)) +
-#     scale_y_log10() +
-#     scale_color_manual(values = c("black", "red")) +
-#     facet_grid(vars(dataset), vars(algorithm), scales = "free") +
-#     guides(color = FALSE, shape = FALSE) +
-#     labs(
-#         x = "params",
-#         y = "time (s)"
-#     ) +
-#     theme_paper() +
-#     theme(axis.text.x = element_text(angle = 90))
-
-# ggsave("imgs/sketches.png", width = 8, height = 4)
 
 plot_one_algo <- function(data, algorithm_name, groups, ylabs = FALSE, strip_text = FALSE) {
     active_groups <- data %>%
@@ -61,7 +76,7 @@ plot_one_algo <- function(data, algorithm_name, groups, ylabs = FALSE, strip_tex
         )) +
         geom_line() +
         geom_point(aes(color = is_algo_best)) +
-        geom_text_repel(aes(label=total_time %>% set_units("min") %>% drop_units() %>% scales::number(accuracy=1)), size=2) +
+        geom_text_repel(aes(label = total_time %>% set_units("min") %>% drop_units() %>% scales::number(accuracy = 1)), size = 2) +
         # Add transparent points from all the algorithms to align axes
         geom_point(
             data = data %>% filter({{ groups }} %in% active_groups),
@@ -135,12 +150,11 @@ p_two_round <- plotdata %>%
         groups = fct_reorder(str_c("k=", k), k)
     ) %>%
     plot_one_algo("TwoLevelLSH", groups, strip_text = T)
-    # labs(subtitle = TeX("with $k_2 = 6$"))
 
 (p_all2all | p_hu_et_al | p_one_round | p_two_round) +
     plot_layout(
         guides = "collect",
-        widths = c(1, 3, 3, 3)
+        widths = c(1, 2, 2, 2)
     ) &
     theme(
         text = element_text(size = 10),
@@ -164,4 +178,3 @@ ggsave("imgs/sketches.png", width = 10, height = 3)
 #     ) %>%
 #     select(dataset, threshold, loss64, loss128, loss256, loss512) %>%
 #     summarise(across(loss64:loss512, ~max(.x) %>% scales::percent(accuracy=0.001)))
-
