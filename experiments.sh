@@ -40,7 +40,7 @@ function baselines() {
 function dry_runs() {
   RECALL=0.8 # <-- required recall
 
-  for BASE_DATA in glove.twitter.27B.200d #sift-100-0.5 #Livejournal Orkut glove.twitter.27B.200d
+  for BASE_DATA in glove.twitter.27B.200d sift-100-0.5 Livejournal Orkut 
   do
     DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA.bin
     echo "Running on $DATASET"
@@ -48,7 +48,7 @@ function dry_runs() {
 
     SKETCH_BITS=0
 
-    for THRESHOLD in 0.5 # 0.7
+    for THRESHOLD in 0.5 # 0.5 0.7
     do
       if [[ $DATASET =~ "glove" ]]; then
         TIMEOUT=8000
@@ -59,7 +59,8 @@ function dry_runs() {
       fi
       echo "Timeout is $TIMEOUT"
 
-      for K in 4 6 8 10 12
+      for K in 2 3 #5  7  9  11 
+      # for K in 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20
       do
         for ALGORITHM in local-lsh one-level-lsh
         do
@@ -76,28 +77,187 @@ function dry_runs() {
             $DATASET
         done
 
-        # for K2 in 4
-        # do
-        #   danny \
-        #     --dry-run \
-        #     --timeout $TIMEOUT \
-        #     --hosts ~/hosts.txt \
-        #     --threads 8 \
-        #     --threshold $THRESHOLD \
-        #     --algorithm two-level-lsh \
-        #     --recall $RECALL \
-        #     --sketch-bits $SKETCH_BITS \
-        #     --k $K \
-        #     --k2 $K2 \
-        #     --repetition-batch 10000 \
-        #     $DATASET
-        # done
+        for K2 in 4 6 #8 10 12
+        do
+          danny \
+            --dry-run \
+            --timeout $TIMEOUT \
+            --hosts ~/hosts.txt \
+            --threads 8 \
+            --threshold $THRESHOLD \
+            --algorithm two-level-lsh \
+            --recall $RECALL \
+            --sketch-bits $SKETCH_BITS \
+            --k $K \
+            --k2 $K2 \
+            $DATASET
+        done
       done
     done
   done
 
 }
 
+
+
+# This set of experiments searches for the best configuration of parameters for all the different datasets.
+function sketch_best() {
+  # Glove
+  for SKETCH_BITS in 0 256 512
+  do
+    DATASET=/mnt/fast_storage/users/mcec/glove.twitter.27B.200d.bin
+    TIMEOUT=8000
+    THRESHOLD=0.5
+  #   danny \
+  #     --timeout $TIMEOUT \
+  #     --hosts ~/hosts.txt \
+  #     --threads 8 \
+  #     --threshold $THRESHOLD \
+  #     --algorithm local-lsh \
+  #     --recall 0.8 \
+  #     --sketch-bits $SKETCH_BITS \
+  #     --k 20 \
+  #     $DATASET
+    # danny \
+    #   --timeout $TIMEOUT \
+    #   --hosts ~/hosts.txt \
+    #   --threads 8 \
+    #   --threshold $THRESHOLD \
+    #   --algorithm one-level-lsh \
+    #   --recall 0.8 \
+    #   --sketch-bits $SKETCH_BITS \
+    #   --k 4 \
+    #   $DATASET
+    # danny \
+    #   --timeout $TIMEOUT \
+    #   --hosts ~/hosts.txt \
+    #   --threads 8 \
+    #   --threshold $THRESHOLD \
+    #   --algorithm two-level-lsh \
+    #   --recall 0.8 \
+    #   --sketch-bits $SKETCH_BITS \
+    #   --k 2 \
+    #   --k2 12 \
+    #   $DATASET
+  done
+  
+  # SIFT
+  for SKETCH_BITS in 0 256 512
+  do
+    DATASET=/mnt/fast_storage/users/mcec/sift-100-0.5.bin
+    TIMEOUT=8000
+    THRESHOLD=0.5
+#     danny \
+#       --timeout $TIMEOUT \
+#       --hosts ~/hosts.txt \
+#       --threads 8 \
+#       --threshold $THRESHOLD \
+#       --algorithm local-lsh \
+#       --recall 0.8 \
+#       --sketch-bits $SKETCH_BITS \
+#       --k 20 \
+#       $DATASET
+    # danny \
+    #   --timeout $TIMEOUT \
+    #   --hosts ~/hosts.txt \
+    #   --threads 8 \
+    #   --threshold $THRESHOLD \
+    #   --algorithm one-level-lsh \
+    #   --recall 0.8 \
+    #   --sketch-bits $SKETCH_BITS \
+    #   --k 6 \
+    #   $DATASET
+    # danny \
+    #   --timeout $TIMEOUT \
+    #   --hosts ~/hosts.txt \
+    #   --threads 8 \
+    #   --threshold $THRESHOLD \
+    #   --algorithm two-level-lsh \
+    #   --recall 0.8 \
+    #   --sketch-bits $SKETCH_BITS \
+    #   --k 3 \
+    #   --k2 12 \
+    #   $DATASET
+
+  done
+
+  # Livejournal
+  for SKETCH_BITS in 0 256 512
+  do
+    DATASET=/mnt/fast_storage/users/mcec/Livejournal.bin
+    TIMEOUT=8000
+    THRESHOLD=0.5
+    # danny \
+    #   --timeout $TIMEOUT \
+    #   --hosts ~/hosts.txt \
+    #   --threads 8 \
+    #   --threshold $THRESHOLD \
+    #   --algorithm local-lsh \
+    #   --recall 0.8 \
+    #   --sketch-bits $SKETCH_BITS \
+    #   --k 17 \
+    #   $DATASET
+    # danny \
+    #   --timeout $TIMEOUT \
+    #   --hosts ~/hosts.txt \
+    #   --threads 8 \
+    #   --threshold $THRESHOLD \
+    #   --algorithm one-level-lsh \
+    #   --recall 0.8 \
+    #   --sketch-bits $SKETCH_BITS \
+    #   --k 8 \
+    #   $DATASET
+    # danny \
+    #   --timeout $TIMEOUT \
+    #   --hosts ~/hosts.txt \
+    #   --threads 8 \
+    #   --threshold $THRESHOLD \
+    #   --algorithm two-level-lsh \
+    #   --recall 0.8 \
+    #   --sketch-bits $SKETCH_BITS \
+    #   --k 6 \
+    #   --k2 10 \
+    #   $DATASET
+  done
+
+  # Orkut
+  for SKETCH_BITS in 0 256 512
+  do
+    DATASET=/mnt/fast_storage/users/mcec/Orkut.bin
+    TIMEOUT=8000
+    # danny \
+    #   --timeout $TIMEOUT \
+    #   --hosts ~/hosts.txt \
+    #   --threads 8 \
+    #   --threshold $THRESHOLD \
+    #   --algorithm local-lsh \
+    #   --recall 0.8 \
+    #   --sketch-bits $SKETCH_BITS \
+    #   --k 20 \
+    #   $DATASET
+    # danny \
+    #   --timeout $TIMEOUT \
+    #   --hosts ~/hosts.txt \
+    #   --threads 8 \
+    #   --threshold $THRESHOLD \
+    #   --algorithm one-level-lsh \
+    #   --recall 0.8 \
+    #   --sketch-bits $SKETCH_BITS \
+    #   --k 6 \
+    #   $DATASET
+    # danny \
+    #   --timeout $TIMEOUT \
+    #   --hosts ~/hosts.txt \
+    #   --threads 8 \
+    #   --threshold $THRESHOLD \
+    #   --algorithm two-level-lsh \
+    #   --recall 0.8 \
+    #   --sketch-bits $SKETCH_BITS \
+    #   --k 4 \
+    #   --k2 12 \
+    #   $DATASET
+  done
+}
 
 # This set of experiments searches for the best configuration of parameters for all the different datasets.
 function search_best() {
@@ -563,5 +723,9 @@ case $1 in
 
   profiling)
     profiling
+    ;;
+
+  sketch_best)
+    sketch_best
     ;;
 esac
