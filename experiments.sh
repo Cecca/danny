@@ -59,10 +59,10 @@ function dry_runs() {
       fi
       echo "Timeout is $TIMEOUT"
 
-      for K in 2 3 #5  7  9  11 
-      # for K in 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20
+      # for K in 2 3 #5  7  9  11 
+      for K in 2 3 4 5 6 8 10 12 #13 14 15 16 17 18 19 20
       do
-        for ALGORITHM in local-lsh one-level-lsh
+        for ALGORITHM in one-level-lsh #local-lsh one-level-lsh
         do
           danny \
             --dry-run \
@@ -77,7 +77,7 @@ function dry_runs() {
             $DATASET
         done
 
-        for K2 in 4 6 #8 10 12
+        for K2 in 8 10 12
         do
           danny \
             --dry-run \
