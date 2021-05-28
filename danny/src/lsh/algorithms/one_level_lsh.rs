@@ -249,7 +249,7 @@ where
                             }
                         }
                     }
-                    info!(
+                    debug!(
                     "Candidates {}: Emitted {} / Sketch discarded {} / Duplicates {} / Similarity discarded {} / Self pairs {} in {:?} ({})",
                     candidate_pairs,
                     cnt,
