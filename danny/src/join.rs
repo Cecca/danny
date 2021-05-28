@@ -203,7 +203,7 @@ where
                         processor_allocations.iter().map(|p| p.len()).collect();
 
                     info!("Processor allocation: {:?}", processor_allocs_size);
-                    assert!(processor_allocs_size.iter().all(|size| size > &0));
+                    // assert!(processor_allocs_size.iter().all(|size| size > &0));
                     let mut subproblem_allocations = HashMap::new();
                     for (p, allocs) in processor_allocations.into_iter().enumerate() {
                         for (key, subproblem_key, marker) in allocs {
