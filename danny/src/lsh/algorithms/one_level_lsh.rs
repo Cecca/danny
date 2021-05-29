@@ -185,19 +185,27 @@ where
                 Balance::Load,
                 move |((repetition, _hash), subproblem_key), values| {
                     let mut cnt = 0usize;
-                    let mut candidate_pairs = 0usize;
+                    let candidate_pairs = if subproblem_key.on_diagonal() {
+                        let n = values.len();
+                        n * (n+1) / 2
+                    } else {
+                        let l = values.iter().filter(|t| t.0.keep_left()).count();
+                        let r = values.iter().filter(|t| t.0.keep_right()).count();
+                        l * r
+                    };
+                    let mut candidate_pairs_check = 0;
                     let mut self_pairs_discarded = 0;
                     let mut similarity_discarded = 0;
                     let mut sketch_discarded = 0;
                     let mut duplicate_cnt = 0usize;
                     let start = Instant::now();
 
-                    if subproblem_key.on_diagonal() {
-                        for (i, (_, (lk, l_pool, l_sketch, l))) in values.iter().enumerate() {
-                            for (_, (rk, r_pool, r_sketch, r)) in values[i..].iter() {
-                                candidate_pairs += 1;
-                                if lk != rk {
-                                    if !dry_run {
+                    if !dry_run {
+                        if subproblem_key.on_diagonal() {
+                            for (i, (_, (lk, l_pool, l_sketch, l))) in values.iter().enumerate() {
+                                for (_, (rk, r_pool, r_sketch, r)) in values[i..].iter() {
+                                    candidate_pairs_check += 1;
+                                    if lk != rk {
                                         if sketch_predicate.eval(l_sketch, r_sketch) {
                                             if !hasher.already_seen(l_pool, r_pool, repetition) {
                                                 if sim_pred(l, r) {
@@ -211,55 +219,54 @@ where
                                         } else {
                                             sketch_discarded += 1;
                                         }
+                                    } else {
+                                        self_pairs_discarded += 1;
                                     }
-                                } else {
-                                    self_pairs_discarded += 1;
                                 }
                             }
-                        }
-                    } else {
-                        for (l_marker, (lk, l_pool, l_sketch, l)) in values.iter() {
-                            if l_marker.keep_left() {
-                                for (r_marker, (rk, r_pool, r_sketch, r)) in values.iter() {
-                                    if r_marker.keep_right() {
-                                        candidate_pairs += 1;
-                                        if lk != rk {
-                                            if !dry_run {
-                                                if sketch_predicate.eval(l_sketch, r_sketch) {
-                                                    if !hasher
-                                                        .already_seen(l_pool, r_pool, repetition)
-                                                    {
-                                                        if sim_pred(l, r) {
-                                                            cnt += 1;
+                        } else {
+                            for (l_marker, (lk, l_pool, l_sketch, l)) in values.iter() {
+                                if l_marker.keep_left() {
+                                    for (r_marker, (rk, r_pool, r_sketch, r)) in values.iter() {
+                                        if r_marker.keep_right() {
+                                            candidate_pairs_check += 1;
+                                            if lk != rk {
+                                                    if sketch_predicate.eval(l_sketch, r_sketch) {
+                                                        if !hasher
+                                                            .already_seen(l_pool, r_pool, repetition)
+                                                        {
+                                                            if sim_pred(l, r) {
+                                                                cnt += 1;
+                                                            } else {
+                                                                similarity_discarded += 1;
+                                                            }
                                                         } else {
-                                                            similarity_discarded += 1;
+                                                            duplicate_cnt += 1;
                                                         }
                                                     } else {
-                                                        duplicate_cnt += 1;
+                                                        sketch_discarded += 1;
                                                     }
-                                                } else {
-                                                    sketch_discarded += 1;
-                                                }
+                                            } else {
+                                                self_pairs_discarded += 1;
                                             }
-                                        } else {
-                                            self_pairs_discarded += 1;
                                         }
                                     }
                                 }
                             }
                         }
+                        assert!(candidate_pairs == candidate_pairs_check);
                     }
                     debug!(
-                    "Candidates {}: Emitted {} / Sketch discarded {} / Duplicates {} / Similarity discarded {} / Self pairs {} in {:?} ({})",
-                    candidate_pairs,
-                    cnt,
-                    sketch_discarded,
-                    duplicate_cnt,
-                    similarity_discarded,
-                    self_pairs_discarded,
-                    Instant::now() - start,
-                    proc_mem!(),
-                );
+                        "Candidates {}: Emitted {} / Sketch discarded {} / Duplicates {} / Similarity discarded {} / Self pairs {} in {:?} ({})",
+                        candidate_pairs,
+                        cnt,
+                        sketch_discarded,
+                        duplicate_cnt,
+                        similarity_discarded,
+                        self_pairs_discarded,
+                        Instant::now() - start,
+                        proc_mem!(),
+                    );
                     log_event!(
                         logger,
                         (LogEvent::SketchDiscarded(repetition), sketch_discarded)
