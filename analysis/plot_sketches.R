@@ -189,3 +189,20 @@ ggsave("imgs/sketches.png", width = 10, height = 5)
 #     ) %>%
 #     select(dataset, threshold, loss64, loss128, loss256, loss512) %>%
 #     summarise(across(loss64:loss512, ~max(.x) %>% scales::percent(accuracy=0.001)))
+
+table_sketch_quality() %>%
+    filter(sketch_bits > 0) %>%
+    select(dataset, threshold, sketch_bits, lost_pairs, lost_fraction) %>%
+    ggplot(aes(x = factor(sketch_bits), y = lost_fraction)) +
+    geom_point() +
+    geom_segment(aes(xend = factor(sketch_bits)), yend = 0) +
+    geom_hline(yintercept = 0.01) +
+    scale_y_continuous(labels = scales::percent_format()) +
+    labs(
+        x = "sketch bits",
+        y = "false negative rate"
+    ) +
+    facet_wrap(vars(dataset, threshold), ncol = 8) +
+    theme_paper()
+
+ggsave("imgs/sketch_loss.png", width = 10, height = 2)

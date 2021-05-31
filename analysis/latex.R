@@ -27,8 +27,8 @@ latex_table_best <- function(data) {
                 format = "latex"
             ),
             # more compact names
-            algorithm = str_remove(algorithm, "LSH"),
-            dataset = if_else(dataset == "Livejournal", "LJ", as.character(dataset))
+            # algorithm = str_remove(algorithm, "LSH"),
+            # dataset = if_else(dataset == "Livejournal", "LJ", as.character(dataset))
         ) %>%
         ungroup() %>%
         select(dataset, threshold, algorithm, total_time, recall, k, sketch_bits) %>%
@@ -40,7 +40,7 @@ latex_table_best <- function(data) {
         ) %>%
         kbl(
             format = "latex",
-            align = "ll rrll rrll",
+            align = c("l", "l", "r", "r", "l", "l", "r", "r", "l", "l"),
             escape = F,
             booktabs = T,
             linesep = c("", "", "", "\\addlinespace"),

@@ -101,7 +101,7 @@ plot_counters <- function(data, t, ylabels = FALSE) {
 }
 
 (plot_counters(plotdata, 0.5, ylabels = TRUE) | plot_counters(plotdata, 0.7)) / guide_area() +
-    plot_layout(guides = "collect", heights = c(3, 1))
+    plot_layout(guides = "collect", heights = c(10, 1))
 
 ggsave("imgs/counters.png", width = 8, height = 5)
 
