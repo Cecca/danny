@@ -34,6 +34,7 @@ plot_counters <- function(data, t, ylabels = FALSE) {
         y = fraction_candidates,
         color = algorithm
     )) +
+        geom_line(size=0.4, alpha=0.5, position=position_dodge(width=0.5)) +
         geom_point(size = 0.5, position = position_dodge(width = 0.5)) +
         geom_hline(
             yintercept = 1,
@@ -75,6 +76,7 @@ plot_counters <- function(data, t, ylabels = FALSE) {
         y = Load,
         color = algorithm
     )) +
+        geom_line(size=0.4, alpha=0.5, position=position_dodge(width=0.5)) +
         geom_point(size=0.5, position = position_dodge(width = 0.5)) +
         facet_wrap(vars(dataset), ncol = 4) +
         labs(

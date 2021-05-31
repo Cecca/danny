@@ -9,7 +9,7 @@ all: imgs/dep_k.png imgs/sketches.png tex/best.tex tex/info.tex
 build-docker: Dockerfile
 	docker build -t ${DOCKER_CONTAINER} .
 
-imgs/dep_k.png: plot_k_dep.R tables.R danny-results.sqlite
+imgs/counters.png: plot_k_dep.R tables.R danny-results.sqlite
 	${RSCRIPT} plot_k_dep.R
 
 imgs/plot_subproblem_size.png: plot_subproblem_size.R tables.R danny-results.sqlite
