@@ -183,11 +183,14 @@ latex_bench <- function() {
 latex_motivation <- function(data) {
     data %>%
         filter(
+            !dry_run,
             algorithm == "OneLevelLSH",
             sketch_bits == 0,
             required_recall == 0.8,
-            threshold == 0.5
+            threshold == 0.7
         ) %>%
+        drop_na(Load, total_time) %>%
+        mutate(total_time = set_units(total_time, "min")) %>%
         select(dataset, k, total_time, Load) %>%
         arrange(k) %>%
         group_by(dataset) %>%
@@ -196,21 +199,22 @@ latex_motivation <- function(data) {
                 total_time == min(total_time) ~ "practical",
                 Load == min(Load) ~ "theoretical"
             ),
-            total_time = set_units(total_time, "s") %>% drop_units() %>% scales::number(accuracy = 1)
+            total_time = drop_units(total_time) %>% scales::number(accuracy = 0.1),
+            Load = scales::number(Load, big.mark = "\\\\,")
         ) %>%
-        drop_na() %>%
-        arrange(dataset, Load) %>%
         select(dataset, kind, total_time, Load) %>%
+        drop_na(kind) %>%
+        arrange(dataset, Load) %>%
         kbl(
             format = "latex", booktabs = T, escape = F,
             linesep = "",
             col.names = c(
-                "", "", "time (s)", "load"
+                "", "", "time (min)", "load"
             )
         ) %>%
         collapse_rows(columns = 1, latex_hline = "major")
 }
 
-table_search_best() %>%
-    latex_motivation() %>%
+best <- table_search_best()
+latex_motivation(best) %>%
     write_file("tex/motivation.tex")

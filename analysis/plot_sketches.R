@@ -34,7 +34,10 @@ selectors <- tribble(
     "Orkut", 0.5, "LocalLSH", 20, 0,
     "Orkut", 0.5, "TwoLevelLSH", 4, 12,
     "Orkut", 0.5, "TwoLevelLSH", 6, 12,
-)
+) %>%
+    group_by(dataset, threshold, algorithm, k, k2) %>%
+    summarise(sketch_bits = c(0, 256, 512)) %>%
+    ungroup()
 
 alldata <- table_sketches() %>%
     filter(threshold == 0.5)
@@ -55,9 +58,11 @@ plotdata <- alldata %>%
     mutate(is_algo_best = total_time == min(total_time)) %>%
     ungroup() %>%
     # filter(dataset == "Livejournal", algorithm == "TwoLevelLSH") %>% select(k, k2, sketch_bits) %>%print()
-    semi_join(selectors)
+    right_join(selectors)
 
 ranges <- plotdata %>%
+    select(dataset, threshold, total_time) %>%
+    drop_na() %>%
     group_by(dataset, threshold) %>%
     summarise(
         range = list(range(drop_units(set_units(total_time, "min"))))

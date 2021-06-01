@@ -9,7 +9,7 @@ plotdata <- table_search_best() %>%
     ) %>%
     group_by(dataset, algorithm, threshold) %>%
     mutate(
-        ismin = total_time == min(total_time)
+        ismin = fraction_candidates == min(fraction_candidates)
     )
 
 plot_counters <- function(data, t, ylabels = FALSE) {
@@ -34,8 +34,9 @@ plot_counters <- function(data, t, ylabels = FALSE) {
         y = fraction_candidates,
         color = algorithm
     )) +
-        geom_line(size=0.4, alpha=0.5, position=position_dodge(width=0.5)) +
+        geom_line(size = 0.4, alpha = 0.5, position = position_dodge(width = 0.5)) +
         geom_point(size = 0.5, position = position_dodge(width = 0.5)) +
+        # geom_rug(data = function (d) filter(d, ismin)) +
         geom_hline(
             yintercept = 1,
             linetype = "dashed",
@@ -76,8 +77,8 @@ plot_counters <- function(data, t, ylabels = FALSE) {
         y = Load,
         color = algorithm
     )) +
-        geom_line(size=0.4, alpha=0.5, position=position_dodge(width=0.5)) +
-        geom_point(size=0.5, position = position_dodge(width = 0.5)) +
+        geom_line(size = 0.4, alpha = 0.5, position = position_dodge(width = 0.5)) +
+        geom_point(size = 0.5, position = position_dodge(width = 0.5)) +
         facet_wrap(vars(dataset), ncol = 4) +
         labs(
             y = "load"
@@ -103,7 +104,12 @@ plot_counters <- function(data, t, ylabels = FALSE) {
 (plot_counters(plotdata, 0.5, ylabels = TRUE) | plot_counters(plotdata, 0.7)) / guide_area() +
     plot_layout(guides = "collect", heights = c(10, 1))
 
-ggsave("imgs/counters.png", width = 8, height = 5)
+ggsave("imgs/counters.png", width = 8, height = 4)
+
+plotdata %>%
+    filter(dataset == "Orkut", threshold == 0.7, algorithm == "OneLevelLSH") %>%
+    select(k, fraction_candidates, Load) %>%
+    arrange(Load)
 
 # plot_threshold <- function(data, t, ytitle = TRUE, yticks = TRUE, title = TRUE) {
 #     baseline <- filter(data, algorithm == "Cartesian") %>%
