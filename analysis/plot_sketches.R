@@ -2,40 +2,40 @@ source("tables.R")
 source("plots.R")
 
 selectors <- tribble(
-    ~dataset, ~threshold, ~algorithm, ~k, ~k2,
-    "Glove", 0.5, "Cartesian", 0, 0,
-    "Glove", 0.5, "OneLevelLSH", 4, 0,
-    "Glove", 0.5, "OneLevelLSH", 6, 0,
-    "Glove", 0.5, "LocalLSH", 8, 0,
-    "Glove", 0.5, "LocalLSH", 20, 0,
-    "Glove", 0.5, "TwoLevelLSH", 4, 12,
-    "Glove", 0.5, "TwoLevelLSH", 3, 12,
+    ~dataset, ~threshold, ~algorithm, ~k, ~k2, ~opt,
+    "Glove", 0.5, "Cartesian", 0, 0, T,
+    "Glove", 0.5, "OneLevelLSH", 4, 0, F,
+    "Glove", 0.5, "OneLevelLSH", 6, 0, T,
+    "Glove", 0.5, "LocalLSH", 8, 0, F,
+    "Glove", 0.5, "LocalLSH", 20, 0, T,
+    "Glove", 0.5, "TwoLevelLSH", 4, 12, F,
+    "Glove", 0.5, "TwoLevelLSH", 3, 12, T,
     # ------------------------------------
-    "SIFT", 0.5, "Cartesian", 0, 0,
-    "SIFT", 0.5, "OneLevelLSH", 6, 0,
-    "SIFT", 0.5, "OneLevelLSH", 8, 0,
-    "SIFT", 0.5, "LocalLSH", 8, 0,
-    "SIFT", 0.5, "LocalLSH", 20, 0,
-    "SIFT", 0.5, "TwoLevelLSH", 4, 12,
-    "SIFT", 0.5, "TwoLevelLSH", 3, 12,
+    "SIFT", 0.5, "Cartesian", 0, 0, T,
+    "SIFT", 0.5, "OneLevelLSH", 6, 0, F,
+    "SIFT", 0.5, "OneLevelLSH", 8, 0, T,
+    "SIFT", 0.5, "LocalLSH", 8, 0, F,
+    "SIFT", 0.5, "LocalLSH", 20, 0, T,
+    "SIFT", 0.5, "TwoLevelLSH", 4, 12, F,
+    "SIFT", 0.5, "TwoLevelLSH", 3, 12, T,
     # ------------------------------------
-    "Livejournal", 0.5, "Cartesian", 0, 0,
-    "Livejournal", 0.5, "OneLevelLSH", 8, 0,
-    "Livejournal", 0.5, "OneLevelLSH", 6, 0,
-    "Livejournal", 0.5, "LocalLSH", 8, 0,
-    "Livejournal", 0.5, "LocalLSH", 17, 0,
-    "Livejournal", 0.5, "TwoLevelLSH", 4, 12,
-    "Livejournal", 0.5, "TwoLevelLSH", 6, 12,
+    "Livejournal", 0.5, "Cartesian", 0, 0, T,
+    "Livejournal", 0.5, "OneLevelLSH", 8, 0, T,
+    "Livejournal", 0.5, "OneLevelLSH", 6, 0, F,
+    "Livejournal", 0.5, "LocalLSH", 8, 0, F,
+    "Livejournal", 0.5, "LocalLSH", 17, 0, T,
+    "Livejournal", 0.5, "TwoLevelLSH", 4, 12, T,
+    "Livejournal", 0.5, "TwoLevelLSH", 6, 12, F,
     # ------------------------------------
-    "Orkut", 0.5, "Cartesian", 0, 0,
-    "Orkut", 0.5, "OneLevelLSH", 8, 0,
-    "Orkut", 0.5, "OneLevelLSH", 6, 0,
-    "Orkut", 0.5, "LocalLSH", 8, 0,
-    "Orkut", 0.5, "LocalLSH", 20, 0,
-    "Orkut", 0.5, "TwoLevelLSH", 4, 12,
-    "Orkut", 0.5, "TwoLevelLSH", 6, 12,
+    "Orkut", 0.5, "Cartesian", 0, 0, T,
+    "Orkut", 0.5, "OneLevelLSH", 8, 0, T,
+    "Orkut", 0.5, "OneLevelLSH", 6, 0, F,
+    "Orkut", 0.5, "LocalLSH", 8, 0, F,
+    "Orkut", 0.5, "LocalLSH", 20, 0, T,
+    "Orkut", 0.5, "TwoLevelLSH", 4, 12, T,
+    "Orkut", 0.5, "TwoLevelLSH", 6, 12, F
 ) %>%
-    group_by(dataset, threshold, algorithm, k, k2) %>%
+    group_by(dataset, threshold, algorithm, k, k2, opt) %>%
     summarise(sketch_bits = c(0, 256, 512)) %>%
     ungroup()
 
@@ -145,25 +145,36 @@ plot_one_algo <- function(data, algorithm_name, groups, ylabs = FALSE, strip_tex
         doplot("Orkut")
 }
 
+create_groups <- function(data) {
+    data %>%
+        mutate(
+            lab = if_else(opt, str_c("*k=", k), str_c("k=", k)),
+            groups = fct_reorder(lab, k)
+        )
+}
+
 p_all2all <- plotdata %>%
     plot_one_algo("Cartesian", "", ylabs = T)
 
 p_hu_et_al <- plotdata %>%
-    mutate(
-        groups = fct_reorder(str_c("k=", k), k)
-    ) %>%
+    create_groups() %>%
+    # mutate(
+    #     groups = fct_reorder(str_c("k=", k), k)
+    # ) %>%
     plot_one_algo("OneLevelLSH", groups)
 
 p_one_round <- plotdata %>%
-    mutate(
-        groups = fct_reorder(str_c("k=", k), k)
-    ) %>%
+    create_groups() %>%
+    # mutate(
+    #     groups = fct_reorder(str_c("k=", k), k)
+    # ) %>%
     plot_one_algo("LocalLSH", groups)
 
 p_two_round <- plotdata %>%
-    mutate(
-        groups = fct_reorder(str_c("k=", k), k)
-    ) %>%
+    create_groups() %>%
+    # mutate(
+    #     groups = fct_reorder(str_c("k=", k), k)
+    # ) %>%
     plot_one_algo("TwoLevelLSH", groups, strip_text = T)
 
 

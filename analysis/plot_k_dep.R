@@ -65,7 +65,7 @@ plot_counters <- function(data, t, ylabels = FALSE) {
         scale_y_continuous(limits = c(0, max(maxy, 1.2))) +
         theme_paper() +
         theme(
-            title = element_text(size = 9),
+            title = element_text(size = 7),
             axis.title.x = element_blank(),
             axis.text.x = element_blank(),
             axis.title.y = ytext,
@@ -99,6 +99,7 @@ plot_counters <- function(data, t, ylabels = FALSE) {
     #     guides = "collect",
     #     heights = c(2, 2, 1)
     # )
+    # list(candidates = p_candidates, load = p_load)
 }
 
 (plot_counters(plotdata, 0.5, ylabels = TRUE) | plot_counters(plotdata, 0.7)) / guide_area() +

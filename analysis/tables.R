@@ -31,6 +31,33 @@ recode_algorithms <- function(data) {
     )
 }
 
+add_messages_size <- function(data) {
+  data %>%
+    mutate(
+      sketch_bytes_per_element = sketch_bits / 8,
+      id_bytes_per_element = 4, # 32 bits
+      data_bytes_per_element = case_when(
+        dataset == "SIFT" ~ 128 * 4,
+        dataset == "Glove" ~ 200 * 4,
+        dataset == "Livejournal" ~ 32 * 4, # average length 32
+        dataset == "Orkut" ~ 117 * 4, # average length 117
+        T ~ 0
+      ),
+      # sqrt(k) * 2 * sizeof(u16)
+      pools_bytes_per_element = 4 * (ceiling(sqrt(k)) + ceiling(sqrt(k2))),
+      bytes_per_element = 
+        sketch_bytes_per_element +
+        id_bytes_per_element +
+        data_bytes_per_element +
+        pools_bytes_per_element,
+      load_bytes = bytes_per_element * Load,
+      sketch_bytes_fraction = sketch_bytes_per_element / bytes_per_element,
+      id_bytes_fraction = id_bytes_per_element / bytes_per_element,
+      data_bytes_fraction = data_bytes_per_element / bytes_per_element,
+      pools_bytes_fraction = pools_bytes_per_element / bytes_per_element
+    )
+}
+
 table_sketch_quality <- function() {
     db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
     # The load is the maximum load among all the workers in a given experiment
@@ -133,11 +160,8 @@ table_search_best <- function() {
         select(dataset, threshold, baseline_output_size = output_size)
 
     all <- inner_join(all, baselines) %>%
-        mutate(recall = output_size / baseline_output_size)
-
-    all %>%
-        filter(is.null(output_size)) %>%
-        print()
+        mutate(recall = output_size / baseline_output_size) %>%
+        add_messages_size()
 
     DBI::dbDisconnect(db)
     all
