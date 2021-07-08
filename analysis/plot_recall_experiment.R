@@ -46,7 +46,7 @@ plotdata %>%
     geom_point(aes(x = recall)) +
     scale_size_continuous(range = c(0.1, 1.2)) +
     scale_y_log10() +
-    facet_wrap(vars(dataset), ncol = 4) +
+    facet_wrap(vars(dataset), ncol = 2) +
     labs(
         x = "recall",
         y = "time (s)"

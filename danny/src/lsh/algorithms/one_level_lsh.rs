@@ -26,13 +26,22 @@ use timely::progress::Timestamp;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
-pub const HU_ET_AL_VERSION: u8 = 3;
+pub const ONE_LEVEL_LSH_VERSION: u8 = 10;
+
+impl<S: SketchData, D: ExchangeData> KeyPayload for (ElementId, TensorPool, S, D) {
+    type Key = ElementId;
+    type Value = (D, S, TensorPool);
+    fn split_payload(self) -> (Self::Key, Self::Value) {
+        (self.0, (self.3, self.2, self.1))
+    }
+}
 
 pub fn source_hashed_one_round<G, T, D, S, F>(
     scope: &G,
     global_vecs: Arc<Vec<(ElementId, D)>>,
     hash_fns: Arc<TensorCollection<F>>,
     sketcher: Arc<S>,
+    batch: usize,
 ) -> Stream<G, ((usize, u32), (ElementId, TensorPool, S::Output, D))>
 where
     G: Scope<Timestamp = T>,
@@ -77,30 +86,33 @@ where
 
     source(scope, "hashed source one round", move |capability| {
         let mut cap = Some(capability);
+        let mut current_repetition = 0;
         move |output| {
             let mut done = false;
             if let Some(cap) = cap.as_mut() {
-                for current_repetition in 0..repetitions {
-                    stopwatch.maybe_stop();
-                    stopwatch.start();
-                    if worker == 0 {
-                        debug!("Repetition {} (Hu et al. baseline)", current_repetition,);
-                    }
-                    let mut session = output.session(&cap);
-                    for (k, v) in vecs.iter() {
-                        let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
-                        session.give((
-                            (current_repetition, h),
-                            (
-                                k.clone(),
-                                bit_pools[k].clone(),
-                                sketches[k].clone(),
-                                v.clone(),
-                            ),
-                        ));
-                    }
+                stopwatch.maybe_stop();
+                stopwatch.start();
+                if worker == 0 {
+                    debug!("Repetition {} (Hu et al. baseline)", current_repetition,);
                 }
-                done = true;
+                let mut session = output.session(&cap);
+                for (k, v) in vecs.iter() {
+                    let h = hash_fns.hash(&bit_pools[k], current_repetition as usize);
+                    session.give((
+                        (current_repetition, h),
+                        (
+                            k.clone(),
+                            bit_pools[k].clone(),
+                            sketches[k].clone(),
+                            v.clone(),
+                        ),
+                    ));
+                }
+                current_repetition += 1;
+                if current_repetition % batch == 0 {
+                    cap.downgrade(&cap.time().succ());
+                }
+                done = current_repetition == repetitions;
             }
 
             if done {
@@ -112,7 +124,7 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn hu_baseline<D, F, H, S, V, B, R>(
+pub fn one_level_lsh<D, F, H, S, V, B, R>(
     worker: &mut Worker<Allocator>,
     left_path: &str,
     range: f64,
@@ -139,8 +151,7 @@ where
     let result = Rc::new(RefCell::new(0usize));
     let result_read = Rc::clone(&result);
 
-    let no_dedup = config.no_dedup;
-    let no_verify = config.no_verify;
+    let dry_run = config.dry_run;
 
     let vectors = Arc::new(load_for_worker::<D, _>(
         worker.index(),
@@ -166,6 +177,7 @@ where
             Arc::clone(&vectors),
             Arc::clone(&hasher),
             Arc::clone(&sketcher),
+            config.repetition_batch,
         );
 
         hashes
@@ -173,76 +185,111 @@ where
                 Balance::Load,
                 move |((repetition, _hash), subproblem_key), values| {
                     let mut cnt = 0usize;
-                    let mut candidate_pairs = 0usize;
+                    let candidate_pairs = if subproblem_key.on_diagonal() {
+                        let n = values.len();
+                        n * (n+1) / 2
+                    } else {
+                        let l = values.iter().filter(|t| t.0.keep_left()).count();
+                        let r = values.iter().filter(|t| t.0.keep_right()).count();
+                        l * r
+                    };
+                    let mut candidate_pairs_check = 0;
+                    let mut self_pairs_discarded = 0;
                     let mut similarity_discarded = 0;
                     let mut sketch_discarded = 0;
                     let mut duplicate_cnt = 0usize;
                     let start = Instant::now();
 
-                    if subproblem_key.on_diagonal() {
-                        for (i, (_, (_l, l_pool, l_sketch, l))) in values.iter().enumerate() {
-                            for (_, (_r, r_pool, r_sketch, r)) in values[i..].iter() {
-                                candidate_pairs += 1;
-                                if sketch_predicate.eval(l_sketch, r_sketch) {
-                                    if no_verify || sim_pred(l, r) {
-                                        if no_dedup
-                                            || !hasher.already_seen(l_pool, r_pool, repetition)
-                                        {
-                                            cnt += 1;
-                                        } else {
-                                            duplicate_cnt += 1;
-                                        }
-                                    } else {
-                                        similarity_discarded += 1;
-                                    }
-                                } else {
-                                    sketch_discarded += 1;
-                                }
-                            }
-                        }
-                    } else {
-                        for (l_marker, (_l, l_pool, l_sketch, l)) in values.iter() {
-                            if l_marker.keep_left() {
-                                for (r_marker, (_r, r_pool, r_sketch, r)) in values.iter() {
-                                    if r_marker.keep_right() {
-                                        candidate_pairs += 1;
+                    if !dry_run {
+                        if subproblem_key.on_diagonal() {
+                            for (i, (_, (lk, l_pool, l_sketch, l))) in values.iter().enumerate() {
+                                for (_, (rk, r_pool, r_sketch, r)) in values[i..].iter() {
+                                    candidate_pairs_check += 1;
+                                    if lk != rk {
                                         if sketch_predicate.eval(l_sketch, r_sketch) {
-                                            if no_verify || sim_pred(l, r) {
-                                                if no_dedup
-                                                    || !hasher
-                                                        .already_seen(l_pool, r_pool, repetition)
-                                                {
+                                            if !hasher.already_seen(l_pool, r_pool, repetition) {
+                                                if sim_pred(l, r) {
                                                     cnt += 1;
                                                 } else {
-                                                    duplicate_cnt += 1;
+                                                    similarity_discarded += 1;
                                                 }
                                             } else {
-                                                similarity_discarded += 1;
+                                                duplicate_cnt += 1;
                                             }
                                         } else {
                                             sketch_discarded += 1;
                                         }
+                                    } else {
+                                        self_pairs_discarded += 1;
+                                    }
+                                }
+                            }
+                        } else {
+                            for (l_marker, (lk, l_pool, l_sketch, l)) in values.iter() {
+                                if l_marker.keep_left() {
+                                    for (r_marker, (rk, r_pool, r_sketch, r)) in values.iter() {
+                                        if r_marker.keep_right() {
+                                            candidate_pairs_check += 1;
+                                            if lk != rk {
+                                                    if sketch_predicate.eval(l_sketch, r_sketch) {
+                                                        if !hasher
+                                                            .already_seen(l_pool, r_pool, repetition)
+                                                        {
+                                                            if sim_pred(l, r) {
+                                                                cnt += 1;
+                                                            } else {
+                                                                similarity_discarded += 1;
+                                                            }
+                                                        } else {
+                                                            duplicate_cnt += 1;
+                                                        }
+                                                    } else {
+                                                        sketch_discarded += 1;
+                                                    }
+                                            } else {
+                                                self_pairs_discarded += 1;
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
+                        assert!(candidate_pairs == candidate_pairs_check);
                     }
                     debug!(
-                    "Candidates {}: Emitted {} / Sketch discarded {} / Duplicates {} in {:?} ({})",
-                    candidate_pairs,
-                    cnt,
-                    sketch_discarded,
-                    duplicate_cnt,
-                    Instant::now() - start,
-                    proc_mem!(),
-                );
+                        "Candidates {}: Emitted {} / Sketch discarded {} / Duplicates {} / Similarity discarded {} / Self pairs {} in {:?} ({})",
+                        candidate_pairs,
+                        cnt,
+                        sketch_discarded,
+                        duplicate_cnt,
+                        similarity_discarded,
+                        self_pairs_discarded,
+                        Instant::now() - start,
+                        proc_mem!(),
+                    );
                     log_event!(
                         logger,
                         (LogEvent::SketchDiscarded(repetition), sketch_discarded)
                     );
-                    log_event!(logger, (LogEvent::CandidatePairs(repetition), candidate_pairs));
+                    log_event!(
+                        logger,
+                        (
+                            LogEvent::SelfPairsDiscarded(repetition),
+                            self_pairs_discarded
+                        )
+                    );
+                    log_event!(
+                        logger,
+                        (LogEvent::CandidatePairs(repetition), candidate_pairs)
+                    );
                     log_event!(logger, (LogEvent::OutputPairs(repetition), cnt));
-                    log_event!(logger, (LogEvent::SimilarityDiscarded(repetition), similarity_discarded));
+                    log_event!(
+                        logger,
+                        (
+                            LogEvent::SimilarityDiscarded(repetition),
+                            similarity_discarded
+                        )
+                    );
                     log_event!(
                         logger,
                         (LogEvent::DuplicatesDiscarded(repetition), duplicate_cnt)

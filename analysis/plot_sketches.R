@@ -1,143 +1,187 @@
 source("tables.R")
 source("plots.R")
 
-alldata <- table_search_best() %>%
-    filter(threshold == 0.5) %>%
-    filter(k %in% c(0, 4,6,8))
+selectors <- tribble(
+    ~dataset, ~threshold, ~algorithm, ~k, ~k2, ~opt,
+    "Glove", 0.5, "Cartesian", 0, 0, T,
+    "Glove", 0.5, "OneLevelLSH", 4, 0, F,
+    "Glove", 0.5, "OneLevelLSH", 6, 0, T,
+    "Glove", 0.5, "LocalLSH", 8, 0, F,
+    "Glove", 0.5, "LocalLSH", 20, 0, T,
+    "Glove", 0.5, "TwoLevelLSH", 4, 12, F,
+    "Glove", 0.5, "TwoLevelLSH", 3, 12, T,
+    # ------------------------------------
+    "SIFT", 0.5, "Cartesian", 0, 0, T,
+    "SIFT", 0.5, "OneLevelLSH", 6, 0, F,
+    "SIFT", 0.5, "OneLevelLSH", 8, 0, T,
+    "SIFT", 0.5, "LocalLSH", 8, 0, F,
+    "SIFT", 0.5, "LocalLSH", 20, 0, T,
+    "SIFT", 0.5, "TwoLevelLSH", 4, 12, F,
+    "SIFT", 0.5, "TwoLevelLSH", 3, 12, T,
+    # ------------------------------------
+    "Livejournal", 0.5, "Cartesian", 0, 0, T,
+    "Livejournal", 0.5, "OneLevelLSH", 8, 0, T,
+    "Livejournal", 0.5, "OneLevelLSH", 6, 0, F,
+    "Livejournal", 0.5, "LocalLSH", 8, 0, F,
+    "Livejournal", 0.5, "LocalLSH", 17, 0, T,
+    "Livejournal", 0.5, "TwoLevelLSH", 4, 12, T,
+    "Livejournal", 0.5, "TwoLevelLSH", 6, 12, F,
+    # ------------------------------------
+    "Orkut", 0.5, "Cartesian", 0, 0, T,
+    "Orkut", 0.5, "OneLevelLSH", 8, 0, T,
+    "Orkut", 0.5, "OneLevelLSH", 6, 0, F,
+    "Orkut", 0.5, "LocalLSH", 8, 0, F,
+    "Orkut", 0.5, "LocalLSH", 20, 0, T,
+    "Orkut", 0.5, "TwoLevelLSH", 4, 12, T,
+    "Orkut", 0.5, "TwoLevelLSH", 6, 12, F
+) %>%
+    group_by(dataset, threshold, algorithm, k, k2, opt) %>%
+    summarise(sketch_bits = c(0, 256, 512)) %>%
+    ungroup()
+
+alldata <- table_sketches() %>%
+    filter(threshold == 0.5)
 
 nosketch <- alldata %>%
     filter(sketch_bits == 0) %>%
     select(dataset, threshold, algorithm, k, k2, nosketch_time = total_time)
 
 plotdata <- alldata %>%
-    filter(k2 %in% c(0, 6)) %>%
+    # filter(k2 %in% c(0, 6)) %>%
+    group_by(dataset, algorithm, threshold, k, k2, sketch_bits) %>%
+    slice_min(total_time) %>%
+    ungroup() %>%
     group_by(dataset, threshold, algorithm, k, k2) %>%
     mutate(is_best = total_time == min(total_time)) %>%
     ungroup() %>%
     group_by(dataset, threshold, algorithm) %>%
     mutate(is_algo_best = total_time == min(total_time)) %>%
     ungroup() %>%
-    inner_join(nosketch) %>%
-    mutate(sketch_speedup = nosketch_time / total_time)
+    # filter(dataset == "Livejournal", algorithm == "TwoLevelLSH") %>% select(k, k2, sketch_bits) %>%print()
+    right_join(selectors)
+
+ranges <- plotdata %>%
+    select(dataset, threshold, total_time) %>%
+    drop_na() %>%
+    group_by(dataset, threshold) %>%
+    summarise(
+        range = list(range(drop_units(set_units(total_time, "min"))))
+    )
 
 ## What is interesting in the visualization below, when considering
 ## algorithms that partition data according to LSH, is that using larger
 ## sketches results in higher running times, most likely because of the
 ## larger number of bits to be transmitted in a large number of iterations
 
-# plotdata %>%
-#     # filter(sketch_bits > 0) %>%
-#     ggplot(aes(
-#         x = interaction(sketch_bits, k2, k),
-#         y = set_units(total_time, "s") %>% drop_units(),
-#         group = interaction(k, k2),
-#     )) +
-#     geom_line() +
-#     geom_point(aes(color = is_algo_best)) +
-#     scale_y_log10() +
-#     scale_color_manual(values = c("black", "red")) +
-#     facet_grid(vars(dataset), vars(algorithm), scales = "free") +
-#     guides(color = FALSE, shape = FALSE) +
-#     labs(
-#         x = "params",
-#         y = "time (s)"
-#     ) +
-#     theme_paper() +
-#     theme(axis.text.x = element_text(angle = 90))
+plot_one_algo <- function(data, algorithm_name, groups, ylabs = FALSE, strip_text = FALSE, strip_text_x = FALSE) {
+    doplot <- function(dname) {
+        r <- ranges %>%
+            filter(dataset == dname) %>%
+            pull(range) %>%
+            first()
+        pdata <- data %>%
+            filter(algorithm == algorithm_name) %>%
+            filter(dataset == dname)
+        p <- pdata %>%
+            ggplot(aes(
+                x = factor(sketch_bits),
+                y = set_units(total_time, "min") %>% drop_units(),
+                group = {{ groups }},
+            )) +
+            geom_line() +
+            geom_point(aes(color = is_algo_best)) +
+            geom_text_repel(aes(label = total_time %>% set_units("min") %>% drop_units() %>% scales::number(accuracy = 1)), size = 2) +
+            scale_x_discrete(
+                labels = c("0", "256", "512"),
+                breaks = c("0", "256", "512")
+            ) +
+            scale_y_continuous(
+                limits = r
+            ) +
+            scale_color_manual(values = c("black", "red")) +
+            facet_grid(
+                vars(dataset),
+                vars({{ groups }}),
+                scales = "free",
+                switch = "x"
+            ) +
+            guides(
+                color = FALSE,
+                shape = FALSE
+            ) +
+            coord_cartesian(clip = "off") +
+            labs(
+                x = "sketch bits"
+            ) +
+            theme_paper() +
+            theme(
+                panel.grid = element_blank(),
+                strip.placement = "outside",
+                panel.spacing.x = unit(0, "line"),
+                axis.title.x = element_blank()
+            )
+        if (ylabs) {
+            p <- p +
+                labs(y = "time (min)")
+        } else {
+            p <- p +
+                theme(
+                    axis.text.y = element_blank(),
+                    axis.ticks.y = element_blank(),
+                    axis.title.y = element_blank()
+                )
+        }
+        if (!strip_text) {
+            p <- p +
+                theme(
+                    strip.text.y = element_blank()
+                )
+        }
+        p
+    }
+    (doplot("Glove") + labs(title = algorithm_name)) /
+        doplot("SIFT") /
+        doplot("Livejournal") /
+        doplot("Orkut")
+}
 
-# ggsave("imgs/sketches.png", width = 8, height = 4)
-
-plot_one_algo <- function(data, algorithm_name, groups, ylabs = FALSE, strip_text = FALSE) {
-    active_groups <- data %>%
-        filter(algorithm == algorithm_name) %>%
-        distinct({{ groups }}) %>%
-        pull()
-    p <- data %>%
-        filter(algorithm == algorithm_name) %>%
-        ggplot(aes(
-            x = factor(sketch_bits),
-            y = set_units(total_time, "s") %>% drop_units(),
-            group = {{ groups }},
-        )) +
-        geom_line() +
-        geom_point(aes(color = is_algo_best)) +
-        # Add transparent points from all the algorithms to align axes
-        geom_point(
-            data = data %>% filter({{ groups }} %in% active_groups),
-            alpha = 0
-        ) +
-        scale_x_discrete(
-            labels = c("0", "", "128", "", "512"),
-            breaks = c("0", "64", "128", "256", "512")
-        ) +
-        # scale_y_log10() +
-        scale_color_manual(values = c("black", "red")) +
-        facet_grid(
-            vars(dataset),
-            vars({{ groups }}),
-            scales = "free",
-            switch = "x"
-        ) +
-        guides(
-            color = FALSE,
-            shape = FALSE
-        ) +
-        coord_cartesian(clip = "off") +
-        labs(
-            title = algorithm_name,
-            x = "sketch bits"
-        ) +
-        theme_paper() +
-        theme(
-            strip.placement = "outside",
-            panel.spacing.x = unit(0, "line")
+create_groups <- function(data) {
+    data %>%
+        mutate(
+            lab = if_else(opt, str_c("*k=", k), str_c("k=", k)),
+            groups = fct_reorder(lab, k)
         )
-    if (ylabs) {
-        p <- p +
-            labs(y = "time (s)")
-    } else {
-        p <- p +
-            theme(
-                axis.text.y = element_blank(),
-                axis.ticks.y = element_blank(),
-                axis.title.y = element_blank()
-            )
-    }
-    if (!strip_text) {
-        p <- p +
-            theme(
-                strip.text.y = element_blank()
-            )
-    }
-    p
 }
 
 p_all2all <- plotdata %>%
     plot_one_algo("Cartesian", "", ylabs = T)
 
 p_hu_et_al <- plotdata %>%
-    mutate(
-        groups = fct_reorder(str_c("k=", k), k)
-    ) %>%
+    create_groups() %>%
+    # mutate(
+    #     groups = fct_reorder(str_c("k=", k), k)
+    # ) %>%
     plot_one_algo("OneLevelLSH", groups)
 
 p_one_round <- plotdata %>%
-    mutate(
-        groups = fct_reorder(str_c("k=", k), k)
-    ) %>%
+    create_groups() %>%
+    # mutate(
+    #     groups = fct_reorder(str_c("k=", k), k)
+    # ) %>%
     plot_one_algo("LocalLSH", groups)
 
 p_two_round <- plotdata %>%
-    mutate(
-        groups = fct_reorder(str_c("k=", k), k)
-    ) %>%
+    create_groups() %>%
+    # mutate(
+    #     groups = fct_reorder(str_c("k=", k), k)
+    # ) %>%
     plot_one_algo("TwoLevelLSH", groups, strip_text = T)
-    # labs(subtitle = TeX("with $k_2 = 6$"))
+
 
 (p_all2all | p_hu_et_al | p_one_round | p_two_round) +
     plot_layout(
         guides = "collect",
-        widths = c(1, 3, 3, 3)
+        widths = c(1, 2, 2, 2)
     ) &
     theme(
         text = element_text(size = 10),
@@ -145,7 +189,7 @@ p_two_round <- plotdata %>%
         axis.line = element_line(color = "black", size = 0.1),
     )
 
-ggsave("imgs/sketches.png", width = 10, height = 3)
+ggsave("imgs/sketches.png", width = 10, height = 5)
 
 # print("Effect of sketching on the accuracy")
 # table_search_best() %>%
@@ -162,3 +206,19 @@ ggsave("imgs/sketches.png", width = 10, height = 3)
 #     select(dataset, threshold, loss64, loss128, loss256, loss512) %>%
 #     summarise(across(loss64:loss512, ~max(.x) %>% scales::percent(accuracy=0.001)))
 
+table_sketch_quality() %>%
+    filter(sketch_bits > 0) %>%
+    select(dataset, threshold, sketch_bits, lost_pairs, lost_fraction) %>%
+    ggplot(aes(x = factor(sketch_bits), y = lost_fraction)) +
+    geom_point() +
+    geom_segment(aes(xend = factor(sketch_bits)), yend = 0) +
+    geom_hline(yintercept = 0.01) +
+    scale_y_continuous(labels = scales::percent_format()) +
+    labs(
+        x = "sketch bits",
+        y = "false negative rate"
+    ) +
+    facet_wrap(vars(dataset, threshold), ncol = 8) +
+    theme_paper()
+
+ggsave("imgs/sketch_loss.png", width = 10, height = 2)

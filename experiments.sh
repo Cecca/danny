@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e 
+# set -e 
 
 function baselines() {
   for BASE_DATA in sift-100nn-0.5 Livejournal Orkut Glove
@@ -14,7 +14,7 @@ function baselines() {
         --hosts ~/hosts.txt \
         --threads 8 \
         --threshold $THRESHOLD \
-        --algorithm all-2-all \
+        --algorithm cartesian \
         $DATASET
     done
   done
@@ -30,40 +30,273 @@ function baselines() {
         --hosts ~/hosts.txt \
         --threads 8 \
         --threshold $THRESHOLD \
-        --algorithm all-2-all \
+        --algorithm cartesian \
         $DATASET
     done
   done
 }
 
 # This set of experiments searches for the best configuration of parameters for all the different datasets.
-# We don't look at the 
-function search_best() {
+function dry_runs() {
   RECALL=0.8 # <-- required recall
 
-  for BASE_DATA in sift-100nn-0.5 Livejournal Orkut Glove
+  for BASE_DATA in glove.twitter.27B.200d sift-100-0.5 Livejournal Orkut 
   do
-    DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-sample-200000.bin
+    DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA.bin
     echo "Running on $DATASET"
     test -d $DATASET
 
-    for THRESHOLD in 0.7 0.5
+    SKETCH_BITS=0
+
+    for THRESHOLD in 0.5 # 0.5 0.7
     do
-      for SKETCH_BITS in 0 64 128 256 512
+      if [[ $DATASET =~ "glove" ]]; then
+        TIMEOUT=8000
+      elif [[ $DATASET =~ "sift" ]]; then
+        TIMEOUT=3500
+      else 
+        TIMEOUT=12000
+      fi
+      echo "Timeout is $TIMEOUT"
+
+      # for K in 2 3 #5  7  9  11 
+      for K in 2 3 4 5 6 8 10 12 #13 14 15 16 17 18 19 20
+      do
+        for ALGORITHM in one-level-lsh #local-lsh one-level-lsh
+        do
+          danny \
+            --dry-run \
+            --timeout $TIMEOUT \
+            --hosts ~/hosts.txt \
+            --threads 8 \
+            --threshold $THRESHOLD \
+            --algorithm $ALGORITHM \
+            --recall $RECALL \
+            --sketch-bits $SKETCH_BITS \
+            --k $K \
+            $DATASET
+        done
+
+        for K2 in 8 10 12
+        do
+          danny \
+            --dry-run \
+            --timeout $TIMEOUT \
+            --hosts ~/hosts.txt \
+            --threads 8 \
+            --threshold $THRESHOLD \
+            --algorithm two-level-lsh \
+            --recall $RECALL \
+            --sketch-bits $SKETCH_BITS \
+            --k $K \
+            --k2 $K2 \
+            $DATASET
+        done
+      done
+    done
+  done
+
+}
+
+
+
+# This set of experiments searches for the best configuration of parameters for all the different datasets.
+function sketch_best() {
+  # Glove
+  for SKETCH_BITS in 0 256 512
+  do
+    DATASET=/mnt/fast_storage/users/mcec/glove.twitter.27B.200d.bin
+    TIMEOUT=8000
+    THRESHOLD=0.5
+  #   danny \
+  #     --timeout $TIMEOUT \
+  #     --hosts ~/hosts.txt \
+  #     --threads 8 \
+  #     --threshold $THRESHOLD \
+  #     --algorithm local-lsh \
+  #     --recall 0.8 \
+  #     --sketch-bits $SKETCH_BITS \
+  #     --k 20 \
+  #     $DATASET
+    # danny \
+    #   --timeout $TIMEOUT \
+    #   --hosts ~/hosts.txt \
+    #   --threads 8 \
+    #   --threshold $THRESHOLD \
+    #   --algorithm one-level-lsh \
+    #   --recall 0.8 \
+    #   --sketch-bits $SKETCH_BITS \
+    #   --k 4 \
+    #   $DATASET
+    # danny \
+    #   --timeout $TIMEOUT \
+    #   --hosts ~/hosts.txt \
+    #   --threads 8 \
+    #   --threshold $THRESHOLD \
+    #   --algorithm two-level-lsh \
+    #   --recall 0.8 \
+    #   --sketch-bits $SKETCH_BITS \
+    #   --k 2 \
+    #   --k2 12 \
+    #   $DATASET
+  done
+  
+  # SIFT
+  for SKETCH_BITS in 0 256 512
+  do
+    DATASET=/mnt/fast_storage/users/mcec/sift-100-0.5.bin
+    TIMEOUT=8000
+    THRESHOLD=0.5
+#     danny \
+#       --timeout $TIMEOUT \
+#       --hosts ~/hosts.txt \
+#       --threads 8 \
+#       --threshold $THRESHOLD \
+#       --algorithm local-lsh \
+#       --recall 0.8 \
+#       --sketch-bits $SKETCH_BITS \
+#       --k 20 \
+#       $DATASET
+    # danny \
+    #   --timeout $TIMEOUT \
+    #   --hosts ~/hosts.txt \
+    #   --threads 8 \
+    #   --threshold $THRESHOLD \
+    #   --algorithm one-level-lsh \
+    #   --recall 0.8 \
+    #   --sketch-bits $SKETCH_BITS \
+    #   --k 6 \
+    #   $DATASET
+    # danny \
+    #   --timeout $TIMEOUT \
+    #   --hosts ~/hosts.txt \
+    #   --threads 8 \
+    #   --threshold $THRESHOLD \
+    #   --algorithm two-level-lsh \
+    #   --recall 0.8 \
+    #   --sketch-bits $SKETCH_BITS \
+    #   --k 3 \
+    #   --k2 12 \
+    #   $DATASET
+
+  done
+
+  # Livejournal
+  for SKETCH_BITS in 0 256 512
+  do
+    DATASET=/mnt/fast_storage/users/mcec/Livejournal.bin
+    TIMEOUT=8000
+    THRESHOLD=0.5
+    # danny \
+    #   --timeout $TIMEOUT \
+    #   --hosts ~/hosts.txt \
+    #   --threads 8 \
+    #   --threshold $THRESHOLD \
+    #   --algorithm local-lsh \
+    #   --recall 0.8 \
+    #   --sketch-bits $SKETCH_BITS \
+    #   --k 17 \
+    #   $DATASET
+    # danny \
+    #   --timeout $TIMEOUT \
+    #   --hosts ~/hosts.txt \
+    #   --threads 8 \
+    #   --threshold $THRESHOLD \
+    #   --algorithm one-level-lsh \
+    #   --recall 0.8 \
+    #   --sketch-bits $SKETCH_BITS \
+    #   --k 8 \
+    #   $DATASET
+    # danny \
+    #   --timeout $TIMEOUT \
+    #   --hosts ~/hosts.txt \
+    #   --threads 8 \
+    #   --threshold $THRESHOLD \
+    #   --algorithm two-level-lsh \
+    #   --recall 0.8 \
+    #   --sketch-bits $SKETCH_BITS \
+    #   --k 6 \
+    #   --k2 10 \
+    #   $DATASET
+  done
+
+  # Orkut
+  for SKETCH_BITS in 0 256 512
+  do
+    DATASET=/mnt/fast_storage/users/mcec/Orkut.bin
+    TIMEOUT=8000
+    # danny \
+    #   --timeout $TIMEOUT \
+    #   --hosts ~/hosts.txt \
+    #   --threads 8 \
+    #   --threshold $THRESHOLD \
+    #   --algorithm local-lsh \
+    #   --recall 0.8 \
+    #   --sketch-bits $SKETCH_BITS \
+    #   --k 20 \
+    #   $DATASET
+    # danny \
+    #   --timeout $TIMEOUT \
+    #   --hosts ~/hosts.txt \
+    #   --threads 8 \
+    #   --threshold $THRESHOLD \
+    #   --algorithm one-level-lsh \
+    #   --recall 0.8 \
+    #   --sketch-bits $SKETCH_BITS \
+    #   --k 6 \
+    #   $DATASET
+    # danny \
+    #   --timeout $TIMEOUT \
+    #   --hosts ~/hosts.txt \
+    #   --threads 8 \
+    #   --threshold $THRESHOLD \
+    #   --algorithm two-level-lsh \
+    #   --recall 0.8 \
+    #   --sketch-bits $SKETCH_BITS \
+    #   --k 4 \
+    #   --k2 12 \
+    #   $DATASET
+  done
+}
+
+# This set of experiments searches for the best configuration of parameters for all the different datasets.
+function search_best() {
+  RECALL=0.8 # <-- required recall
+
+  for BASE_DATA in glove.twitter.27B.200d #sift-100-0.5 #Livejournal Orkut glove.twitter.27B.200d
+  do
+    DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA.bin
+    # DATASET=/mnt/fast_storage/users/mcec/$BASE_DATA-sample-200000.bin
+    echo "Running on $DATASET"
+    test -d $DATASET
+
+    for THRESHOLD in 0.5 # 0.7
+    do
+      for SKETCH_BITS in 256 512 #0 64 128 256 512
       do
         danny \
           --hosts ~/hosts.txt \
           --threads 8 \
           --threshold $THRESHOLD \
-          --algorithm all-2-all \
+          --algorithm cartesian \
           --sketch-bits $SKETCH_BITS \
           $DATASET
 
-        for K in 4 8 6 12
+        if [[ $DATASET =~ "glove" ]]; then
+          TIMEOUT=8000
+        elif [[ $DATASET =~ "sift" ]]; then
+          TIMEOUT=3500
+        else 
+          TIMEOUT=12000
+        fi
+        echo "Timeout is $TIMEOUT"
+
+        for K in 8 4 #3 4 6 8 #10 12 14 16
         do
-          for ALGORITHM in one-round-lsh hu-et-al
+          for ALGORITHM in one-level-lsh #local-lsh one-level-lsh
           do
             danny \
+              --timeout $TIMEOUT \
               --hosts ~/hosts.txt \
               --threads 8 \
               --threshold $THRESHOLD \
@@ -74,20 +307,21 @@ function search_best() {
               $DATASET
           done
 
-          for K2 in 2 4 6 8
-          do
-            danny \
-              --hosts ~/hosts.txt \
-              --threads 8 \
-              --threshold $THRESHOLD \
-              --algorithm two-round-lsh \
-              --recall $RECALL \
-              --sketch-bits $SKETCH_BITS \
-              --k $K \
-              --k2 $K2 \
-              --repetition-batch 10000 \
-              $DATASET
-          done
+          # for K2 in 4
+          # do
+          #   danny \
+          #     --timeout $TIMEOUT \
+          #     --hosts ~/hosts.txt \
+          #     --threads 8 \
+          #     --threshold $THRESHOLD \
+          #     --algorithm two-level-lsh \
+          #     --recall $RECALL \
+          #     --sketch-bits $SKETCH_BITS \
+          #     --k $K \
+          #     --k2 $K2 \
+          #     --repetition-batch 10000 \
+          #     $DATASET
+          # done
         done
       done
     done
@@ -107,7 +341,7 @@ function full_size() {
         --hosts ~/hosts.txt \
         --threads 8 \
         --threshold $THRESHOLD \
-        --algorithm all-2-all \
+        --algorithm cartesian \
         $DATASET
 
       for K in 4 6 8
@@ -116,7 +350,7 @@ function full_size() {
           --hosts ~/hosts.txt \
           --threads 8 \
           --threshold $THRESHOLD \
-          --algorithm "hu-et-al" \
+          --algorithm "one-level-lsh" \
           --sketch-bits 256 \
           --k $K \
           $DATASET
@@ -124,7 +358,7 @@ function full_size() {
           --hosts ~/hosts.txt \
           --threads 8 \
           --threshold $THRESHOLD \
-          --algorithm "one-round-lsh" \
+          --algorithm "local-lsh" \
           --sketch-bits 256 \
           --k $K \
           $DATASET
@@ -132,7 +366,7 @@ function full_size() {
           --hosts ~/hosts.txt \
           --threads 8 \
           --threshold $THRESHOLD \
-          --algorithm "two-round-lsh" \
+          --algorithm "two-level-lsh" \
           --sketch-bits 256 \
           --repetition-batch 100000 \
           --k $K \
@@ -163,7 +397,7 @@ do
           --hosts ~/hosts.txt \
           --threads 8 \
           --threshold $THRESHOLD \
-          --algorithm "one-round-lsh" \
+          --algorithm "local-lsh" \
           --recall $RECALL \
           --sketch-bits 0 \
           --k $K \
@@ -173,7 +407,7 @@ do
           --hosts ~/hosts.txt \
           --threads 8 \
           --threshold $THRESHOLD \
-          --algorithm "hu-et-al" \
+          --algorithm "one-level-lsh" \
           --recall $RECALL \
           --sketch-bits 0 \
           --k $K \
@@ -183,7 +417,7 @@ do
           --hosts ~/hosts.txt \
           --threads 8 \
           --threshold $THRESHOLD \
-          --algorithm "two-round-lsh" \
+          --algorithm "two-level-lsh" \
           --recall $RECALL \
           --sketch-bits 0 \
           --k $K \
@@ -215,7 +449,7 @@ do
           --hosts $HOSTS_FILE \
           --threads 8 \
           --threshold 0.5 \
-          --algorithm one-round-lsh \
+          --algorithm local-lsh \
           --sketch-bits 256 \
           --k $K \
           $DATASET
@@ -225,7 +459,7 @@ do
           --hosts $HOSTS_FILE \
           --threads 8 \
           --threshold 0.5 \
-          --algorithm two-round-lsh \
+          --algorithm two-level-lsh \
           --sketch-bits 256 \
           --k $K \
           --k2 6 \
@@ -237,7 +471,7 @@ do
           --hosts $HOSTS_FILE \
           --threads 8 \
           --threshold 0.5 \
-          --algorithm hu-et-al \
+          --algorithm one-level-lsh \
           --sketch-bits 256 \
           --k $K \
           $DATASET
@@ -266,7 +500,7 @@ do
           --hosts $HOSTS_FILE \
           --threads 8 \
           --threshold 0.5 \
-          --algorithm one-round-lsh \
+          --algorithm local-lsh \
           --sketch-bits 256 \
           --k $K \
           $DATASET
@@ -276,7 +510,7 @@ do
           --hosts $HOSTS_FILE \
           --threads 8 \
           --threshold 0.5 \
-          --algorithm two-round-lsh \
+          --algorithm two-level-lsh \
           --sketch-bits 256 \
           --k $K \
           --k2 6 \
@@ -288,7 +522,7 @@ do
           --hosts $HOSTS_FILE \
           --threads 8 \
           --threshold 0.5 \
-          --algorithm hu-et-al \
+          --algorithm one-level-lsh \
           --sketch-bits 256 \
           --k $K \
           $DATASET
@@ -309,7 +543,7 @@ do
       --hosts ~/hosts.txt \
       --threads 8 \
       --threshold 0.5 \
-      --algorithm one-round-lsh \
+      --algorithm local-lsh \
       --sketch-bits 256 \
       --k $K \
       $DATASET
@@ -327,7 +561,7 @@ function profiling() {
     --threads 8 \
     --threshold 0.5 \
     --recall 0.8 \
-    --algorithm one-round-lsh \
+    --algorithm local-lsh \
     --sketch-bits 512 \
     --k 8 \
     $DATASET
@@ -337,7 +571,7 @@ function profiling() {
     --threads 8 \
     --threshold 0.5 \
     --recall 0.8 \
-    --algorithm two-round-lsh \
+    --algorithm two-level-lsh \
     --sketch-bits 512 \
     --k 6 \
     --k2 6 \
@@ -349,7 +583,7 @@ function profiling() {
     --threads 8 \
     --threshold 0.5 \
     --recall 0.8 \
-    --algorithm hu-et-al \
+    --algorithm one-level-lsh \
     --sketch-bits 512 \
     --k 6 \
     $DATASET
@@ -361,7 +595,7 @@ function profiling() {
     --threads 8 \
     --threshold 0.5 \
     --recall 0.8 \
-    --algorithm one-round-lsh \
+    --algorithm local-lsh \
     --sketch-bits 512 \
     --k 8 \
     $DATASET
@@ -371,7 +605,7 @@ function profiling() {
     --threads 8 \
     --threshold 0.5 \
     --recall 0.8 \
-    --algorithm two-round-lsh \
+    --algorithm two-level-lsh \
     --sketch-bits 512 \
     --k 6 \
     --k2 6 \
@@ -383,7 +617,7 @@ function profiling() {
     --threads 8 \
     --threshold 0.5 \
     --recall 0.8 \
-    --algorithm hu-et-al \
+    --algorithm one-level-lsh \
     --sketch-bits 512 \
     --k 6 \
     $DATASET
@@ -395,7 +629,7 @@ function profiling() {
     --threads 8 \
     --threshold 0.5 \
     --recall 0.8 \
-    --algorithm one-round-lsh \
+    --algorithm local-lsh \
     --sketch-bits 256 \
     --k 8 \
     $DATASET
@@ -405,7 +639,7 @@ function profiling() {
     --threads 8 \
     --threshold 0.5 \
     --recall 0.8 \
-    --algorithm two-round-lsh \
+    --algorithm two-level-lsh \
     --sketch-bits 128 \
     --k 4 \
     --k2 6 \
@@ -417,7 +651,7 @@ function profiling() {
     --threads 8 \
     --threshold 0.5 \
     --recall 0.8 \
-    --algorithm hu-et-al \
+    --algorithm one-level-lsh \
     --sketch-bits 128 \
     --k 4 \
     $DATASET
@@ -429,7 +663,7 @@ function profiling() {
     --threads 8 \
     --threshold 0.5 \
     --recall 0.8 \
-    --algorithm one-round-lsh \
+    --algorithm local-lsh \
     --sketch-bits 256 \
     --k 8 \
     $DATASET
@@ -439,7 +673,7 @@ function profiling() {
     --threads 8 \
     --threshold 0.5 \
     --recall 0.8 \
-    --algorithm two-round-lsh \
+    --algorithm two-level-lsh \
     --sketch-bits 128 \
     --k 4 \
     --k2 6 \
@@ -451,7 +685,7 @@ function profiling() {
     --threads 8 \
     --threshold 0.5 \
     --recall 0.8 \
-    --algorithm hu-et-al \
+    --algorithm one-level-lsh \
     --sketch-bits 128 \
     --k 4 \
     $DATASET
@@ -461,6 +695,10 @@ function profiling() {
 case $1 in
   baselines)
     baselines
+    ;;
+
+  dry)
+    dry_runs
     ;;
 
   best)
@@ -485,5 +723,9 @@ case $1 in
 
   profiling)
     profiling
+    ;;
+
+  sketch_best)
+    sketch_best
     ;;
 esac

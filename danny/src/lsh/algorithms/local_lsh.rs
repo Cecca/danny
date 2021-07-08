@@ -26,7 +26,7 @@ use timely::dataflow::*;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
-pub const ONE_ROUND_VERSION: u8 = 3;
+pub const LOCAL_LSH_VERSION: u8 = 4;
 
 fn distribute<G, D>(
     stream: &Stream<G, (ElementId, D)>,
@@ -97,9 +97,8 @@ fn solve_subproblem<D, F, V, H>(
     hasher: &TensorCollection<H>,
     sketch_predicate: &SketchPredicate<V>,
     sim_pred: F,
-    no_verify: bool,
-    no_dedup: bool,
     logger: Option<Logger<(LogEvent, usize)>>,
+    dry_run: bool,
 ) -> usize
 where
     H: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
@@ -120,6 +119,7 @@ where
     for rep in 0..repetitions {
         let mut cnt = 0;
         let mut sketch_discarded = 0;
+        let mut self_pairs_discarded = 0;
         let mut duplicates_discarded = 0;
         let mut candidate_pairs = 0;
         let mut similarity_discarded = 0;
@@ -136,18 +136,24 @@ where
                 for (i, (_, (lk, l_sketch, l_pool))) in bucket.iter().enumerate() {
                     for (_, (rk, r_sketch, r_pool)) in bucket[i..].iter() {
                         candidate_pairs += 1;
-                        if sketch_predicate.eval(l_sketch, r_sketch) {
-                            if no_verify || sim_pred(&vectors[lk], &vectors[rk]) {
-                                if no_dedup || !hasher.already_seen(l_pool, r_pool, rep) {
-                                    cnt += 1;
+                        if lk != rk {
+                            if !dry_run {
+                                if sketch_predicate.eval(l_sketch, r_sketch) {
+                                    if !hasher.already_seen(l_pool, r_pool, rep) {
+                                        if sim_pred(&vectors[lk], &vectors[rk]) {
+                                            cnt += 1;
+                                        } else {
+                                            similarity_discarded += 1;
+                                        }
+                                    } else {
+                                        duplicates_discarded += 1;
+                                    }
                                 } else {
-                                    duplicates_discarded += 1;
+                                    sketch_discarded += 1;
                                 }
-                            } else {
-                                similarity_discarded += 1;
                             }
                         } else {
-                            sketch_discarded += 1;
+                            self_pairs_discarded += 1;
                         }
                     }
                 }
@@ -163,18 +169,24 @@ where
 
             joiner.join_map(|_hash, (lk, l_sketch, l_pool), (rk, r_sketch, r_pool)| {
                 candidate_pairs += 1;
-                if sketch_predicate.eval(l_sketch, r_sketch) {
-                    if no_verify || sim_pred(&vectors[lk], &vectors[rk]) {
-                        if no_dedup || !hasher.already_seen(l_pool, r_pool, rep) {
-                            cnt += 1;
+                if lk != rk {
+                    if !dry_run {
+                        if sketch_predicate.eval(l_sketch, r_sketch) {
+                            if !hasher.already_seen(l_pool, r_pool, rep) {
+                                if sim_pred(&vectors[lk], &vectors[rk]) {
+                                    cnt += 1;
+                                } else {
+                                    similarity_discarded += 1
+                                }
+                            } else {
+                                duplicates_discarded += 1;
+                            }
                         } else {
-                            duplicates_discarded += 1;
+                            sketch_discarded += 1;
                         }
-                    } else {
-                        similarity_discarded += 1
                     }
                 } else {
-                    sketch_discarded += 1;
+                    self_pairs_discarded += 1;
                 }
             });
         }
@@ -182,8 +194,15 @@ where
         pl.update(1u64);
         debug!("Repetition {} ended in {:?}", rep, end - start);
         log_event!(logger, (LogEvent::CandidatePairs(rep), candidate_pairs));
+        log_event!(
+            logger,
+            (LogEvent::SelfPairsDiscarded(rep), self_pairs_discarded)
+        );
         log_event!(logger, (LogEvent::OutputPairs(rep), cnt));
-        log_event!(logger, (LogEvent::SimilarityDiscarded(rep), similarity_discarded));
+        log_event!(
+            logger,
+            (LogEvent::SimilarityDiscarded(rep), similarity_discarded)
+        );
         log_event!(logger, (LogEvent::SketchDiscarded(rep), sketch_discarded));
         log_event!(
             logger,
@@ -196,7 +215,7 @@ where
     total_cnt
 }
 
-pub fn one_round_lsh<D, F, H, S, V, B, R>(
+pub fn local_lsh<D, F, H, S, V, B, R>(
     worker: &mut Worker<Allocator>,
     path: &str,
     range: f64,
@@ -221,10 +240,8 @@ where
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    let no_dedup = config.no_dedup;
-    let no_verify = config.no_verify;
-
     let worker_index = worker.index();
+    let dry_run = config.dry_run;
 
     let result = Rc::new(RefCell::new(0usize));
     let result_read = Rc::clone(&result);
@@ -300,9 +317,8 @@ where
                                     &hasher,
                                     &sketch_predicate,
                                     sim_pred,
-                                    no_verify,
-                                    no_dedup,
                                     logger.clone(),
+                                    dry_run,
                                 );
                                 output.session(&t).give(cnt);
                             }

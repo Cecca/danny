@@ -38,11 +38,18 @@ impl Balance {
     }
 }
 
+/// Trait for join payloads which can be further split into key-value pairs
+pub trait KeyPayload {
+    type Key: std::hash::Hash + Eq + Clone + ExchangeData;
+    type Value: ExchangeData;
+    fn split_payload(self) -> (Self::Key, Self::Value);
+}
+
 pub trait Join<G, K, V>
 where
     G: Scope,
     K: KeyData + Ord + std::fmt::Debug,
-    V: ExchangeData,
+    V: ExchangeData + KeyPayload,
 {
     fn self_join_map_slice<F, I, O>(&self, f: F) -> Stream<G, O>
     where
@@ -62,7 +69,7 @@ where
     G: Scope,
     G::Timestamp: ToStepId,
     K: KeyData + Ord + std::fmt::Debug,
-    V: ExchangeData,
+    V: ExchangeData + KeyPayload,
 {
     fn self_join_map<F, I, O>(&self, balance: Balance, mut f: F) -> Stream<G, O>
     where
@@ -80,17 +87,24 @@ where
         let mut histograms: HashMap<G::Timestamp, HashMap<K, u32>> = HashMap::new();
         let mut subproblem_sizes: HashMap<G::Timestamp, Vec<(K, u32)>> = HashMap::new();
 
+        let probe = ProbeHandle::new();
+        let mut probe_inspector = probe.clone();
+
         self.unary_notify(
             Pipeline,
             "count subproblem size",
             None,
             move |input, output, notificator| {
-                notificator.for_each(|t, _, _| {
-                    if let Some(histogram) = histograms.remove(&t) {
-                        let mut session = output.session(&t);
-                        session.give_iterator(histogram.into_iter());
+                if let Some((t, _)) = notificator.next() {
+                    if !probe.less_than(t.time()) {
+                        if let Some(histogram) = histograms.remove(&t) {
+                            let mut session = output.session(&t);
+                            session.give_iterator(histogram.into_iter());
+                        }
+                    } else {
+                        notificator.notify_at(t);
                     }
-                });
+                }
 
                 input.for_each(|t, data| {
                     let data = data.replace(Vec::new());
@@ -125,12 +139,17 @@ where
             "split subproblems",
             None,
             move |input, output, notificator| {
-                notificator.for_each(|t, _, _| {
-                    let mut sizes = subproblem_sizes.remove(&t).expect("missing histograms!");
+                if let Some((t, _)) = notificator.next() {
+                    let mut sizes: Vec<(K, u64)> = subproblem_sizes
+                        .remove(&t)
+                        .expect("missing histograms!")
+                        .into_iter()
+                        .map(|(key, size)| (key, balance.size(size as u64)))
+                        .collect();
 
                     // Sort by decreasing count
                     sizes.sort_unstable_by_key(|x| std::cmp::Reverse(x.1));
-                    let total_pairs = sizes.iter().map(|p| balance.size(p.1 as u64)).sum::<u64>();
+                    let total_pairs = sizes.iter().map(|p| p.1).sum::<u64>();
 
                     // Split subproblems that are too big
                     let threshold = (total_pairs as f64 / peers as f64).ceil() as u64;
@@ -142,7 +161,7 @@ where
                             } else {
                                 1
                             };
-                            let subproblem_size = balance.size(size as u64 / groups as u64);
+                            let subproblem_size = size as u64 / groups as u64;
                             let cartesian = SelfCartesian::with_groups(groups);
                             cartesian
                                 .keys_for(key)
@@ -151,10 +170,14 @@ where
                         .collect();
                     subproblems.sort_unstable_by_key(|x| std::cmp::Reverse(x.3));
                     let n_subproblems = subproblems.len();
+                    info!("There are {} subproblems at time {:?}", n_subproblems, t);
 
                     // Allocate subproblems to processors
                     let mut processor_allocations = vec![Vec::new(); peers];
-                    info!("threshold {}", threshold);
+                    info!(
+                        "threshold {}, total subprovlem size {}",
+                        threshold, total_pairs
+                    );
                     let mut i = 0;
                     let mut cur = 0u64;
                     for (sub_idx, (key, subproblem_key, marker, subproblem_size)) in
@@ -174,7 +197,16 @@ where
                         processor_allocations[i].push((key, subproblem_key, marker));
                         cur += subproblem_size;
                     }
+                    // for (key, subproblem_key, marker, _subproblem_size) in subproblems.into_iter() {
+                    //     processor_allocations[i].push((key, subproblem_key, marker));
+                    //     i = (i + 1) % processor_allocations.len();
+                    // }
 
+                    let processor_allocs_size: Vec<usize> =
+                        processor_allocations.iter().map(|p| p.len()).collect();
+
+                    info!("Processor allocation: {:?}", processor_allocs_size);
+                    // assert!(processor_allocs_size.iter().all(|size| size > &0));
                     let mut subproblem_allocations = HashMap::new();
                     for (p, allocs) in processor_allocations.into_iter().enumerate() {
                         for (key, subproblem_key, marker) in allocs {
@@ -184,11 +216,15 @@ where
                                 .push((p as u64, subproblem_key, marker));
                         }
                     }
+                    debug!(
+                        "Subproblem allocations hashmap has {} entries",
+                        subproblem_allocations.len()
+                    );
 
                     // Get the keys and output them to the appropriate processor
-                    if let Some(pairs) = stash1.borrow_mut().remove(&t.time()) {
+                    if let Some(mut pairs) = stash1.borrow_mut().remove(&t.time()) {
                         let mut session = output.session(&t);
-                        for (key, payload) in pairs {
+                        for (key, payload) in pairs.drain(..) {
                             for &(p, subproblem_key, marker) in subproblem_allocations
                                 .get(&key)
                                 .expect("missing key!")
@@ -197,8 +233,15 @@ where
                                 session.give(((p, key, subproblem_key), (marker, payload.clone())));
                             }
                         }
+                        debug!("Done sending");
+                        drop(pairs);
                     }
-                });
+                    debug!(
+                        "{} times still in the stash (memory {})",
+                        stash1.borrow().len(),
+                        proc_mem!()
+                    );
+                }
 
                 input.for_each(|t, data| {
                     let data = data.replace(Vec::new());
@@ -215,20 +258,28 @@ where
             "bucket",
             None,
             move |input, output, notificator| {
-                notificator.for_each(|t, _, _| {
+                if let Some((t, _)) = notificator.next() {
                     if let Some(subproblems) = bucket_stash.remove(&t) {
                         info!(
-                            "Worker {} has {} subproblems",
+                            "Worker {} has {} subproblems (memory {})",
                             worker_index,
-                            subproblems.len()
+                            subproblems.len(),
+                            proc_mem!()
                         );
                         let mut session = output.session(&t);
+                        let start = std::time::Instant::now();
                         for (key, subproblem) in subproblems {
                             let res = f(key, &subproblem);
                             session.give_iterator(res.into_iter());
                         }
+                        info!(
+                            "[{:?}] Worker {} solved subproblems in {:?}",
+                            t.time(),
+                            worker_index,
+                            start.elapsed()
+                        );
                     }
-                });
+                }
 
                 input.for_each(|t, data| {
                     log_event!(logger, (LogEvent::Load(t.time().to_step_id()), data.len()));
@@ -236,16 +287,17 @@ where
                     let stash = bucket_stash
                         .entry(t.time().clone())
                         .or_insert_with(HashMap::new);
-                    for ((_processor, k, subproblem), payload) in data {
+                    for ((_processor, k, subproblem), (marker, payload)) in data {
                         stash
                             .entry((k, subproblem))
                             .or_insert_with(Vec::new)
-                            .push(payload);
+                            .push((marker, payload));
                     }
                     notificator.notify_at(t.retain());
                 });
             },
         )
+        .probe_with(&mut probe_inspector)
     }
 
     fn self_join_map_slice<F, I, O>(&self, mut f: F) -> Stream<G, O>

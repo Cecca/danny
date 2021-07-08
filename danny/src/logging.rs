@@ -330,6 +330,7 @@ where
 pub enum LogEvent {
     Load(usize),
     CandidatePairs(usize),
+    SelfPairsDiscarded(usize),
     SketchDiscarded(usize),
     DuplicatesDiscarded(usize),
     SimilarityDiscarded(usize),
@@ -343,6 +344,7 @@ impl LogEvent {
             Load(_) => String::from("Load"),
             CandidatePairs(_) => String::from("CandidatePairs"),
             SketchDiscarded(_) => String::from("SketchDiscarded"),
+            SelfPairsDiscarded(_) => String::from("SelfPairsDiscarded"),
             SimilarityDiscarded(_) => String::from("SimilarityDiscarded"),
             DuplicatesDiscarded(_) => String::from("DuplicatesDiscarded"),
             OutputPairs(_) => String::from("OutputPairs"),
@@ -355,6 +357,7 @@ impl LogEvent {
             Load(step) => *step as u32,
             CandidatePairs(step) => *step as u32,
             SketchDiscarded(step) => *step as u32,
+            SelfPairsDiscarded(step) => *step as u32,
             SimilarityDiscarded(step) => *step as u32,
             DuplicatesDiscarded(step) => *step as u32,
             OutputPairs(step) => *step as u32,
@@ -387,11 +390,11 @@ pub fn collect_profiling_info<'a>(
     worker: &mut Worker<Allocator>,
     guard: Option<pprof::ProfilerGuard<'a>>,
     // a barrier to sync all the threads local to a host
-    barrier: std::sync::Arc<std::sync::Barrier>
+    barrier: std::sync::Arc<std::sync::Barrier>,
 ) -> Vec<ProfileFunction> {
     use timely::dataflow::channels::pact::Pipeline;
 
-    // resolve the profile and drop it as soon as possible, 
+    // resolve the profile and drop it as soon as possible,
     // otherwise we are going to capture the setup of the exchange dataflow.
     // While unintuitive, this can skew the results a lot.
     // The other threads wait on a barrier
@@ -436,7 +439,6 @@ pub fn collect_profiling_info<'a>(
         let mut content = Vec::new();
         profile.encode(&mut content).unwrap();
         file.write_all(&content).unwrap();
-
 
         let mut counts_table = HashMap::new();
         for (frames, frame_count) in report.data.iter() {

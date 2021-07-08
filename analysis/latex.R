@@ -11,24 +11,24 @@ latex_table_best <- function(data) {
         ungroup() %>%
         group_by(dataset, threshold) %>%
         mutate(
-            dataset = str_remove(dataset, "-sample-*"),
-            k = if_else(algorithm == "two-round-lsh",
-                str_c(k, " [k2=", k2, "]"),
-                as.character(k)
-            ),
+            # dataset = str_remove(dataset, "-sample-*"),
+            # k = if_else(algorithm == "TwoLevelLSH",
+            #     str_c(k, " [k2=", k2, "]"),
+            #     as.character(k)
+            # ),
             total_time_num = drop_units(total_time),
             total_time = total_time %>%
-                set_units("s") %>%
+                set_units("min") %>%
                 drop_units() %>%
-                scales::number(accuracy = 0.01),
+                scales::number(accuracy = 0.1),
             recall = scales::number(recall, accuracy = 0.01),
             total_time = cell_spec(total_time,
-                # background = spec_color(total_time_num, direction = -1),
-                # color = "white",
-                # underline = total_time == min(total_time),
                 underline = id %in% best_runs,
                 format = "latex"
-            )
+            ),
+            # more compact names
+            # algorithm = str_remove(algorithm, "LSH"),
+            # dataset = if_else(dataset == "Livejournal", "LJ", as.character(dataset))
         ) %>%
         ungroup() %>%
         select(dataset, threshold, algorithm, total_time, recall, k, sketch_bits) %>%
@@ -40,14 +40,14 @@ latex_table_best <- function(data) {
         ) %>%
         kbl(
             format = "latex",
-            align = "ll rrll rrll",
+            align = c("l", "l", "r", "r", "l", "l", "r", "r", "l", "l"),
             escape = F,
             booktabs = T,
             linesep = c("", "", "", "\\addlinespace"),
             col.names = c(
                 "dataset", "algorithm",
-                "total time (s)", "recall", "k", "b",
-                "total time (s)", "recall", "k", "b"
+                "time", "recall", "k", "b",
+                "time", "recall", "k", "b"
             )
         ) %>%
         add_header_above(c(" " = 2, "0.5" = 4, "0.7" = 4))
@@ -63,6 +63,8 @@ latex_table_info <- function(data) {
         filter(threshold %in% c(0.5, 0.7)) %>%
         select(dataset, threshold, n, dim, output_size) %>%
         mutate(
+            # Count in the output size the self pairs, which are not reported by the implementations
+            output_size = output_size + n,
             sample = as.integer(str_match(dataset, "sample-(\\d+)")[, 2]),
             sample = if_else(is.na(sample), "Full dataset", str_c("Sample of ", sample)),
             dataset = case_when(
@@ -71,7 +73,6 @@ latex_table_info <- function(data) {
                 str_detect(dataset, "[Gg]love") ~ "Glove",
                 str_detect(dataset, "Orkut") ~ "Orkut"
             ),
-            # selectivity = scales::percent(selectivity, accuracy = 0.00001),
             avg_neighbors = scales::number(output_size / n, accuracy = 0.01, big.mark = "\\\\,")
         ) %>%
         select(-output_size) %>%
@@ -94,9 +95,7 @@ latex_table_info <- function(data) {
             linesep = ""
         ) %>%
         # kable_styling() %>%
-        add_header_above(c(" " = 1, "  " = 1, "   " = 1, "average neighbors" = 2)) %>%
-        pack_rows("Full dataset", 1, 4) %>%
-        pack_rows("Sample of 200000 vectors", 5, 8)
+        add_header_above(c(" " = 1, "  " = 1, "   " = 1, "average neighbors" = 2))
 }
 
 table_data_info() %>%
@@ -104,46 +103,48 @@ table_data_info() %>%
     write_file("tex/info.tex")
 
 
-latex_normalized_profile <- function(data) {
-    data %>%
-        select(-ends_with("input"), -sketch, -verify, -deduplicate) %>%
-        pivot_longer(ends_with("ppf"), names_to = "component", values_to = "ppf") %>%
-        mutate(
-            component = str_remove(component, "_ppf"),
-            component = if_else(component == "dedup", "deduplicate", component),
-            component = factor(component,
-                levels = c("sketch", "verify", "deduplicate"),
-                ordered = T
-            ),
-            ppf = scales::number(ppf, big.mark = "\\\\,", scale=0.001, accuracy = 1),
-            algorithm = factor(algorithm, ordered = T, levels = c(
-                "LocalLSH",
-                "OneLevelLSH",
-                "TwoLevelLSH"
-            ))
-        ) %>%
-        ungroup() %>%
-        select(-id, -threshold) %>%
-        pivot_wider(names_from=c(algorithm, component), values_from=ppf) %>%
-        select(dataset, 
-            LocalLSH_sketch, LocalLSH_verify, LocalLSH_deduplicate,
-            OneLevelLSH_sketch, OneLevelLSH_verify, OneLevelLSH_deduplicate,
-            TwoLevelLSH_sketch, TwoLevelLSH_verify, TwoLevelLSH_deduplicate
-        ) %>%
-        kbl(format = "latex", booktabs = T, escape = F,
-            col.names = c(
-                "dataset",
-                "sketching", "verify", "dedup.",
-                "sketching", "verify", "dedup.",
-                "sketching", "verify", "dedup."
-            )
-        ) %>%
-        add_header_above(c(" " = 1, "\\\\local" = 3, "\\\\onelevel" = 3, "\\\\twolevel" = 3), escape = F)
-}
+# latex_normalized_profile <- function(data) {
+#     data %>%
+#         select(-ends_with("input"), -sketch, -verify, -deduplicate) %>%
+#         pivot_longer(ends_with("ppf"), names_to = "component", values_to = "ppf") %>%
+#         mutate(
+#             component = str_remove(component, "_ppf"),
+#             component = if_else(component == "dedup", "deduplicate", component),
+#             component = factor(component,
+#                 levels = c("sketch", "verify", "deduplicate"),
+#                 ordered = T
+#             ),
+#             ppf = scales::number(ppf, big.mark = "\\\\,", scale = 0.001, accuracy = 1),
+#             algorithm = factor(algorithm, ordered = T, levels = c(
+#                 "LocalLSH",
+#                 "OneLevelLSH",
+#                 "TwoLevelLSH"
+#             ))
+#         ) %>%
+#         ungroup() %>%
+#         select(-id, -threshold) %>%
+#         pivot_wider(names_from = c(algorithm, component), values_from = ppf) %>%
+#         select(
+#             dataset,
+#             LocalLSH_sketch, LocalLSH_verify, LocalLSH_deduplicate,
+#             OneLevelLSH_sketch, OneLevelLSH_verify, OneLevelLSH_deduplicate,
+#             TwoLevelLSH_sketch, TwoLevelLSH_verify, TwoLevelLSH_deduplicate
+#         ) %>%
+#         kbl(
+#             format = "latex", booktabs = T, escape = F,
+#             col.names = c(
+#                 "dataset",
+#                 "sketching", "verify", "dedup.",
+#                 "sketching", "verify", "dedup.",
+#                 "sketching", "verify", "dedup."
+#             )
+#         ) %>%
+#         add_header_above(c(" " = 1, "\\\\local" = 3, "\\\\onelevel" = 3, "\\\\twolevel" = 3), escape = F)
+# }
 
-table_normalized_profile() %>%
-    latex_normalized_profile() %>%
-    write_file("tex/profiling.tex")
+# table_normalized_profile() %>%
+#     latex_normalized_profile() %>%
+#     write_file("tex/profiling.tex")
 
 latex_bench <- function() {
     tbldata <- table_bench() %>%
@@ -160,13 +161,14 @@ latex_bench <- function() {
             max_verify = max(verify) %>% scales::number(accuracy = 0.1)
         ) %>%
         ungroup()
-    
+
 
     tbldata %>%
         select(dataset, classification, mean_sketch, median_sketch, max_sketch, mean_dedup, median_dedup, max_dedup, mean_verify, median_verify, max_verify) %>%
-        kbl(format = "latex", escape = F, booktabs = TRUE,
+        kbl(
+            format = "latex", escape = F, booktabs = TRUE,
             col.names = c(
-                "data type", "pair type", 
+                "data type", "pair type",
                 "mean", "median", "max",
                 "mean", "median", "max",
                 "mean", "median", "max"
@@ -175,17 +177,20 @@ latex_bench <- function() {
         add_header_above(c(" " = 1, "  " = 1, "sketch" = 3, "deduplication" = 3, "similarity" = 3))
 }
 
-latex_bench() %>% write_file("tex/bench.tex")
+# latex_bench() %>% write_file("tex/bench.tex")
 
 
 latex_motivation <- function(data) {
     data %>%
         filter(
+            !dry_run,
             algorithm == "OneLevelLSH",
-            sketch_bits == 0, 
+            sketch_bits == 0,
             required_recall == 0.8,
-            threshold == 0.5
+            threshold == 0.7
         ) %>%
+        drop_na(Load, total_time) %>%
+        mutate(total_time = set_units(total_time, "min")) %>%
         select(dataset, k, total_time, Load) %>%
         arrange(k) %>%
         group_by(dataset) %>%
@@ -194,18 +199,22 @@ latex_motivation <- function(data) {
                 total_time == min(total_time) ~ "practical",
                 Load == min(Load) ~ "theoretical"
             ),
-            total_time = set_units(total_time, "s") %>% drop_units() %>% scales::number(accuracy=1)
+            total_time = drop_units(total_time) %>% scales::number(accuracy = 0.1),
+            Load = scales::number(Load, big.mark = "\\\\,")
         ) %>%
-        drop_na() %>%
-        arrange(dataset, Load) %>%
         select(dataset, kind, total_time, Load) %>%
-        kbl(format = "latex", booktabs = T, escape = F,
+        drop_na(kind) %>%
+        arrange(dataset, Load) %>%
+        kbl(
+            format = "latex", booktabs = T, escape = F,
             linesep = "",
             col.names = c(
-                "", "", "time (s)", "load"
+                "", "", "time (min)", "load"
             )
         ) %>%
         collapse_rows(columns = 1, latex_hline = "major")
 }
 
-table_search_best() %>% latex_motivation() %>% write_file("tex/motivation.tex")
+best <- table_search_best()
+latex_motivation(best) %>%
+    write_file("tex/motivation.tex")

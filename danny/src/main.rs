@@ -61,7 +61,7 @@ where
 }
 
 #[cfg(feature = "one-round-lsh")]
-fn run_one_round_lsh<SV>(
+fn run_local_lsh<SV>(
     config: &Config,
     worker: &mut Worker<Allocator>,
     experiment: &mut Experiment,
@@ -80,7 +80,7 @@ where
             let sketch_predicate =
                 SketchPredicate::cosine(sketch_bits, threshold, config.sketch_epsilon);
             let k = config.k.expect("K is needed on the command line");
-            one_round_lsh::<Vector, _, _, _, _, _, _>(
+            local_lsh::<Vector, _, _, _, _, _, _>(
                 worker,
                 &config.path,
                 threshold,
@@ -101,7 +101,7 @@ where
             let sketcher = SV::from_jaccard(&mut sketcher_rng);
             let sketch_predicate =
                 SketchPredicate::jaccard(sketch_bits, threshold, config.sketch_epsilon);
-            one_round_lsh::<BagOfWords, _, _, _, _, _, _>(
+            local_lsh::<BagOfWords, _, _, _, _, _, _>(
                 worker,
                 &config.path,
                 threshold,
@@ -119,7 +119,7 @@ where
 }
 
 #[cfg(feature = "two-round-lsh")]
-fn run_two_round_lsh<SV>(
+fn run_two_level_lsh<SV>(
     config: &Config,
     worker: &mut Worker<Allocator>,
     experiment: &mut Experiment,
@@ -140,7 +140,7 @@ where
             let sketcher = SV::from_cosine(dim, &mut sketcher_rng);
             let sketch_predicate =
                 SketchPredicate::cosine(sketch_bits, threshold, config.sketch_epsilon);
-            two_round_lsh::<Vector, _, _, _, _, _, _>(
+            two_level_lsh::<Vector, _, _, _, _, _, _>(
                 worker,
                 &config.path,
                 threshold,
@@ -162,7 +162,7 @@ where
             let sketcher = SV::from_jaccard(&mut sketcher_rng);
             let sketch_predicate =
                 SketchPredicate::jaccard(sketch_bits, threshold, config.sketch_epsilon);
-            two_round_lsh::<BagOfWords, _, _, _, _, _, _>(
+            two_level_lsh::<BagOfWords, _, _, _, _, _, _>(
                 worker,
                 &config.path,
                 threshold,
@@ -181,7 +181,7 @@ where
 }
 
 #[cfg(feature = "two-round-lsh")]
-fn run_hu_et_al<SV>(
+fn run_one_level_lsh<SV>(
     config: &Config,
     worker: &mut Worker<Allocator>,
     experiment: &mut Experiment,
@@ -201,7 +201,7 @@ where
             let sketcher = SV::from_cosine(dim, &mut sketcher_rng);
             let sketch_predicate =
                 SketchPredicate::cosine(sketch_bits, threshold, config.sketch_epsilon);
-            hu_baseline::<Vector, _, _, _, _, _, _>(
+            one_level_lsh::<Vector, _, _, _, _, _, _>(
                 worker,
                 &config.path,
                 threshold,
@@ -221,7 +221,7 @@ where
             let sketcher = SV::from_jaccard(&mut sketcher_rng);
             let sketch_predicate =
                 SketchPredicate::jaccard(sketch_bits, threshold, config.sketch_epsilon);
-            hu_baseline::<BagOfWords, _, _, _, _, _, _>(
+            one_level_lsh::<BagOfWords, _, _, _, _, _, _>(
                 worker,
                 &config.path,
                 threshold,
@@ -243,9 +243,6 @@ fn main() {
 
     let config = Config::get();
     init_logging(&config);
-    if config.no_dedup {
-        warn!("Running with NO DUPLICATE ELIMINATION");
-    }
 
     if let Some(sha) = Experiment::from_config(config.clone()).already_run() {
         warn!("Experiment already run (sha {}), exiting", sha);
@@ -295,60 +292,60 @@ fn main() {
             let start = std::time::Instant::now();
             let count: usize = match config.algorithm.as_ref() {
                 #[cfg(feature = "one-round-lsh")]
-                "one-round-lsh" => match config.sketch_bits {
-                    0 => run_one_round_lsh::<Sketch0>(&config, worker, &mut experiment),
+                "local-lsh" => match config.sketch_bits {
+                    0 => run_local_lsh::<Sketch0>(&config, worker, &mut experiment),
                     #[cfg(feature = "sketching")]
-                    64 => run_one_round_lsh::<Sketch64>(&config, worker, &mut experiment),
+                    64 => run_local_lsh::<Sketch64>(&config, worker, &mut experiment),
                     #[cfg(feature = "sketching")]
-                    128 => run_one_round_lsh::<Sketch128>(&config, worker, &mut experiment),
+                    128 => run_local_lsh::<Sketch128>(&config, worker, &mut experiment),
                     #[cfg(feature = "sketching")]
-                    256 => run_one_round_lsh::<Sketch256>(&config, worker, &mut experiment),
+                    256 => run_local_lsh::<Sketch256>(&config, worker, &mut experiment),
                     #[cfg(feature = "sketching")]
-                    512 => run_one_round_lsh::<Sketch512>(&config, worker, &mut experiment),
+                    512 => run_local_lsh::<Sketch512>(&config, worker, &mut experiment),
                     bits => panic!("Unsupported number of sketch bits: {}", bits),
                 },
                 #[cfg(feature = "two-round-lsh")]
-                "two-round-lsh" => match config.sketch_bits {
-                    0 => run_two_round_lsh::<Sketch0>(&config, worker, &mut experiment),
+                "two-level-lsh" => match config.sketch_bits {
+                    0 => run_two_level_lsh::<Sketch0>(&config, worker, &mut experiment),
                     #[cfg(feature = "sketching")]
-                    64 => run_two_round_lsh::<Sketch64>(&config, worker, &mut experiment),
+                    64 => run_two_level_lsh::<Sketch64>(&config, worker, &mut experiment),
                     #[cfg(feature = "sketching")]
-                    128 => run_two_round_lsh::<Sketch128>(&config, worker, &mut experiment),
+                    128 => run_two_level_lsh::<Sketch128>(&config, worker, &mut experiment),
                     #[cfg(feature = "sketching")]
-                    256 => run_two_round_lsh::<Sketch256>(&config, worker, &mut experiment),
+                    256 => run_two_level_lsh::<Sketch256>(&config, worker, &mut experiment),
                     #[cfg(feature = "sketching")]
-                    512 => run_two_round_lsh::<Sketch512>(&config, worker, &mut experiment),
+                    512 => run_two_level_lsh::<Sketch512>(&config, worker, &mut experiment),
                     bits => panic!("Unsupported number of sketch bits: {}", bits),
                 },
                 #[cfg(feature = "hu-et-al")]
-                "hu-et-al" => match content_type(&config.path) {
+                "one-level-lsh" => match content_type(&config.path) {
                     ContentType::Vector => match config.sketch_bits {
-                        0 => run_hu_et_al::<Sketch0>(&config, worker, &mut experiment),
+                        0 => run_one_level_lsh::<Sketch0>(&config, worker, &mut experiment),
                         #[cfg(feature = "sketching")]
-                        64 => run_hu_et_al::<Sketch64>(&config, worker, &mut experiment),
+                        64 => run_one_level_lsh::<Sketch64>(&config, worker, &mut experiment),
                         #[cfg(feature = "sketching")]
-                        128 => run_hu_et_al::<Sketch128>(&config, worker, &mut experiment),
+                        128 => run_one_level_lsh::<Sketch128>(&config, worker, &mut experiment),
                         #[cfg(feature = "sketching")]
-                        256 => run_hu_et_al::<Sketch256>(&config, worker, &mut experiment),
+                        256 => run_one_level_lsh::<Sketch256>(&config, worker, &mut experiment),
                         #[cfg(feature = "sketching")]
-                        512 => run_hu_et_al::<Sketch512>(&config, worker, &mut experiment),
+                        512 => run_one_level_lsh::<Sketch512>(&config, worker, &mut experiment),
                         bits => panic!("Unsupported number of sketch bits: {}", bits),
                     },
                     ContentType::BagOfWords => match config.sketch_bits {
-                        0 => run_hu_et_al::<Sketch0>(&config, worker, &mut experiment),
+                        0 => run_one_level_lsh::<Sketch0>(&config, worker, &mut experiment),
                         #[cfg(feature = "sketching")]
-                        64 => run_hu_et_al::<Sketch64>(&config, worker, &mut experiment),
+                        64 => run_one_level_lsh::<Sketch64>(&config, worker, &mut experiment),
                         #[cfg(feature = "sketching")]
-                        128 => run_hu_et_al::<Sketch128>(&config, worker, &mut experiment),
+                        128 => run_one_level_lsh::<Sketch128>(&config, worker, &mut experiment),
                         #[cfg(feature = "sketching")]
-                        256 => run_hu_et_al::<Sketch256>(&config, worker, &mut experiment),
+                        256 => run_one_level_lsh::<Sketch256>(&config, worker, &mut experiment),
                         #[cfg(feature = "sketching")]
-                        512 => run_hu_et_al::<Sketch512>(&config, worker, &mut experiment),
+                        512 => run_one_level_lsh::<Sketch512>(&config, worker, &mut experiment),
                         bits => panic!("Unsupported number of sketch bits: {}", bits),
                     },
                 },
                 #[cfg(feature = "all-2-all")]
-                "all-2-all" => match config.sketch_bits {
+                "cartesian" => match config.sketch_bits {
                     0 => run_cartesian::<Sketch0>(&config, worker, &mut experiment),
                     #[cfg(feature = "sketching")]
                     64 => run_cartesian::<Sketch64>(&config, worker, &mut experiment),
@@ -388,7 +385,6 @@ fn main() {
                 .expect("missing logging input handle")
                 .close();
             worker.step_while(|| !events_probe.done());
-
 
             if worker.index() == 0 {
                 info!(

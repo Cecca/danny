@@ -3,15 +3,15 @@ use rand::rngs::StdRng;
 use rand::RngCore;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
-use std::convert::TryFrom;
-use std::fmt::Debug;
+use std::{convert::TryFrom, time::Duration};
+use std::{fmt::Debug, time::Instant};
 
 use std::process::Command;
 
 use timely::communication::{Allocator, Configuration as TimelyConfig, WorkerGuards};
 use timely::worker::Worker;
 
-use crate::join::Balance;
+use crate::{experiment::Experiment, join::Balance};
 
 pub fn get_hostname() -> String {
     let output = Command::new("hostname")
@@ -71,16 +71,8 @@ pub struct Config {
     #[argh(option)]
     pub profile: Option<i32>,
 
-    /// don't remove duplicates from the output
-    #[argh(switch)]
-    pub no_dedup: bool,
-
-    /// don't verify output pairs
-    #[argh(switch)]
-    pub no_verify: bool,
-
     /// number of repetitions to squash together
-    #[argh(option, default = "1")]
+    #[argh(option, default = "10000")]
     pub repetition_batch: usize,
 
     /// what to load balance
@@ -91,6 +83,14 @@ pub struct Config {
     /// even if already present in the database
     #[argh(switch)]
     pub rerun: bool,
+
+    /// kill the run if it takes more than the specified time, in seconds
+    #[argh(option)]
+    pub timeout: Option<u64>,
+
+    /// skip all the verifications, and just count the candidate pairs
+    #[argh(switch)]
+    pub dry_run: bool,
 
     /// the dataset to be self-joined
     #[argh(positional)]
@@ -142,8 +142,6 @@ impl Config {
         sha.input(format!("{}", self.hosts_string()));
         sha.input(format!("{}", self.seed));
         sha.input(format!("{}", self.recall));
-        sha.input(format!("{}", self.no_verify));
-        sha.input(format!("{}", self.no_dedup));
         sha.input(format!("{:?}", self.balance));
         sha.input(format!("{}", self.repetition_batch));
         sha.input(format!("{}", self.path));
@@ -152,16 +150,24 @@ impl Config {
             sha.input(format!("{}", prof));
         }
 
+        if let Some(timeout) = self.timeout {
+            sha.input(format!("{}", timeout));
+        }
+
+        if self.dry_run {
+            sha.input(format!("dry run"));
+        }
+
         format!("{:x}", sha.result())
     }
 
     pub fn algorithm_version(&self) -> u8 {
         use crate::lsh::algorithms;
         match self.algorithm.as_ref() {
-            "hu-et-al" => algorithms::HU_ET_AL_VERSION,
-            "one-round-lsh" => algorithms::ONE_ROUND_VERSION,
-            "two-round-lsh" => algorithms::TWO_ROUND_VERSION,
-            "all-2-all" => crate::baseline::ALL_2_ALL_VERSION,
+            "local-lsh" => algorithms::LOCAL_LSH_VERSION,
+            "one-level-lsh" => algorithms::ONE_LEVEL_LSH_VERSION,
+            "two-level-lsh" => algorithms::TWO_LEVEL_LSH_VERSION,
+            "cartesian" => crate::baseline::ALL_2_ALL_VERSION,
             algorithm => panic!("don't know the version of {}", algorithm),
         }
     }
@@ -222,7 +228,7 @@ impl Config {
             let exec = std::env::args().nth(0).unwrap();
             info!("spawning executable {:?}", exec);
             // This is the top level invocation, which should spawn the processes with ssh
-            let handles: Vec<std::process::Child> = self
+            let mut handles: Vec<std::process::Child> = self
                 .hosts
                 .as_ref()
                 .unwrap()
@@ -241,12 +247,60 @@ impl Config {
                 })
                 .collect();
 
-            for mut h in handles {
-                info!("Waiting for ssh process to finish");
-                h.wait().expect("problem waiting for the ssh process");
-            }
-            info!("All workers done");
+            // now wait for the workers, with a timeout if configured
+            if let Some(timeout) = self.timeout {
+                let timeout = Duration::from_secs(timeout);
+                let timer = Instant::now();
+                loop {
+                    if timer.elapsed() > timeout {
+                        // report the experiment as timed out
+                        Experiment::from_config(self.clone()).save_timed_out(timeout);
 
+                        // kill all the ssh process
+                        for mut h in handles {
+                            h.kill().expect("problems killing the ssh process");
+                        }
+                        // most of the times the above killing is not sufficient, so we should
+                        // go to each worker and manually kill each `danny` process
+                        info!("spawning pkill calls");
+                        let killers: Vec<std::process::Child> = self
+                            .hosts
+                            .as_ref()
+                            .unwrap()
+                            .hosts
+                            .iter()
+                            .enumerate()
+                            .map(|(_, host)| {
+                                Command::new("ssh")
+                                    .arg(&host.name)
+                                    .arg("pkill danny")
+                                    .spawn()
+                                    .expect("problem spawning the ssh process")
+                            })
+                            .collect();
+                        for mut h in killers {
+                            h.wait().expect("problem killing danny processes");
+                        }
+
+                        break;
+                    }
+                    if handles.iter_mut().all(|h| {
+                        h.try_wait()
+                            .expect("problem polling the ssh process")
+                            .is_some()
+                    }) {
+                        info!("all workers done");
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_secs(1));
+                }
+            } else {
+                for mut h in handles {
+                    info!("Waiting for ssh process to finish");
+                    h.wait().expect("problem waiting for the ssh process");
+                }
+                info!("All workers done");
+            }
             None
         } else {
             info!("Worker invocation");

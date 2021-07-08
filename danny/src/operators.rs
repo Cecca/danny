@@ -203,7 +203,6 @@ impl<R: Route> Route for (usize, R) {
     }
 }
 
-
 #[derive(Clone, Copy, Debug)]
 pub enum MatrixDirection {
     Columns,
