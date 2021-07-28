@@ -168,6 +168,7 @@ impl Config {
             "one-level-lsh" => algorithms::ONE_LEVEL_LSH_VERSION,
             "two-level-lsh" => algorithms::TWO_LEVEL_LSH_VERSION,
             "cartesian" => crate::baseline::ALL_2_ALL_VERSION,
+            "seq-all-2-all" => 1,
             algorithm => panic!("don't know the version of {}", algorithm),
         }
     }
