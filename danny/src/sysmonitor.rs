@@ -52,9 +52,9 @@ impl MonitorThread {
 
 #[derive(Abomonation, Clone, Copy, Debug)]
 pub struct SystemUsage {
-    cpu: CpuUsage,
-    net: NetworkUsage,
-    mem: MemorySample,
+    pub cpu: CpuUsage,
+    pub net: NetworkUsage,
+    pub mem: MemorySample,
 }
 
 impl SystemUsage {
@@ -118,14 +118,14 @@ impl SystemUsage {
 
 #[derive(Abomonation, Clone, Copy, Debug)]
 pub struct CpuUsage {
-    user: f64,
-    system: f64,
+    pub user: f64,
+    pub system: f64,
 }
 
 #[derive(Abomonation, Clone, Copy, Debug)]
 pub struct NetworkUsage {
-    tx: f64,
-    rx: f64,
+    pub tx: f64,
+    pub rx: f64,
 }
 
 #[derive(Abomonation, Clone, Copy, Debug)]
@@ -215,8 +215,8 @@ impl NetworkSample {
 
 #[derive(Abomonation, Clone, Copy, Debug)]
 pub struct MemorySample {
-    total: u64,
-    used: u64,
+    pub total: u64,
+    pub used: u64,
 }
 
 impl MemorySample {

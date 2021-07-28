@@ -388,7 +388,6 @@ fn main() {
                     monitor.join()
                 }).unwrap_or_else(Vec::new);
             let system_usage = SystemUsage::collect_from_workers(worker, system_usage);
-            println!("{:?}", system_usage);
 
             info!("collecting counters");
             // close the events input and perform any outstanding work
@@ -416,6 +415,7 @@ fn main() {
                     }
                 }
                 experiment.add_profile(profile);
+                experiment.add_system_usage(system_usage);
 
                 for ((event, worker), count) in events.borrow().iter() {
                     experiment.append_step_counter(

@@ -3,6 +3,7 @@ use chrono::prelude::*;
 use rusqlite::*;
 use std::path::{Path, PathBuf};
 use std::{collections::HashMap, time::Duration};
+use crate::sysmonitor::SystemUsage;
 
 pub struct Experiment {
     db_path: PathBuf,
@@ -13,6 +14,7 @@ pub struct Experiment {
     // Hostname, interface, transmitted, received
     network: Vec<(String, String, i64, i64)>,
     profile: Vec<ProfileFunction>,
+    system: Vec<(Duration, String, SystemUsage)>,
     output_size: Option<u32>,
     total_time_ms: Option<u32>,
     recall: Option<f64>,
@@ -28,6 +30,7 @@ impl Experiment {
             step_counters: Vec::new(),
             network: Vec::new(),
             profile: Vec::new(),
+            system: Vec::new(),
             output_size: None,
             total_time_ms: None,
             recall: None,
@@ -75,6 +78,10 @@ impl Experiment {
 
     pub fn add_profile(&mut self, prof: Vec<ProfileFunction>) {
         self.profile.extend(prof.into_iter())
+    }
+
+    pub fn add_system_usage(&mut self, usage: Vec<(Duration, String, SystemUsage)>) {
+        self.system.extend(usage.into_iter())
     }
 
     fn default_db_path() -> std::path::PathBuf {
@@ -239,6 +246,27 @@ impl Experiment {
                 .expect("fail to prepare query")
                 .map(|p| p.unwrap())
                 .collect();
+
+            let mut stmt = tx
+                .prepare(
+                    "INSERT INTO system ( id, time, hostname, cpu_user, cpu_system, net_tx, net_rx, mem_total, mem_used )
+                 VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9 )",
+                )
+                .expect("failed to prepare statement");
+            for (time, hostname, usage) in self.system.iter() {
+                stmt.execute(params![
+                    id,
+                    time.as_secs_f64(),
+                    hostname,
+                    usage.cpu.user,
+                    usage.cpu.system,
+                    usage.net.tx,
+                    usage.net.rx,
+                    usage.mem.total as i64,
+                    usage.mem.used as i64
+                ])
+                .expect("failure in inserting counters information");
+            }
 
             let mut stmt = tx
                 .prepare(
@@ -422,6 +450,11 @@ fn db_migrate(conn: &Connection) {
         info!("Applying migration v9");
         conn.execute_batch(include_str!("migrations/v9.sql"))
             .expect("error applying version 9");
+    }
+    if version < 10 {
+        info!("Applying migration v10");
+        conn.execute_batch(include_str!("migrations/v10.sql"))
+            .expect("error applying version 10");
     }
 
     info!("Database migration completed!");
