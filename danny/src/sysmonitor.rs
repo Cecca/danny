@@ -1,11 +1,17 @@
+use crate::config::*;
 use std::cell::RefCell;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
-use std::time::{Instant,Duration};
-use std::thread;
-use std::sync::Arc;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, Instant};
+use timely::communication::Allocator;
+use timely::dataflow::operators::*;
+use timely::dataflow::ProbeHandle;
+use timely::worker::Worker;
 
 pub struct MonitorThread {
     handle: thread::JoinHandle<Vec<(Duration, SystemUsage)>>,
@@ -33,30 +39,73 @@ impl MonitorThread {
 
             samples
         });
-        Some(MonitorThread{handle, running})
+        Some(MonitorThread { handle, running })
     }
 
     pub fn join(self) -> Vec<(Duration, SystemUsage)> {
         self.running.store(false, Ordering::SeqCst);
-        self.handle.join().expect("failed to join monitoring thread")
+        self.handle
+            .join()
+            .expect("failed to join monitoring thread")
     }
 }
-
 
 #[derive(Abomonation, Clone, Copy, Debug)]
 pub struct SystemUsage {
     cpu: CpuUsage,
     net: NetworkUsage,
-    mem: MemorySample
+    mem: MemorySample,
 }
 
 impl SystemUsage {
+    /// sets up a small dataflow to exchange information about the network exchanges
+    pub fn collect_from_workers(
+        worker: &mut Worker<Allocator>,
+        usage: Vec<(Duration, SystemUsage)>,
+    ) -> Vec<(Duration, String, SystemUsage)> {
+        use timely::dataflow::channels::pact::Pipeline;
+
+        let result = Rc::new(RefCell::new(Vec::new()));
+        let result_read = Rc::clone(&result);
+
+        let (mut input, probe) = worker.dataflow::<u32, _, _>(move |scope| {
+            let (input, stream) = scope.new_input::<(Duration, String, SystemUsage)>();
+            let mut probe = ProbeHandle::new();
+            stream
+                .exchange(|_| 0)
+                .unary(Pipeline, "collector", move |_, _| {
+                    move |input, output| {
+                        input.for_each(|t, data| {
+                            let data = data.replace(Vec::new());
+                            result.borrow_mut().extend(data.into_iter());
+                            output.session(&t).give(());
+                        });
+                    }
+                })
+                .probe_with(&mut probe);
+
+            (input, probe)
+        });
+
+        let host = get_hostname();
+        for (d, su) in usage {
+            input.send((d, host.clone(), su));
+        }
+
+        input.close();
+        worker.step_while(|| !probe.done());
+
+        result_read.replace(Vec::new())
+    }
+
     pub fn compute(prev: &SystemSample, current: &SystemSample, elapsed: Duration) -> SystemUsage {
         let secs = elapsed.as_secs_f64();
         SystemUsage {
             cpu: CpuUsage {
-                user: (current.cpu.user - prev.cpu.user) as f64 / (current.cpu.total - prev.cpu.total) as f64,
-                system: (current.cpu.system - prev.cpu.system) as f64 / (current.cpu.total - prev.cpu.total) as f64,
+                user: (current.cpu.user - prev.cpu.user) as f64
+                    / (current.cpu.total - prev.cpu.total) as f64,
+                system: (current.cpu.system - prev.cpu.system) as f64
+                    / (current.cpu.total - prev.cpu.total) as f64,
             },
             net: NetworkUsage {
                 tx: (current.net.tx - prev.net.tx) as f64 / secs,
@@ -122,8 +171,7 @@ impl CpuSample {
                             .unwrap()
                             .split_whitespace()
                             .skip(1)
-                            .map(|s| {
-                                s.parse::<u64>().expect("error parsing CPU stat")}),
+                            .map(|s| s.parse::<u64>().expect("error parsing CPU stat")),
                     );
                     let buf = buf.borrow();
                     let total: u64 = buf.iter().sum();

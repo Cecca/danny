@@ -18,6 +18,8 @@ use danny_base::types::*;
 use std::fmt::Debug;
 use timely::communication::Allocator;
 use timely::worker::Worker;
+use std::time::Duration;
+use danny::sysmonitor::*;
 
 fn run_cartesian<SV>(
     config: &Config,
@@ -255,6 +257,9 @@ fn main() {
     // prevent the others from returning its information multiple times.
     let network = Arc::new(Mutex::new(Some(NetworkGauge::start())));
 
+    // similarly, spawn the system monitor outside of the worker definition
+    let system_monitor = Arc::new(Mutex::new(MonitorThread::spawn(Duration::from_secs(1))));
+
     // The same goes on for the profiler
     let profiler = Arc::new(Mutex::new(
         config
@@ -377,6 +382,13 @@ fn main() {
                 network.map(|gauge| gauge.measure())
             };
             let network_summaries = NetworkSummary::collect_from_workers(worker, network_summary);
+
+            let system_usage = 
+                system_monitor.lock().unwrap().take().map(|monitor| {
+                    monitor.join()
+                }).unwrap_or_else(Vec::new);
+            let system_usage = SystemUsage::collect_from_workers(worker, system_usage);
+            println!("{:?}", system_usage);
 
             info!("collecting counters");
             // close the events input and perform any outstanding work
