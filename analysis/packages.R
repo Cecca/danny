@@ -8,4 +8,5 @@ suppressPackageStartupMessages({
     library(ggridges)
     library(ggforce)
     library(ggrepel)
+    library(directlabels)
 })

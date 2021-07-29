@@ -104,7 +104,6 @@ table_sketch_quality <- function() {
     all
 }
 
-
 table_search_best <- function() {
     db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
     # The load is the maximum load among all the workers in a given experiment
@@ -520,3 +519,11 @@ table_bench <- function() {
             )
         )
 }
+
+table_sysmonitor <- function() {
+    db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
+    result <- tbl(db, "result_recent") %>% collect()
+    system <- tbl(db, "system") %>% collect()
+    inner_join(result, system)
+}
+
