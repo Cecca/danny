@@ -262,7 +262,7 @@ impl Config {
             }
 
 
-            info!("spawning executable {:?}", exec);
+            info!("spawning executable {:?}", remote_exec);
             // This is the top level invocation, which should spawn the processes with ssh
             let mut handles: Vec<std::process::Child> = self
                 .hosts
