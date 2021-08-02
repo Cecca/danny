@@ -227,8 +227,9 @@ impl Config {
         F: Fn(&mut Worker<Allocator>) -> T + Send + Sync + 'static,
     {
         if self.hosts.is_some() && self.process_id.is_none() {
-            let exec = std::env::args().nth(0).unwrap();
-            let exec = PathBuf::from(exec).canonicalize().expect("cannot canonicalize");
+            // let exec = std::env::args().nth(0).unwrap();
+            // let exec = PathBuf::from(exec).canonicalize().expect("cannot canonicalize");
+            let exec = std::env::current_exe().expect("cannot get current executable");
             // first, we copy the executable to a known location, so that then we can run it
             let remote_exec = PathBuf::from("/tmp").join(
                 exec
