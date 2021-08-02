@@ -3,6 +3,7 @@ use rand::rngs::StdRng;
 use rand::RngCore;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
+use std::path::PathBuf;
 use std::{convert::TryFrom, time::Duration};
 use std::{fmt::Debug, time::Instant};
 
@@ -227,6 +228,39 @@ impl Config {
     {
         if self.hosts.is_some() && self.process_id.is_none() {
             let exec = std::env::args().nth(0).unwrap();
+            // first, we copy the executable to a known location, so that then we can run it
+            let remote_exec = PathBuf::from("/tmp").join(
+                PathBuf::from(&exec)
+                    .file_name()
+                    .unwrap_or_else(|| panic!("cannot get file name for {}", exec))
+            );
+            println!("Copying the executable to minions");
+            let handles: Vec<std::process::Child> = self
+                .hosts
+                .as_ref()
+                .unwrap()
+                .hosts
+                .iter()
+                .map(|host| {
+                    let dest = format!(
+                        "{}:{}",
+                        host.name,
+                        remote_exec.to_str().expect("cannot convert path to string")
+                    );
+                    Command::new("rsync")
+                        .arg("--progress")
+                        .arg(&exec)
+                        .arg(dest)
+                        .spawn()
+                        .expect("problem spawning the rsync process")
+                })
+                .collect();
+
+            for mut h in handles {
+                h.wait().expect("problem waiting for the rsync process");
+            }
+
+
             info!("spawning executable {:?}", exec);
             // This is the top level invocation, which should spawn the processes with ssh
             let mut handles: Vec<std::process::Child> = self
@@ -241,7 +275,7 @@ impl Config {
                     info!("Connecting to {}", host.name);
                     Command::new("ssh")
                         .arg(&host.name)
-                        .arg(&exec)
+                        .arg(&remote_exec)
                         .arg(encoded_config)
                         .spawn()
                         .expect("problem spawning the ssh process")
