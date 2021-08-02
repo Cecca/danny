@@ -70,18 +70,8 @@ For a list of all available options and algorithms, please consult `danny --help
 
 ## Running on a cluster
 
-Deploying a running on a cluster requires each machine of the cluster to have a copy of the `danny` binary available in the `$PATH`. 
-The simplest way to accomplish this is to run
-
-```
-cargo install --force --path danny --locked
-```
-
-on each machine of the cluster. This will place the `danny` executable in the `~/.cargo/bin` directory of each machine, 
-which should be added to `$PATH`.
-
-To run the code, you invoke `danny` on one of the machines and provide a list of all the hosts to use in a file: the executable
-will take care of spawning worker processes on all listed machines using `ssh`. Therefore it is best to have
+To run the code on a cluster of machines, you invoke `danny` on one of the machines and provide a list of all the hosts to use in a file: the executable
+will take care of copying itself to all the workers with `rsync` and spawning worker processes on all listed machines using `ssh`. Therefore it is best to have
 passwordless `ssh` configured in your cluster.
 
 The file listing hosts should contain `host:port` pairs, like the following (any port number will do):
