@@ -228,13 +228,14 @@ impl Config {
     {
         if self.hosts.is_some() && self.process_id.is_none() {
             let exec = std::env::args().nth(0).unwrap();
+            let exec = PathBuf::from(exec).canonicalize().expect("cannot canonicalize");
             // first, we copy the executable to a known location, so that then we can run it
             let remote_exec = PathBuf::from("/tmp").join(
-                PathBuf::from(&exec)
+                exec
                     .file_name()
-                    .unwrap_or_else(|| panic!("cannot get file name for {}", exec))
+                    .unwrap_or_else(|| panic!("cannot get file name for {:?}", exec))
             );
-            println!("Copying the executable to minions");
+            println!("Copying the executable {:?} to minions", exec);
             let handles: Vec<std::process::Child> = self
                 .hosts
                 .as_ref()
