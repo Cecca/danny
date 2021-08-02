@@ -23,7 +23,7 @@ cargo install --force --path danny-utilities --locked
 
 ## Prepare the datasets
 
-Move to the `experiments` subdirectory and define the following two environment variables
+Move to the `datasets` subdirectory and define the following two environment variables
 
 ```
 DANNY_DATA_DIR=/path/to/directory/to/store/datasets
