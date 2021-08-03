@@ -291,7 +291,7 @@ where
                             vectors.entry(t.time().clone()).or_insert_with(HashMap::new);
                         let data = data.replace(Vec::new());
                         DATASTRUCTURES_BYTES
-                            .fetch_add(dbg!(data.deep_size_of()), std::sync::atomic::Ordering::SeqCst);
+                            .fetch_add(data.deep_size_of(), std::sync::atomic::Ordering::SeqCst);
                         for (subproblem_key, marker, (k, (v, p, s))) in data {
                             subproblems
                                 .entry(subproblem_key)
