@@ -15,6 +15,7 @@ pub struct Experiment {
     network: Vec<(String, String, i64, i64)>,
     profile: Vec<ProfileFunction>,
     system: Vec<(Duration, String, SystemUsage)>,
+    datastructures_bytes: Vec<(String, usize)>,
     output_size: Option<u32>,
     total_time_ms: Option<u32>,
     recall: Option<f64>,
@@ -31,6 +32,7 @@ impl Experiment {
             network: Vec::new(),
             profile: Vec::new(),
             system: Vec::new(),
+            datastructures_bytes: Vec::new(),
             output_size: None,
             total_time_ms: None,
             recall: None,
@@ -84,6 +86,10 @@ impl Experiment {
         self.system.extend(usage.into_iter())
     }
 
+    pub fn add_datastructures_bytes(&mut self, bytes: Vec<(String, usize)>) {
+        self.datastructures_bytes.extend(bytes.into_iter())
+    }
+
     fn default_db_path() -> std::path::PathBuf {
         #[allow(deprecated)]
         let mut path = std::env::home_dir().expect("unable to get home directory");
@@ -106,7 +112,7 @@ impl Experiment {
             FROM result_recent
             WHERE path = ?1
               AND threshold = ?2
-              AND algorithm = 'all-2-all'
+              AND algorithm = 'cartesian'
               AND sketch_bits = 0",
             params![
                 self.config.path.trim_end_matches("/"),
@@ -199,12 +205,10 @@ impl Experiment {
                     speedup,
 
                     profile_frequency,
-                    dry_run,
-
-                    datastructures_bytes
+                    dry_run
                 )
                  VALUES (
-                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25
                  )",
                 params![
                     env!("VERGEN_SHA_SHORT"),
@@ -232,8 +236,7 @@ impl Experiment {
                     recall,
                     speedup,
                     self.config.profile.unwrap_or(0),
-                    self.config.dry_run,
-                    DATASTRUCTURES_BYTES.load(std::sync::atomic::Ordering::SeqCst) as i64
+                    self.config.dry_run
                 ],
             )
             .expect("error inserting into main table");
@@ -298,6 +301,17 @@ impl Experiment {
                 .expect("failed to prepare statement");
             for (hostname, interface, transmitted, received) in self.network.iter() {
                 stmt.execute(params![id, hostname, interface, transmitted, received])
+                    .expect("failure in inserting network information");
+            }
+
+            let mut stmt = tx
+                .prepare(
+                    "INSERT INTO datastructures_bytes ( id, hostname, datastructures_bytes )
+                 VALUES ( ?1, ?2, ?3 )",
+                )
+                .expect("failed to prepare statement");
+            for (hostname, bytes) in self.datastructures_bytes.iter() {
+                stmt.execute(params![id, hostname, *bytes as i64])
                     .expect("failure in inserting network information");
             }
 
@@ -463,6 +477,11 @@ fn db_migrate(conn: &Connection) {
         info!("Applying migration v11");
         conn.execute_batch(include_str!("migrations/v11.sql"))
             .expect("error applying version 11");
+    }
+    if version < 12 {
+        info!("Applying migration v12");
+        conn.execute_batch(include_str!("migrations/v12.sql"))
+            .expect("error applying version 12");
     }
 
     info!("Database migration completed!");

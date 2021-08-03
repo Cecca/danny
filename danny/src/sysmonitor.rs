@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 use timely::communication::Allocator;
+use timely::dataflow::channels::pact::Pipeline;
 use timely::dataflow::operators::*;
 use timely::dataflow::ProbeHandle;
 use timely::worker::Worker;
@@ -54,6 +55,40 @@ impl MonitorThread {
     }
 }
 
+pub fn collect_datastructures_memory(worker: &mut Worker<Allocator>) -> Vec<(String, usize)> {
+    let result = Rc::new(RefCell::new(Vec::new()));
+    let result_read = Rc::clone(&result);
+
+    let (mut input, probe) = worker.dataflow::<u32, _, _>(move |scope| {
+        let (input, stream) = scope.new_input::<(String, usize)>();
+        let mut probe = ProbeHandle::new();
+        stream
+            .exchange(|_| 0)
+            .unary(Pipeline, "collector", move |_, _| {
+                move |input, output| {
+                    input.for_each(|t, data| {
+                        let data = data.replace(Vec::new());
+                        result.borrow_mut().extend(data.into_iter());
+                        output.session(&t).give(());
+                    });
+                }
+            })
+            .probe_with(&mut probe);
+
+        (input, probe)
+    });
+
+    let host = get_hostname();
+    let bytes = DATASTRUCTURES_BYTES.swap(0, Ordering::SeqCst);
+    if bytes > 0 {
+        input.send((host, bytes));
+    }
+    input.close();
+    worker.step_while(|| !probe.done());
+
+    result_read.replace(Vec::new())
+}
+
 #[derive(Abomonation, Clone, Copy, Debug)]
 pub struct SystemUsage {
     pub cpu: CpuUsage,
@@ -67,8 +102,6 @@ impl SystemUsage {
         worker: &mut Worker<Allocator>,
         usage: Vec<(Duration, SystemUsage)>,
     ) -> Vec<(Duration, String, SystemUsage)> {
-        use timely::dataflow::channels::pact::Pipeline;
-
         let result = Rc::new(RefCell::new(Vec::new()));
         let result_read = Rc::clone(&result);
 

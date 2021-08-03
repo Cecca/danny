@@ -20,7 +20,7 @@ crossbeam-channel = "0.3"
 rand = "0.6"
 rand_xorshift = "0.1.0"
 progress-logger = "0.1.1"
-rusqlite = { version = "0.23", features = ["bundled"] }
+rusqlite = { version = "0.25", features = ["bundled"] }
 argh = "0.1"
 sha2 = "0.8"
 csv = "1.1"

@@ -388,6 +388,7 @@ fn main() {
                     monitor.join()
                 }).unwrap_or_else(Vec::new);
             let system_usage = SystemUsage::collect_from_workers(worker, system_usage);
+            let datastructures_bytes = collect_datastructures_memory(worker);
 
             info!("collecting counters");
             // close the events input and perform any outstanding work
@@ -416,6 +417,7 @@ fn main() {
                 }
                 experiment.add_profile(profile);
                 experiment.add_system_usage(system_usage);
+                experiment.add_datastructures_bytes(datastructures_bytes);
 
                 for ((event, worker), count) in events.borrow().iter() {
                     experiment.append_step_counter(
