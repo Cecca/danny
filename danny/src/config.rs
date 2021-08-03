@@ -399,7 +399,6 @@ impl Hosts {
 pub fn parse_hosts(arg: &str) -> Result<Hosts, String> {
     use std::fs::File;
     use std::io::{BufRead, BufReader};
-    use std::path::PathBuf;
 
     let path = PathBuf::from(arg);
     if path.is_file() {

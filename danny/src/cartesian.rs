@@ -1,4 +1,5 @@
 use crate::operators::Route;
+use deepsize::DeepSizeOf;
 
 /// Utilities to compute the (self) cartesian product of a stream.
 ///
@@ -47,7 +48,7 @@ impl SelfCartesian {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Abomonation)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Abomonation, DeepSizeOf)]
 pub enum Marker {
     Left,
     Right,
@@ -75,7 +76,7 @@ impl Marker {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Abomonation)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Abomonation, DeepSizeOf)]
 pub struct CartesianKey(pub u8, pub u8);
 
 impl CartesianKey {

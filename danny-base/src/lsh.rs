@@ -3,6 +3,7 @@ use crate::types::*;
 use rand::distributions::{Distribution, Normal, Uniform};
 use rand::Rng;
 use std::clone::Clone;
+use deepsize::DeepSizeOf;
 
 pub trait LSHFunction {
     type Input;
@@ -18,7 +19,7 @@ pub trait LSHFunction {
     }
 }
 
-#[derive(Clone, Abomonation, Debug, Hash)]
+#[derive(Clone, Abomonation, Debug, Hash, DeepSizeOf)]
 pub struct TensorPool {
     left: Vec<u16>,
     right: Vec<u16>,

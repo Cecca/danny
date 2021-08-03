@@ -5,24 +5,25 @@ use crate::io::*;
 use crate::join::{Joiner, SelfJoiner};
 use crate::logging::*;
 use crate::operators::*;
+use crate::sysmonitor::DATASTRUCTURES_BYTES;
 use danny_base::lsh::*;
 use danny_base::sketch::*;
 use danny_base::types::*;
+use deepsize::DeepSizeOf;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
 use std::clone::Clone;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use timely::logging::Logger;
-
+use std::mem::size_of;
 use std::sync::Arc;
 use std::time::Instant;
 use timely::communication::Allocator;
 use timely::dataflow::channels::pact::Pipeline as PipelinePact;
-
 use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::*;
 use timely::dataflow::*;
+use timely::logging::Logger;
 use timely::worker::Worker;
 use timely::ExchangeData;
 
@@ -65,9 +66,9 @@ fn simple_source<G, F, D, S>(
 where
     G: Scope,
     G::Timestamp: Succ,
-    D: ExchangeData + SketchEstimate + Debug,
+    D: ExchangeData + SketchEstimate + Debug + DeepSizeOf,
     S: Sketcher<Input = D> + Clone + 'static,
-    S::Output: SketchData + Debug,
+    S::Output: SketchData + Debug + DeepSizeOf,
     F: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
 {
     let _logger = scope.danny_logger();
@@ -229,11 +230,12 @@ pub fn local_lsh<D, F, H, S, V, B, R>(
     _experiment: &mut Experiment,
 ) -> usize
 where
-    for<'de> D: ReadBinaryFile + Deserialize<'de> + ExchangeData + Debug + SketchEstimate,
+    for<'de> D:
+        ReadBinaryFile + Deserialize<'de> + ExchangeData + Debug + SketchEstimate + DeepSizeOf,
     F: Fn(&D, &D) -> bool + Send + Clone + Copy + Sync + 'static,
     H: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
     S: Sketcher<Input = D, Output = V> + Send + Sync + Clone + 'static,
-    V: SketchData + Debug,
+    V: SketchData + Debug + DeepSizeOf,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
     B: Fn(usize, &mut R) -> H + Sized + Send + Sync + Clone + 'static,
 {
@@ -288,9 +290,10 @@ where
                             .or_insert_with(HashMap::new);
                         let local_vectors =
                             vectors.entry(t.time().clone()).or_insert_with(HashMap::new);
-                        for (subproblem_key, marker, (k, (v, p, s))) in
-                            data.replace(Vec::new()).drain(..)
-                        {
+                        let data = data.replace(Vec::new());
+                        DATASTRUCTURES_BYTES
+                            .fetch_add(data.deep_size_of(), std::sync::atomic::Ordering::SeqCst);
+                        for (subproblem_key, marker, (k, (v, p, s))) in data {
                             subproblems
                                 .entry(subproblem_key)
                                 .or_insert_with(Vec::new)

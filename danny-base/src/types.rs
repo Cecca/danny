@@ -6,8 +6,9 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
+use deepsize::DeepSizeOf;
 
-#[derive(Clone, Default, Eq, Ord, Hash, PartialEq, PartialOrd, Abomonation, Copy, Debug)]
+#[derive(Clone, Default, Eq, Ord, Hash, PartialEq, PartialOrd, Abomonation, Copy, Debug, DeepSizeOf)]
 pub struct ElementId(pub u32);
 
 impl Into<u64> for ElementId {
@@ -16,7 +17,7 @@ impl Into<u64> for ElementId {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Abomonation, Default)]
+#[derive(Serialize, Deserialize, Clone, Abomonation, Default, DeepSizeOf)]
 pub struct Vector {
     data: Vec<f32>,
 }
@@ -68,7 +69,7 @@ impl Vector {
     }
 }
 
-#[derive(Abomonation, Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(Abomonation, Serialize, Deserialize, Clone, Debug, Default, DeepSizeOf)]
 pub struct BagOfWords {
     pub universe: u32,
     words: Vec<u32>,

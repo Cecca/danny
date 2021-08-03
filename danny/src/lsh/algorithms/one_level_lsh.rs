@@ -9,6 +9,7 @@ use crate::operators::*;
 use danny_base::lsh::*;
 use danny_base::sketch::*;
 use danny_base::types::ElementId;
+use deepsize::DeepSizeOf;
 use rand::{Rng, SeedableRng};
 use serde::de::Deserialize;
 use std::clone::Clone;
@@ -138,12 +139,12 @@ pub fn one_level_lsh<D, F, H, S, V, B, R>(
     _experiment: &mut Experiment,
 ) -> usize
 where
-    for<'de> D: ReadBinaryFile + Deserialize<'de> + ExchangeData + Debug + SketchEstimate,
+    for<'de> D: ReadBinaryFile + Deserialize<'de> + ExchangeData + Debug + SketchEstimate + DeepSizeOf,
     F: Fn(&D, &D) -> bool + Send + Clone + Sync + 'static,
     H: LSHFunction<Input = D, Output = u32> + Sync + Send + Clone + 'static,
     R: Rng + SeedableRng + Send + Sync + Clone + 'static,
     S: Sketcher<Input = D, Output = V> + Send + Sync + Clone + 'static,
-    V: SketchData + Debug,
+    V: SketchData + Debug + DeepSizeOf,
     B: Fn(usize, &mut R) -> H + Sized + Send + Sync + Clone + 'static,
 {
     use std::cell::RefCell;

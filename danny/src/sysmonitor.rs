@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::rc::Rc;
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -12,6 +13,9 @@ use timely::communication::Allocator;
 use timely::dataflow::operators::*;
 use timely::dataflow::ProbeHandle;
 use timely::worker::Worker;
+
+/// The total number of bytes allocated on this worker for our data structures
+pub static DATASTRUCTURES_BYTES: AtomicUsize = AtomicUsize::new(0);
 
 pub struct MonitorThread {
     handle: thread::JoinHandle<Vec<(Duration, SystemUsage)>>,

@@ -1,6 +1,8 @@
+use crate::sysmonitor::DATASTRUCTURES_BYTES;
 use crate::cartesian::*;
 use crate::logging::*;
 use crate::operators::*;
+use deepsize::DeepSizeOf;
 use channels::pact::Pipeline;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -68,8 +70,8 @@ impl<G, K, V> Join<G, K, V> for Stream<G, (K, V)>
 where
     G: Scope,
     G::Timestamp: ToStepId,
-    K: KeyData + Ord + std::fmt::Debug,
-    V: ExchangeData + KeyPayload,
+    K: KeyData + Ord + std::fmt::Debug + DeepSizeOf,
+    V: ExchangeData + KeyPayload + DeepSizeOf,
 {
     fn self_join_map<F, I, O>(&self, balance: Balance, mut f: F) -> Stream<G, O>
     where
@@ -108,6 +110,8 @@ where
 
                 input.for_each(|t, data| {
                     let data = data.replace(Vec::new());
+                    DATASTRUCTURES_BYTES
+                        .fetch_add(data.deep_size_of(), std::sync::atomic::Ordering::SeqCst);
                     for (k, v) in data {
                         stash
                             .borrow_mut()

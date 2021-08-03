@@ -44,6 +44,7 @@ packed_simd = { version = "0.3.4", package = "packed_simd_2" }
 progress-logger = "0.1.1"
 sha2 = "0.8"
 pprof = {version = "0.4.1", features = ["flamegraph", "protobuf"]}
+deepsize = "0.2"
 
 [build-dependencies]
 vergen = "3.1"

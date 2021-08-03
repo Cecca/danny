@@ -1,3 +1,4 @@
+use deepsize::DeepSizeOf;
 use crate::lsh::*;
 use crate::types::*;
 use packed_simd::u64x2;
@@ -15,7 +16,7 @@ pub trait Sketcher {
     fn sketch(&self, v: &Self::Input) -> Self::Output;
 }
 
-pub trait BitBasedSketch: Clone + Copy {
+pub trait BitBasedSketch: Clone + Copy + DeepSizeOf {
     fn different_bits(&self, other: &Self) -> u32;
     fn same_bits(&self, other: &Self) -> u32;
     fn num_bits(&self) -> usize;
@@ -32,7 +33,7 @@ pub trait FromCosine: Sized {
 }
 
 /// A 0-bits sketch
-#[derive(Debug, Clone, Copy, Abomonation, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Abomonation, Hash, Eq, PartialEq, DeepSizeOf)]
 pub struct Sketch0;
 
 impl BitBasedSketch for Sketch0 {
@@ -84,7 +85,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, Copy, Abomonation, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Abomonation, Hash, Eq, PartialEq, DeepSizeOf)]
 pub struct Sketch64 {
     data: u64,
 }
@@ -142,7 +143,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, Copy, Abomonation, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Abomonation, Hash, Eq, PartialEq, DeepSizeOf)]
 pub struct Sketch128 {
     data: [u64; 2],
 }
@@ -270,7 +271,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, Copy, Abomonation, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Abomonation, Hash, Eq, PartialEq, DeepSizeOf)]
 pub struct Sketch256 {
     data: [u64; 4],
 }
@@ -357,7 +358,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, Copy, Abomonation, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Abomonation, Hash, Eq, PartialEq, DeepSizeOf)]
 pub struct Sketch512 {
     data: [u64; 8],
 }
