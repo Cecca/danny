@@ -3,7 +3,7 @@ use chrono::prelude::*;
 use rusqlite::*;
 use std::path::{Path, PathBuf};
 use std::{collections::HashMap, time::Duration};
-use crate::sysmonitor::SystemUsage;
+use crate::sysmonitor::{DATASTRUCTURES_BYTES, SystemUsage};
 
 pub struct Experiment {
     db_path: PathBuf,
@@ -199,10 +199,12 @@ impl Experiment {
                     speedup,
 
                     profile_frequency,
-                    dry_run
+                    dry_run,
+
+                    datastructures_bytes
                 )
                  VALUES (
-                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26
                  )",
                 params![
                     env!("VERGEN_SHA_SHORT"),
@@ -230,7 +232,8 @@ impl Experiment {
                     recall,
                     speedup,
                     self.config.profile.unwrap_or(0),
-                    self.config.dry_run
+                    self.config.dry_run,
+                    DATASTRUCTURES_BYTES.load(std::sync::atomic::Ordering::SeqCst) as i64
                 ],
             )
             .expect("error inserting into main table");
@@ -455,6 +458,11 @@ fn db_migrate(conn: &Connection) {
         info!("Applying migration v10");
         conn.execute_batch(include_str!("migrations/v10.sql"))
             .expect("error applying version 10");
+    }
+    if version < 11 {
+        info!("Applying migration v11");
+        conn.execute_batch(include_str!("migrations/v11.sql"))
+            .expect("error applying version 11");
     }
 
     info!("Database migration completed!");

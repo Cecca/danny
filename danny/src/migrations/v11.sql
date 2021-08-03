@@ -1,0 +1,7 @@
+BEGIN TRANSACTION;
+
+ALTER TABLE result ADD COLUMN datastructures_bytes INTEGER;
+
+PRAGMA user_version = 11;
+
+END TRANSACTION;

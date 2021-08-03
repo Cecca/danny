@@ -15,7 +15,6 @@ use serde::de::Deserialize;
 use std::clone::Clone;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::mem::size_of;
 use std::sync::Arc;
 use std::time::Instant;
 use timely::communication::Allocator;
@@ -292,7 +291,7 @@ where
                             vectors.entry(t.time().clone()).or_insert_with(HashMap::new);
                         let data = data.replace(Vec::new());
                         DATASTRUCTURES_BYTES
-                            .fetch_add(data.deep_size_of(), std::sync::atomic::Ordering::SeqCst);
+                            .fetch_add(dbg!(data.deep_size_of()), std::sync::atomic::Ordering::SeqCst);
                         for (subproblem_key, marker, (k, (v, p, s))) in data {
                             subproblems
                                 .entry(subproblem_key)
