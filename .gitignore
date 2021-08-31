@@ -1,4 +1,4 @@
-danny-results.sqlite 
+*.sqlite 
 /env
 .vscode/
 .smt

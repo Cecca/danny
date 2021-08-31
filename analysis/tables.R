@@ -471,22 +471,10 @@ table_normalized_profile <- function() {
 }
 
 table_scalability <- function() {
-    db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
+    db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results-scalability.sqlite")
     all <- tbl(db, "result_recent") %>%
-        filter(hosts %in% c(
-            "sss00:2001",
-            "sss00:2001__sss01:2001",
-            "sss00:2001__sss01:2001__sss02:2001",
-            "sss00:2001__sss01:2001__sss02:2001__sss03:2001",
-            "sss00:2001__sss01:2001__sss02:2001__sss03:2001__sss04:2001"
-        )) %>%
-        filter(profile_frequency == 0) %>%
-        filter(path %LIKE% "%sample-200000.bin") %>%
         filter(required_recall == 0.8) %>%
-        filter(threshold %in% c(0.5)) %>%
-        filter(!no_verify, !no_dedup) %>%
-        filter(algorithm != "two-round-lsh" | (repetition_batch >= 1000)) %>%
-        filter(algorithm != "all-2-all") %>%
+        filter(threshold %in% c(0.7)) %>%
         collect()
 
 
@@ -497,10 +485,10 @@ table_scalability <- function() {
             dataset = case_when(
                 str_detect(dataset, "sift") ~ "SIFT",
                 str_detect(dataset, "Livejournal") ~ "Livejournal",
-                str_detect(dataset, "Glove") ~ "Glove",
+                str_detect(dataset, "[Gg]love") ~ "Glove",
                 str_detect(dataset, "Orkut") ~ "Orkut"
             ),
-            nhosts = str_count(hosts, "sss"),
+            nhosts = str_count(hosts, ":"),
             workers = nhosts * threads
         ) %>%
         order_datasets() %>%
@@ -521,9 +509,127 @@ table_bench <- function() {
 }
 
 table_sysmonitor <- function() {
-    db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results.sqlite")
-    result <- tbl(db, "result_recent") %>% collect()
+    db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results-scalability.sqlite")
     system <- tbl(db, "system") %>% collect()
+    result <- tbl(db, "result_recent") %>%
+        collect() %>%
+        mutate(
+            dataset = basename(path),
+            total_time = set_units(total_time_ms, "ms"),
+            dataset = case_when(
+                str_detect(dataset, "sift") ~ "SIFT",
+                str_detect(dataset, "Livejournal") ~ "Livejournal",
+                str_detect(dataset, "[Gg]love") ~ "Glove",
+                str_detect(dataset, "Orkut") ~ "Orkut"
+            ),
+            nhosts = str_count(hosts, ":"),
+            workers = nhosts * threads
+        ) %>%
+        order_datasets() %>%
+        recode_algorithms() %>%
+        filter(workers == 40, dataset=="Glove") %>% 
+        group_by(dataset, algorithm) %>%
+        slice_min(total_time_ms)
     inner_join(result, system)
 }
 
+table_datastructures_bytes <- function() {
+    db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results-scalability.sqlite")
+    system <- tbl(db, "datastructures_bytes") %>% collect()
+    result <- tbl(db, "result_recent") %>%
+        collect() %>%
+        mutate(
+            dataset = basename(path),
+            total_time = set_units(total_time_ms, "ms"),
+            dataset = case_when(
+                str_detect(dataset, "sift") ~ "SIFT",
+                str_detect(dataset, "Livejournal") ~ "Livejournal",
+                str_detect(dataset, "[Gg]love") ~ "Glove",
+                str_detect(dataset, "Orkut") ~ "Orkut"
+            ),
+            nhosts = str_count(hosts, ":"),
+            workers = nhosts * threads,
+            coll_prob_half_k = (1.0 - acos(threshold) / pi)^(k/2),
+            # the number of repetitions executed by the outer layer of LSH (which is the only
+            # one for LocalLSH and OneLevelLSH)
+            outer_repetitions = log((1.0 - sqrt(required_recall)))^2 / log(1.0 - coll_prob_half_k)^2,
+            outer_repetitions = as.integer(ceiling(outer_repetitions))
+        ) %>%
+        order_datasets() %>%
+        recode_algorithms() %>%
+        filter(dataset=="Glove") %>% 
+        group_by(dataset, algorithm, workers) %>%
+        slice_min(total_time_ms) %>% 
+        ungroup()
+    res <- inner_join(result, system) %>%
+        mutate(
+            datastructures_mb = as.double(datastructures_bytes) / (1024*1024),
+            mb_per_repetition = datastructures_mb / outer_repetitions,
+            mb_per_worker = datastructures_mb / threads,
+            mb_per_repetition_per_worker = mb_per_repetition / threads
+        )
+    DBI::dbDisconnect(db)
+    res
+}
+
+table_scalability_load <- function() {
+    db <- DBI::dbConnect(RSQLite::SQLite(), "danny-results-scalability.sqlite")
+    all <- tbl(db, "result_recent") %>%
+        filter(required_recall == 0.8) %>%
+        filter(threshold %in% c(0.7)) %>%
+        collect()
+    load <- tbl(db, "counters") %>%
+        filter(kind %in% c("Load")) %>%
+        group_by(id, worker) %>%
+        # The computation of the rounds is overlapped, so we consider the total number of messages received by each worker
+        summarise(load = sum(count, na.rm=TRUE)) %>%
+        ungroup() %>%
+        group_by(id) %>% 
+        summarise(
+            max_load = max(load),
+            min_load = min(load)
+        ) %>%
+        collect()
+    net <- tbl(db, "network") %>%
+        group_by(id) %>% 
+        summarise(
+            net_tx = sum(transmitted) / (1024*1024),
+            net_rx = sum(received) / (1024*1024),
+        ) %>%
+        collect()
+
+    selected <- all %>% # semi_join(all, fast_params) %>%
+        inner_join(load) %>%
+        inner_join(net) %>%
+        mutate(
+            dataset = basename(path),
+            total_time = set_units(total_time_ms, "ms"),
+            dataset = case_when(
+                str_detect(dataset, "sift") ~ "SIFT",
+                str_detect(dataset, "Livejournal") ~ "Livejournal",
+                str_detect(dataset, "[Gg]love") ~ "Glove",
+                str_detect(dataset, "Orkut") ~ "Orkut"
+            ),
+            nhosts = str_count(hosts, ":"),
+            workers = nhosts * threads
+        ) %>%
+        order_datasets() %>%
+        recode_algorithms() %>%
+        select(-total_time_ms)
+    DBI::dbDisconnect(db)
+    selected
+}
+
+
+table_scalability_load() %>%
+    filter(algorithm == "LocalLSH", dataset=="Glove") %>%
+    filter(workers %in% c(40, 72)) %>%
+    filter(k == 12) %>%
+    group_by(workers) %>%
+    summarise(
+        total_time = mean(total_time),
+        max_load = mean(max_load),
+        min_load = mean(min_load),
+        net_tx_mb = mean(net_tx),
+        net_rx_mb = mean(net_rx)
+    )

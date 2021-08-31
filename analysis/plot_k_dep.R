@@ -32,7 +32,8 @@ plot_counters <- function(data, t, ylabels = FALSE) {
     p_candidates <- ggplot(data, aes(
         x = k,
         y = fraction_candidates,
-        color = algorithm
+        color = algorithm,
+        shape = algorithm
     )) +
         geom_line(size = 0.4, alpha = 0.5, position = position_dodge(width = 0.5)) +
         geom_point(size = 0.5, position = position_dodge(width = 0.5)) +
@@ -75,7 +76,8 @@ plot_counters <- function(data, t, ylabels = FALSE) {
     p_load <- ggplot(data, aes(
         x = k,
         y = Load,
-        color = algorithm
+        color = algorithm,
+        shape = algorithm
     )) +
         geom_line(size = 0.4, alpha = 0.5, position = position_dodge(width = 0.5)) +
         geom_point(size = 0.5, position = position_dodge(width = 0.5)) +
