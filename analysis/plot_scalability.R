@@ -23,11 +23,11 @@ labels <- plotdata %>%
             (algorithm == "LocalLSH") & workers == 8 ~ total_time - 100,
             (algorithm == "LocalLSH") & workers == 40 ~ total_time + 30,
             (algorithm == "OneLevelLSH") & workers == 8 ~ total_time + 1500,
-            (algorithm == "TwoLevelLSH") & workers == 8 ~ total_time - 450,
+            (algorithm == "TwoLevelLSH") & workers == 8 ~ total_time + 200,
             (algorithm == "OneLevelLSH") & workers == 16 ~ total_time + 800,
             (algorithm == "TwoLevelLSH") & workers == 16 ~ total_time - 350,
-            (algorithm == "OneLevelLSH") & workers == 40 ~ total_time - 130,
-            (algorithm == "TwoLevelLSH") & workers == 40 ~ total_time + 200,
+            (algorithm == "OneLevelLSH") & workers == 40 ~ total_time + 200,
+            (algorithm == "TwoLevelLSH") & workers == 40 ~ total_time + 20,
             # (algorithm == "LocalLSH") & workers == 40 ~ total_time + 30,
             T ~ total_time
         )
@@ -56,7 +56,8 @@ p <- ggplot(
     ) +
     geom_text(
         aes(label=scales::number(total_time, suffix=" s")),
-        data=function(d) {filter(d, workers == 72, !((dataset == "Glove") & (algorithm=="OneLevelLSH")))},
+        data=function(d) {filter(d, workers == 72)},
+        # data=function(d) {filter(d, workers == 72, !((dataset == "Glove") & (algorithm=="OneLevelLSH")))},
         vjust=0.5,
         hjust=0,
         nudge_x=1,
@@ -66,7 +67,8 @@ p <- ggplot(
     ) +
     geom_text(
         aes(label=scales::number(total_time, suffix=" s")),
-        data=function(d) {filter(d, workers == 40, !((dataset == "Glove") & (algorithm=="OneLevelLSH")))},
+        data=function(d) {filter(d, workers == 40)},
+        # data=function(d) {filter(d, workers == 40, !((dataset == "Glove") & (algorithm=="OneLevelLSH")))},
         vjust=0.5,
         hjust=1,
         nudge_y=-0.05,

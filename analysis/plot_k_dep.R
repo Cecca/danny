@@ -12,11 +12,18 @@ plotdata <- table_search_best() %>%
         ismin = fraction_candidates == min(fraction_candidates)
     )
 
-plot_counters <- function(data, t, ylabels = FALSE) {
+restricted <- plotdata %>% filter(k <= 12)
+
+plot_counters <- function(data, t, ylabels = FALSE, scale=1, legend = FALSE) {
     data <- filter(data, threshold == t, dry_run) %>%
         group_by(dataset, threshold, algorithm, k) %>%
         # select the parameter k2 minimizing the candidate ratio
         slice_min(fraction_candidates)
+
+    dotsize <- 1 * scale
+    linesize <- 0.7 * scale
+    maintextsize <- 2.5*scale
+    secondarytextsize <- 2*scale
 
     maxk <- summarise(ungroup(data), max(k)) %>% pull()
     maxy <- summarise(ungroup(data), max(fraction_candidates)) %>% pull()
@@ -35,25 +42,24 @@ plot_counters <- function(data, t, ylabels = FALSE) {
         color = algorithm,
         shape = algorithm
     )) +
-        geom_line(size = 0.4, alpha = 0.5, position = position_dodge(width = 0.5)) +
-        geom_point(size = 0.5, position = position_dodge(width = 0.5)) +
-        # geom_rug(data = function (d) filter(d, ismin)) +
+        geom_line(size = linesize, alpha = 0.5, position = position_dodge(width = 0.5)) +
+        geom_point(size = dotsize, position = position_dodge(width = 0.5)) +
         geom_hline(
             yintercept = 1,
             linetype = "dashed",
             color = "gray40"
         ) +
         geom_text(aes(label = scales::number(n_pairs, scale = 1e-9)),
-            size = 3,
-            x = maxk, y = 1.05, data = pairs, inherit.aes = FALSE,
+            size = maintextsize,
+            x = maxk, y = if (t == 0.5) {1.25} else {1.1}, data = pairs, inherit.aes = FALSE,
             hjust = 1, vjust = 0,
             color = "gray40"
         ) +
         geom_text(
             label = "billion pairs",
-            x = maxk, y = 0.95, data = pairs, inherit.aes = FALSE,
-            size = 2,
-            hjust = 1, vjust = 1,
+            x = maxk, y = if (t == 0.5) {1.05} else {1.02}, data = pairs, inherit.aes = FALSE,
+            size = secondarytextsize,
+            hjust = 1, vjust = 0,
             color = "gray40"
         ) +
         facet_wrap(vars(dataset), ncol = 4) +
@@ -62,16 +68,26 @@ plot_counters <- function(data, t, ylabels = FALSE) {
             y = "candidate ratio"
         ) +
         scale_color_algorithm() +
-        scale_x_continuous() +
+        scale_x_continuous(breaks = scales::pretty_breaks()) +
         scale_y_continuous(limits = c(0, max(maxy, 1.2))) +
         theme_paper() +
         theme(
-            title = element_text(size = 7),
+            title = element_text(size = 7*scale),
             axis.title.x = element_blank(),
             axis.text.x = element_blank(),
             axis.title.y = ytext,
-            strip.background = element_blank()
+            strip.background = element_blank(),
+            legend.position = "none",
+            legend.direction = "horizontal"
         )
+
+    if (legend) {
+        p_candidates <- p_candidates +
+            theme(
+                legend.position = c(0.6, 1.25),
+                legend.title = element_blank()
+            )
+    }
 
     p_load <- ggplot(data, aes(
         x = k,
@@ -79,40 +95,39 @@ plot_counters <- function(data, t, ylabels = FALSE) {
         color = algorithm,
         shape = algorithm
     )) +
-        geom_line(size = 0.4, alpha = 0.5, position = position_dodge(width = 0.5)) +
-        geom_point(size = 0.5, position = position_dodge(width = 0.5)) +
+        geom_line(size = linesize, alpha = 0.5, position = position_dodge(width = 0.5)) +
+        geom_point(size = dotsize, position = position_dodge(width = 0.5)) +
         facet_wrap(vars(dataset), ncol = 4) +
         labs(
             y = "load"
         ) +
         scale_color_algorithm() +
-        scale_x_continuous() +
+        scale_x_continuous(breaks = scales::pretty_breaks()) +
         scale_y_continuous(labels = scales::number_format(scale = 1e-3)) +
         theme_paper() +
         theme(
+            plot.margin = unit(c(0,0,0,0), units="mm"),
             strip.text = element_blank(),
             strip.background = element_blank(),
             axis.title.y = ytext,
             legend.position = "none"
         )
 
-    (p_candidates / p_load) # / guide_area() +
-    # plot_layout(
-    #     guides = "collect",
-    #     heights = c(2, 2, 1)
-    # )
-    # list(candidates = p_candidates, load = p_load)
+    (p_candidates / p_load) 
 }
 
-(plot_counters(plotdata, 0.5, ylabels = TRUE) | plot_counters(plotdata, 0.7)) / guide_area() +
-    plot_layout(guides = "collect", heights = c(10, 1))
+composed <- (plot_counters(restricted, 0.5, ylabels = TRUE) | plot_counters(restricted, 0.7, legend = T)) + #/ guide_area() +
+    plot_layout(guides = "keep", heights = c(10, 1))
+ggsave("imgs/counters.png", plot=composed, width = 8, height = 3.2)
 
-ggsave("imgs/counters.png", width = 8, height = 4)
+composed <- (plot_counters(plotdata, 0.5, ylabels = TRUE, scale=2) | plot_counters(plotdata, 0.7, legend = T, scale=2)) + #/ guide_area() +
+    plot_layout(guides = "keep", heights = c(10, 1))
+ggsave("imgs/counters-full.png", plot=composed, width = 8*2, height = 3.7*2)
 
-plotdata %>%
-    filter(dataset == "Orkut", threshold == 0.7, algorithm == "OneLevelLSH") %>%
-    select(k, fraction_candidates, Load) %>%
-    arrange(Load)
+# plotdata %>%
+#     filter(dataset == "Orkut", threshold == 0.7, algorithm == "OneLevelLSH") %>%
+#     select(k, fraction_candidates, Load) %>%
+#     arrange(Load)
 
 # plot_threshold <- function(data, t, ytitle = TRUE, yticks = TRUE, title = TRUE) {
 #     baseline <- filter(data, algorithm == "Cartesian") %>%
@@ -228,3 +243,4 @@ plotdata %>%
 #     )
 
 # ggsave("imgs/dep_k.png", width = 8, height = 3)
+

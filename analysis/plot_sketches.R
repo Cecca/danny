@@ -73,7 +73,7 @@ ranges <- plotdata %>%
 ## sketches results in higher running times, most likely because of the
 ## larger number of bits to be transmitted in a large number of iterations
 
-plot_one_algo <- function(data, algorithm_name, groups, ylabs = FALSE, strip_text = FALSE, strip_text_x = FALSE) {
+plot_one_algo <- function(data, algorithm_name, groups, ylabs = FALSE, strip_text = FALSE, strip_text_x = FALSE, short=FALSE) {
     doplot <- function(dname) {
         r <- ranges %>%
             filter(dataset == dname) %>%
@@ -96,7 +96,8 @@ plot_one_algo <- function(data, algorithm_name, groups, ylabs = FALSE, strip_tex
                 breaks = c("0", "256", "512")
             ) +
             scale_y_continuous(
-                limits = r
+                limits = r,
+                breaks = scales::extended_breaks()
             ) +
             scale_color_manual(values = c("black", "red")) +
             facet_grid(
@@ -118,7 +119,9 @@ plot_one_algo <- function(data, algorithm_name, groups, ylabs = FALSE, strip_tex
                 panel.grid = element_blank(),
                 strip.placement = "outside",
                 panel.spacing.x = unit(0, "line"),
-                axis.title.x = element_blank()
+                axis.title.x = element_blank(),
+                plot.title = element_text(size=8),
+                plot.margin = unit(c(0,0,0,0),units="mm")
             )
         if (ylabs) {
             p <- p +
@@ -139,10 +142,15 @@ plot_one_algo <- function(data, algorithm_name, groups, ylabs = FALSE, strip_tex
         }
         p
     }
-    (doplot("Glove") + labs(title = algorithm_name)) /
-        doplot("SIFT") /
-        doplot("Livejournal") /
-        doplot("Orkut")
+    if (short) {
+        (doplot("Glove") + labs(title = algorithm_name)) /
+            doplot("Livejournal")
+    } else {
+        (doplot("Glove") + labs(title = algorithm_name)) /
+            doplot("SIFT") /
+            doplot("Livejournal") /
+            doplot("Orkut")
+    }
 }
 
 create_groups <- function(data) {
@@ -153,43 +161,48 @@ create_groups <- function(data) {
         )
 }
 
-p_all2all <- plotdata %>%
-    plot_one_algo("Cartesian", "", ylabs = T)
+do_plot_sketches <- function(plotdata, short=FALSE)  {
+    p_all2all <- plotdata %>%
+        plot_one_algo("Cartesian", "", ylabs = T, short=short)
 
-p_hu_et_al <- plotdata %>%
-    create_groups() %>%
-    # mutate(
-    #     groups = fct_reorder(str_c("k=", k), k)
-    # ) %>%
-    plot_one_algo("OneLevelLSH", groups)
+    p_hu_et_al <- plotdata %>%
+        create_groups() %>%
+        # mutate(
+        #     groups = fct_reorder(str_c("k=", k), k)
+        # ) %>%
+        plot_one_algo("OneLevelLSH", groups, short=short)
 
-p_one_round <- plotdata %>%
-    create_groups() %>%
-    # mutate(
-    #     groups = fct_reorder(str_c("k=", k), k)
-    # ) %>%
-    plot_one_algo("LocalLSH", groups)
+    p_one_round <- plotdata %>%
+        create_groups() %>%
+        # mutate(
+        #     groups = fct_reorder(str_c("k=", k), k)
+        # ) %>%
+        plot_one_algo("LocalLSH", groups, short=short)
 
-p_two_round <- plotdata %>%
-    create_groups() %>%
-    # mutate(
-    #     groups = fct_reorder(str_c("k=", k), k)
-    # ) %>%
-    plot_one_algo("TwoLevelLSH", groups, strip_text = T)
+    p_two_round <- plotdata %>%
+        create_groups() %>%
+        # mutate(
+        #     groups = fct_reorder(str_c("k=", k), k)
+        # ) %>%
+        plot_one_algo("TwoLevelLSH", groups, strip_text = T, short=short)
 
 
-(p_all2all | p_hu_et_al | p_one_round | p_two_round) +
-    plot_layout(
-        guides = "collect",
-        widths = c(1, 2, 2, 2)
-    ) &
-    theme(
-        text = element_text(size = 10),
-        panel.border = element_blank(),
-        axis.line = element_line(color = "black", size = 0.1),
-    )
+    (p_all2all | p_hu_et_al | p_one_round | p_two_round) +
+        plot_layout(
+            guides = "collect",
+            widths = c(1, 2, 2, 2)
+        ) &
+        theme(
+            text = element_text(size = 10),
+            panel.border = element_blank(),
+            axis.line = element_line(color = "black", size = 0.1),
+        )
+}
 
-ggsave("imgs/sketches.png", width = 10, height = 5)
+do_plot_sketches(plotdata, short=F)
+ggsave("imgs/sketches-all-datasets.png", width = 10, height = 5, dpi=300)
+do_plot_sketches(plotdata, short=T)
+ggsave("imgs/sketches.png", width = 10, height = 2.5)
 
 # print("Effect of sketching on the accuracy")
 # table_search_best() %>%
