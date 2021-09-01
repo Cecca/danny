@@ -51,13 +51,13 @@ plot_counters <- function(data, t, ylabels = FALSE, scale=1, legend = FALSE) {
         ) +
         geom_text(aes(label = scales::number(n_pairs, scale = 1e-9)),
             size = maintextsize,
-            x = maxk, y = if (t == 0.5) {1.25} else {1.1}, data = pairs, inherit.aes = FALSE,
+            x = maxk, y = if (t == 0.5) {1.3} else {1.15}, data = pairs, inherit.aes = FALSE,
             hjust = 1, vjust = 0,
             color = "gray40"
         ) +
         geom_text(
             label = "billion pairs",
-            x = maxk, y = if (t == 0.5) {1.05} else {1.02}, data = pairs, inherit.aes = FALSE,
+            x = maxk, y = if (t == 0.5) {1.08} else {1.05}, data = pairs, inherit.aes = FALSE,
             size = secondarytextsize,
             hjust = 1, vjust = 0,
             color = "gray40"
@@ -70,6 +70,7 @@ plot_counters <- function(data, t, ylabels = FALSE, scale=1, legend = FALSE) {
         scale_color_algorithm() +
         scale_x_continuous(breaks = scales::pretty_breaks()) +
         scale_y_continuous(limits = c(0, max(maxy, 1.2))) +
+        coord_cartesian(clip="off") +
         theme_paper() +
         theme(
             title = element_text(size = 7*scale),
@@ -80,12 +81,14 @@ plot_counters <- function(data, t, ylabels = FALSE, scale=1, legend = FALSE) {
             strip.text = element_text(size=6*scale),
             legend.position = "none",
             legend.direction = "horizontal"
-        )
+        ) +
+        annotate("segment", x=-Inf, xend=Inf, y=-Inf, yend=-Inf, size = 0.4)+
+        annotate("segment", x=-Inf, xend=-Inf, y=-Inf, yend=+Inf, size = 0.4)
 
     if (legend) {
         p_candidates <- p_candidates +
             theme(
-                legend.position = c(0.6, 1.25),
+                legend.position = c(0.6, 1.4),
                 legend.title = element_blank()
             )
     }
@@ -112,138 +115,22 @@ plot_counters <- function(data, t, ylabels = FALSE, scale=1, legend = FALSE) {
             strip.background = element_blank(),
             axis.title.y = ytext,
             legend.position = "none"
-        )
+        ) + 
+        annotate("segment", x=-Inf, xend=Inf, y=-Inf, yend=-Inf, size = 0.8)+
+        annotate("segment", x=-Inf, xend=-Inf, y=-Inf, yend=+Inf, size = 0.8)
+
 
     (p_candidates / p_load) & theme(
-        axis.text = element_text(size=5*scale)
+        axis.text = element_text(size=5*scale),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank()
     )
 }
 
 composed <- (plot_counters(restricted, 0.5, ylabels = TRUE) | plot_counters(restricted, 0.7, legend = T)) + #/ guide_area() +
     plot_layout(guides = "keep", heights = c(10, 1))
-ggsave("imgs/counters.png", plot=composed, width = 8, height = 3.2)
+ggsave("imgs/counters.png", plot=composed, width = 8, height = 2.5)
 
 composed <- (plot_counters(plotdata, 0.5, ylabels = TRUE, scale=2) | plot_counters(plotdata, 0.7, legend = T, scale=2)) + #/ guide_area() +
     plot_layout(guides = "keep", heights = c(10, 1))
 ggsave("imgs/counters-full.png", plot=composed, width = 8*2, height = 3.7*2)
-
-# plotdata %>%
-#     filter(dataset == "Orkut", threshold == 0.7, algorithm == "OneLevelLSH") %>%
-#     select(k, fraction_candidates, Load) %>%
-#     arrange(Load)
-
-# plot_threshold <- function(data, t, ytitle = TRUE, yticks = TRUE, title = TRUE) {
-#     baseline <- filter(data, algorithm == "Cartesian") %>%
-#         ungroup() %>%
-#         select(dataset, threshold, base_time = total_time)
-#     data <- filter(data, algorithm != "Cartesian") %>%
-#         ungroup() %>%
-#         inner_join(baseline) %>%
-#         filter(total_time < 4 * base_time)
-
-#     # compute the limits before filtering, so that all plots share the same scale
-#     # limits_time <- pull(data, total_time) %>% range()
-#     # limits_load <- pull(data, Load) %>% range()
-
-#     data <- filter(data, threshold == t)
-#     baseline <- filter(baseline, threshold == t)
-
-#     p_time <- ggplot(
-#         data,
-#         aes(k, total_time,
-#             color = algorithm,
-#             group = interaction(algorithm, k2)
-#         )
-#     ) +
-#         geom_hline(
-#             data = baseline,
-#             mapping = aes(yintercept = base_time)
-#         ) +
-#         # geom_point(aes(shape = ismin, size = ismin)) +
-#         geom_point(aes(size = ismin)) +
-#         geom_line() +
-#         # scale_y_continuous(labels = scales::number_format(), limits = limits_time) +
-#         scale_y_continuous(labels = scales::number_format()) +
-#         scale_shape_manual(values = c(3, 18)) +
-#         scale_size_manual(values = c(0.5, 1)) +
-#         scale_color_algorithm() +
-#         facet_wrap(vars(dataset), ncol = 4) +
-#         guides(shape = FALSE, linetype = FALSE, size = FALSE) +
-#         theme_paper() +
-#         labs(
-#             y = "Total time (min)"
-#         ) +
-#         theme(
-#             axis.text.x = element_blank(),
-#             axis.title.x = element_blank(),
-#             strip.background = element_blank(),
-#             strip.text = element_text(hjust = 0)
-#         )
-
-#     p_load <- ggplot(
-#         data,
-#         aes(k, Load, color = algorithm, group = interaction(algorithm, k2))
-#     ) +
-#         geom_point(aes(size = ismin)) +
-#         # geom_point(aes(shape = ismin, size = ismin)) +
-#         geom_line() +
-#         scale_y_log10(
-#             labels = scales::number_format(
-#                 accuracy = 1,
-#                 scale = 1 / 1000
-#             )
-#             # limits = limits_load
-#         ) +
-#         scale_shape_manual(values = c(3, 18)) +
-#         scale_size_manual(values = c(0.5, 1)) +
-#         scale_color_algorithm() +
-#         facet_wrap(vars(dataset), ncol = 4) +
-#         guides(shape = FALSE, size = FALSE) +
-#         labs(
-#             y = TeX(str_c("Load (msg $\\cdot 10^3$)"))
-#         ) +
-#         theme_paper() +
-#         theme(
-#             strip.text = element_blank(),
-#             strip.background = element_blank()
-#         )
-
-#     if (title) {
-#         p_time <- p_time + labs(title = str_c("Threshold ", t))
-#     }
-
-#     if (!ytitle) {
-#         p_time <- p_time + theme(
-#             axis.title.y = element_blank()
-#         )
-#         p_load <- p_load + theme(
-#             axis.title.y = element_blank()
-#         )
-#     }
-#     if (!yticks) {
-#         p_time <- p_time + theme(
-#             axis.text.y = element_blank(),
-#         )
-#         p_load <- p_load + theme(
-#             axis.text.y = element_blank(),
-#         )
-#     }
-
-#     (p_time / p_load)
-# }
-
-# (
-#     plot_threshold(filter(plotdata, dataset %in% c("Glove", "SIFT")), 0.5) |
-#         plot_threshold(filter(plotdata, dataset %in% c("Livejournal", "Orkut")), 0.5, title = F, ytitle = F) |
-#         plot_threshold(filter(plotdata, dataset %in% c("Glove", "SIFT")), 0.7, ytitle = F) |
-#         plot_threshold(filter(plotdata, dataset %in% c("Livejournal", "Orkut")), 0.7, title = F, ytitle = F)
-#     # plot_threshold(plotdata, 0.7, ytitle = FALSE)
-# ) /
-#     guide_area() +
-#     plot_layout(
-#         guides = "collect",
-#         heights = c(5, 1)
-#     )
-
-# ggsave("imgs/dep_k.png", width = 8, height = 3)
-

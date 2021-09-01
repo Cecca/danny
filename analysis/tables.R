@@ -559,7 +559,7 @@ table_datastructures_bytes <- function() {
         recode_algorithms() %>%
         filter(dataset=="Glove") %>% 
         group_by(dataset, algorithm, workers) %>%
-        slice_min(total_time_ms) %>% 
+        # slice_min(total_time_ms) %>% 
         ungroup()
     res <- inner_join(result, system) %>%
         mutate(

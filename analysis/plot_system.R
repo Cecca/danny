@@ -109,5 +109,5 @@ ggplot(plotdata, aes(x=time, group=hostname)) +
     ) + 
     annotate("segment", x=-Inf, xend=Inf, y=-Inf, yend=-Inf, size = rel(.8))+
 
-ggsave("imgs/system.png", width = 4, height = 3)
+ggsave("imgs/system.png", width = 4, height = 2.5)
  

@@ -97,14 +97,15 @@ p <- ggplot(
         x = "number of workers",
         y = "total time (s)"
     ) +
+    coord_cartesian(clip="off") +
     theme_paper() +
     theme(
         panel.grid.minor = element_blank(),
         panel.grid.major = element_blank(),
-        legend.position = c(0.8, 0.75),
+        legend.position = c(0.8, 0.8),
         legend.title = element_blank(),
         panel.border = element_blank(),
         axis.line = element_line(size = 0.3, colour = "black")
     )
 
-ggsave("imgs/scalability.png", width = 4, height = 2.2)
+ggsave("imgs/scalability.png", width = 4, height = 2)
