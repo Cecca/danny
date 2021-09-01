@@ -31,7 +31,7 @@ plot_counters <- function(data, t, ylabels = FALSE, scale=1, legend = FALSE) {
     pairs <- data %>% distinct(dataset, n_pairs)
 
     if (ylabels) {
-        ytext <- element_text()
+        ytext <- element_text(size=6*scale)
     } else {
         ytext <- element_blank()
     }
@@ -77,6 +77,7 @@ plot_counters <- function(data, t, ylabels = FALSE, scale=1, legend = FALSE) {
             axis.text.x = element_blank(),
             axis.title.y = ytext,
             strip.background = element_blank(),
+            strip.text = element_text(size=6*scale),
             legend.position = "none",
             legend.direction = "horizontal"
         )
@@ -113,7 +114,9 @@ plot_counters <- function(data, t, ylabels = FALSE, scale=1, legend = FALSE) {
             legend.position = "none"
         )
 
-    (p_candidates / p_load) 
+    (p_candidates / p_load) & theme(
+        axis.text = element_text(size=5*scale)
+    )
 }
 
 composed <- (plot_counters(restricted, 0.5, ylabels = TRUE) | plot_counters(restricted, 0.7, legend = T)) + #/ guide_area() +
